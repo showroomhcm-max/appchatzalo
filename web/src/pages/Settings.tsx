@@ -48,7 +48,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
     title: 'Quản lý chung',
     items: [
       { id: 'alerts', label: 'Cảnh báo đơn "rơi"', icon: <AlertTriangle size={18} />, perms: ['alerts.manage'] },
-      { id: 'company', label: 'Zalo & SĐT công ty', icon: <Smartphone size={18} />, perms: ['channels.manage'] },
+      { id: 'company', label: 'Zalo nhân viên (giám sát)', icon: <Smartphone size={18} />, perms: ['channels.manage'] },
       { id: 'logs', label: 'Nhật ký hệ thống', icon: <ScrollText size={18} />, perms: ['logs.view'] },
     ],
   },

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Database, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
+import { Database, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
@@ -7,6 +7,7 @@ import Inbox from './pages/Inbox'
 import Reports from './pages/Reports'
 import type { SettingsTab } from './pages/Settings'
 import Channels from './pages/Channels'
+import Monitor from './pages/Monitor'
 import SettingsPage from './pages/Settings'
 import { Avatar, Modal } from './components'
 import { UpdateBanner, VersionTag } from './version'
@@ -128,11 +129,11 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
   )
 }
 
-type Page = 'inbox' | 'channels' | 'data' | 'settings'
+type Page = 'inbox' | 'channels' | 'monitor' | 'data' | 'settings'
 
-const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', data: 'Dữ liệu', settings: 'Cài đặt' }
+const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', monitor: 'Giám sát Zalo nhân viên', data: 'Dữ liệu', settings: 'Cài đặt' }
 
-type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab }
+type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null }
 
 function parseHash(): Route {
   const [, rawPage, id, msg] = window.location.hash.split('/')
@@ -145,7 +146,7 @@ function parseHash(): Route {
   }
   if (legacy[rawPage]) return { page: 'inbox', convId: null, msgId: null, ...legacy[rawPage] }
   const page = rawPage
-  const valid: Page[] = ['inbox', 'channels', 'data', 'settings']
+  const valid: Page[] = ['inbox', 'channels', 'monitor', 'data', 'settings']
   // Hỗ trợ link từ web app khác: /?c=<threadId>
   const c = new URLSearchParams(window.location.search).get('c')
   if (c) return { page: 'inbox', convId: c, msgId: null }
@@ -155,6 +156,9 @@ function parseHash(): Route {
     convId: page === 'inbox' && id ? decodeURIComponent(id) : null,
     // #/inbox/<hội thoại>/<id tin nhắn>: mở hội thoại và nhảy tới tin đó (từ kết quả tìm kiếm)
     msgId: page === 'inbox' && msg && /^\d+$/.test(msg) ? Number(msg) : null,
+    // #/monitor/<kênh>/<hội thoại>
+    monitorChannel: page === 'monitor' && id && /^\d+$/.test(id) ? Number(id) : null,
+    monitorConv: page === 'monitor' && msg ? decodeURIComponent(msg) : null,
   }
 }
 
@@ -182,6 +186,7 @@ function Shell() {
   const nav: { id: Page; label: string; icon: React.ReactNode; show?: boolean }[] = [
     { id: 'inbox', label: 'Hội thoại', icon: <MessagesSquare size={20} /> },
     { id: 'channels', label: 'Kênh Chat', icon: <Radio size={20} /> },
+    { id: 'monitor', label: 'Giám sát Zalo nhân viên', icon: <Eye size={20} />, show: allowed('monitor.view') },
     { id: 'data', label: 'Dữ liệu', icon: <Database size={20} />, show: canData },
     { id: 'settings', label: 'Cài đặt', icon: <SettingsIcon size={20} />, show: canSettings },
   ]
@@ -262,6 +267,7 @@ function Shell() {
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}
         {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} />}
         {route.page === 'channels' && <Channels />}
+        {route.page === 'monitor' && allowed('monitor.view') && <Monitor channelId={route.monitorChannel ?? null} convId={route.monitorConv ?? null} />}
         {route.page === 'data' && canData && <Reports />}
         {route.page === 'settings' && canSettings && <SettingsPage tab={route.tab} />}
         {((route.page === 'data' && !canData) || (route.page === 'settings' && !canSettings)) && (

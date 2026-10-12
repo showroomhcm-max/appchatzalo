@@ -136,9 +136,17 @@ export function listConversations(opts: {
   before?: number;
   /** Chỉ hội thoại đang có cảnh báo đơn "rơi" */
   alert?: boolean;
+  /** Gồm cả hội thoại của Zalo nhân viên đang giám sát */
+  includeMonitor?: boolean;
 }) {
   const where: string[] = [conversationFilter(opts.access)];
   const params: any[] = [];
+  if (opts.userId && !opts.includeMonitor) {
+    where.push(
+      `NOT EXISTS (SELECT 1 FROM channels mch WHERE mch.id = c.channel_id AND mch.mode = 'monitor'
+         AND NOT EXISTS (SELECT 1 FROM channel_assets ca WHERE ca.channel_id = mch.id AND ca.holder_id = ${Number(opts.userId)}))`,
+    );
+  }
   if (opts.alert) where.push("EXISTS (SELECT 1 FROM conversation_alerts a WHERE a.conversation_id = c.id AND a.resolved_at IS NULL)");
   if (opts.channelId) {
     where.push("c.channel_id = ?");
@@ -418,7 +426,7 @@ export function markUndone(channelId: number, threadId: string, zaloMsgId: strin
     zaloMsgId,
   );
   if (!row) return;
-  run("UPDATE messages SET undone = 1 WHERE id = ?", row.id);
+  run("UPDATE messages SET undone = 1, undone_at = COALESCE(undone_at, ?) WHERE id = ?", Date.now(), row.id);
   bus.emit("message.updated", getMessage(row.id)!, getConversation(row.conversation_id)!);
 }
 

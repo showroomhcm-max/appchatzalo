@@ -414,3 +414,26 @@ if (!(db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).som
   db.exec("ALTER TABLE messages ADD COLUMN holder_id INTEGER");
 }
 
+
+// ───────────── Giám sát Zalo nhân viên (monitor.ts) ─────────────
+// channels.mode: 'shared' = kênh CSKH chung; 'monitor' = Zalo nhân viên tự chat trên điện thoại, quản lý giám sát
+if (!(db.prepare("PRAGMA table_info(channels)").all() as { name: string }[]).some((c) => c.name === "mode")) {
+  db.exec("ALTER TABLE channels ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
+}
+if (!(db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).some((c) => c.name === "undone_at")) {
+  db.exec("ALTER TABLE messages ADD COLUMN undone_at INTEGER");
+}
+db.exec(`
+CREATE TABLE IF NOT EXISTS monitor_flags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL,
+  channel_id INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  reviewed_by INTEGER,
+  reviewed_at INTEGER,
+  UNIQUE(message_id, reason)
+);
+CREATE INDEX IF NOT EXISTS idx_flags_open ON monitor_flags(channel_id, reviewed_at);
+`);

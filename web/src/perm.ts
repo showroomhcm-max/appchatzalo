@@ -14,6 +14,7 @@ export type Permission =
   | 'templates.manage'
   | 'alerts.manage'
   | 'orders.create'
+  | 'monitor.view'
   | 'integrations.manage'
   | 'logs.view'
   | 'permissions.manage'

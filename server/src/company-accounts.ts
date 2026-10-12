@@ -48,7 +48,7 @@ const dayStart = () => {
 export function listAccounts() {
   const today = dayStart();
   const rows = all<any>(
-    `SELECT ch.id AS channel_id, ch.name, ch.zalo_uid, ch.zalo_name, ch.avatar, ch.active,
+    `SELECT ch.id AS channel_id, ch.name, ch.mode, ch.zalo_uid, ch.zalo_name, ch.avatar, ch.active,
             a.phone, a.sim_serial, a.carrier, a.device, a.holder_id, a.holder_since, COALESCE(a.status, 'stored') AS status, a.note, a.updated_at,
             u.display_name AS holder_name, u.active AS holder_active
      FROM channels ch

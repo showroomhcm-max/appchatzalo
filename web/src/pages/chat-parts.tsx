@@ -59,6 +59,7 @@ export function Bubble({
   canUndo,
   caps,
   canReply = true,
+  readOnly = false,
   onAction,
   onReact,
 }: {
@@ -70,6 +71,8 @@ export function Bubble({
   /** Tính năng của nền tảng (không truyền = Zalo, đủ tính năng) */
   caps?: Capabilities
   canReply?: boolean
+  /** Chỉ xem (trang Giám sát): ẩn mọi thao tác */
+  readOnly?: boolean
   onAction: (action: MessageAction, m: Message) => void
   onReact: (m: Message, code: string) => void
 }) {
@@ -80,7 +83,7 @@ export function Bubble({
   const isSticker = m.msg_type === 'chat.sticker' && raw.id
   const isFile = m.msg_type === 'share.file'
   const isLink = (m.msg_type === 'chat.recommended' || m.msg_type === 'chat.link') && raw.href
-  const actionable = !m.undone && !!m.zalo_msg_id
+  const actionable = !readOnly && !m.undone && !!m.zalo_msg_id
   const [menu, setMenu] = useState<'react' | 'more' | null>(null)
   const rowRef = useRef<HTMLDivElement>(null)
 

@@ -7,6 +7,18 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.5.0 — 13/10/2026
+
+**Giám sát Zalo nhân viên** (làm lại theo đúng ý: công ty cấp SIM, nhân viên tự tạo Zalo và chat với khách bằng điện thoại)
+- **Cài đặt › Quản lý chung › Zalo nhân viên (giám sát)**: bấm "Thêm Zalo nhân viên", nhập SĐT công ty cấp + nhân viên nhận → app hiện mã QR, dùng Zalo trên điện thoại nhân viên quét. Từ lúc đó mọi tin nhắn với khách được lưu về app, nhân viên vẫn chat trên điện thoại như bình thường. Có thể chuyển một kênh Zalo đang có sang chế độ giám sát.
+- **Menu mới "Giám sát"** (biểu tượng con mắt): chọn nhân viên → danh sách khách → xem toàn bộ hội thoại (chỉ xem). Có tìm theo tên khách, SĐT, nội dung tin.
+- **Tin nhân viên thu hồi vẫn xem được**, kèm giờ thu hồi.
+- **Tin cần chú ý** (tự gắn cờ): nhân viên gửi số tài khoản / ví, gửi số điện thoại khác số công ty, hoặc tin có từ khóa (chuyển khoản cho em, zalo riêng, giá riêng, shop khác… tự chỉnh được). Bấm "Đã xem, bình thường" để bỏ cờ.
+- **Mất giám sát**: khi nhân viên đăng xuất phiên Zalo Web trên điện thoại, app báo đỏ và ghi lại giờ; bấm "Quét QR" để kết nối lại.
+- Số liệu hôm nay từng nhân viên: số khách, tin khách, tin nhân viên, tin thu hồi, khách chờ trả lời.
+- **Bảo mật**: hội thoại giám sát không vào hộp thư chung; chỉ người có quyền mới **"Giám sát tin nhắn Zalo nhân viên"** (nhóm Quản trị có sẵn) và chính nhân viên giữ máy xem được — kể cả người có quyền "xem tất cả hội thoại" cũng không thấy nếu thiếu quyền này. Quản lý chỉ xem, không gửi tin thay nhân viên. Mỗi lần mở xem được ghi nhật ký.
+- Vẫn giữ: hồ sơ SIM, cấp / thu hồi / bàn giao có checklist, nhân viên bị khóa → "Cần thu hồi".
+
 ## v3.4.1 — 13/10/2026
 
 **Sửa lỗi**

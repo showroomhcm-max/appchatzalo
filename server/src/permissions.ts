@@ -19,6 +19,7 @@ export const PERMISSIONS = [
   { key: "templates.manage", group: "Cài đặt", label: "Quản lý tin nhắn mẫu" },
   { key: "alerts.manage", group: "Cài đặt", label: "Cấu hình cảnh báo đơn \"rơi\"" },
   { key: "orders.create", group: "Hội thoại", label: "Lên đơn hàng POS (Odoo) từ hội thoại" },
+  { key: "monitor.view", group: "Hội thoại", label: "Giám sát tin nhắn Zalo nhân viên (SĐT công ty cấp)" },
   { key: "integrations.manage", group: "Hệ thống", label: "Tích hợp: API key, webhook" },
   { key: "logs.view", group: "Hệ thống", label: "Xem và tải nhật ký hệ thống" },
   { key: "permissions.manage", group: "Hệ thống", label: "Quản lý nhóm quyền, cấp quyền cho người khác" },
@@ -83,6 +84,18 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
     run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
   }
   run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.alerts', '1')");
+})();
+
+/** Quyền giám sát Zalo nhân viên: cấp sẵn cho nhóm Quản trị (một lần). */
+(function grantMonitorPermission() {
+  if (get("SELECT 1 FROM settings WHERE key = 'perm.migrated.monitor'")) return;
+  const g = get<{ id: number; permissions: string }>("SELECT id, permissions FROM permission_groups WHERE name = 'Quản trị'");
+  if (g) {
+    const list = new Set<string>(JSON.parse(g.permissions || "[]"));
+    list.add("monitor.view");
+    run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
+  }
+  run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.monitor', '1')");
 })();
 
 /** Quyền lên đơn POS: cấp sẵn cho các nhóm mẫu (một lần), quản trị có thể bỏ. */

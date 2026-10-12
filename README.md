@@ -4,7 +4,7 @@ Trước đây tên "Zalo CSKH". Web app chăm sóc khách hàng: kết nối **
 
 ## Tính năng
 
-**Zalo & SĐT công ty** (từ v3.3.0): hồ sơ SIM / máy của từng tài khoản Zalo công ty, cấp – thu hồi – bàn giao cho nhân viên có lịch sử và checklist, tin nhắn từ điện thoại ghi tên người giữ máy, khóa nhân viên thì tài khoản tự chuyển "Cần thu hồi".
+**Giám sát Zalo nhân viên** (từ v3.5.0): công ty cấp SIM, nhân viên tự chat với khách trên Zalo của số đó; app lưu toàn bộ tin (kể cả tin thu hồi), gắn cờ tin đáng ngờ, báo mất giám sát; quản lý xem ở menu Giám sát. Kèm hồ sơ SIM, cấp – thu hồi – bàn giao có checklist.
 
 **Đa kênh** (từ v3.0.0): Zalo, Zalo OA (v3.1.0), Facebook Messenger, bình luận Fanpage, TikTok Business, TikTok Shop chung một hộp thư.
 Hướng dẫn tạo app Zalo OA / Facebook / TikTok: [docs/ket-noi-facebook-tiktok.md](docs/ket-noi-facebook-tiktok.md).

@@ -49,7 +49,7 @@ function channelPayload(isAdmin: boolean) {
       r.n,
     ]),
   );
-  return all<any>("SELECT id, name, platform, zalo_uid, zalo_name, avatar, default_department_id, active, created_at FROM channels ORDER BY id").map(
+  return all<any>("SELECT ch.id, ch.name, ch.platform, ch.mode, ch.zalo_uid, ch.zalo_name, ch.avatar, ch.default_department_id, ch.active, ch.created_at, a.holder_id FROM channels ch LEFT JOIN channel_assets a ON a.channel_id = ch.id ORDER BY ch.id").map(
     (c) => ({
       ...c,
       department_ids: deptLinks.get(c.id) ?? [],

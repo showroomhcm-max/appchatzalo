@@ -127,6 +127,13 @@ export async function sendToConversation(opts: {
   if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
   const text = (opts.text ?? "").trim();
   if (!text && !opts.files?.length) throw new HttpError(400, "Nội dung trống");
+  const monitored = get<{ mode: string; holder_id: number | null }>(
+    "SELECT ch.mode, a.holder_id FROM channels ch LEFT JOIN channel_assets a ON a.channel_id = ch.id WHERE ch.id = ?",
+    conv.channel_id,
+  );
+  if (monitored?.mode === "monitor" && (!opts.agentId || monitored.holder_id !== opts.agentId)) {
+    throw new HttpError(403, "Đây là Zalo nhân viên đang giám sát: chỉ xem, không gửi tin thay nhân viên");
+  }
   const session = zalo.session(conv.channel_id);
   if (!session.connected) {
     throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối, chưa gửi được tin`);

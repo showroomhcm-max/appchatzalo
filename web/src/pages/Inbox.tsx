@@ -53,6 +53,11 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   // Chỉ hội thoại đang có cảnh báo đơn "rơi"
   const [alertOnly, setAlertOnly] = useState(false)
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.conversation_id)), [alerts])
+  const { channels: allChannels } = useApp()
+  const monitorIds = useMemo(
+    () => new Set(allChannels.filter((ch) => ch.mode === 'monitor' && ch.holder_id !== user.id).map((ch) => ch.id)),
+    [allChannels, user.id],
+  )
   const myAlerts = alerts.filter((a) => !workingChannelIds || (a.channel_id !== null && workingChannelIds.includes(a.channel_id)))
   // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
   const [showTagFilter, setShowTagFilter] = useState(true)
@@ -78,6 +83,8 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       if (status === 'active' && c.status === 'closed') return false
       if (status !== 'active' && status !== 'all' && c.status !== status) return false
       if (workingChannelIds && !workingChannelIds.includes(c.channel_id)) return false
+      // Zalo nhân viên đang giám sát không vào hộp thư chung
+      if (monitorIds.has(c.channel_id)) return false
       if (channelFilter && c.channel_id !== Number(channelFilter)) return false
       if (deptFilter === 'none' && c.department_id !== null) return false
       if (deptFilter && deptFilter !== 'none' && c.department_id !== Number(deptFilter)) return false
@@ -85,7 +92,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       if (alertOnly && !alertIds.has(c.id)) return false
       return true
     },
-    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds, alertOnly, alertIds],
+    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds, alertOnly, alertIds, monitorIds],
   )
 
   const load = useCallback(

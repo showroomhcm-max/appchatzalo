@@ -9,7 +9,9 @@ import { fold } from '../util'
 import type { Platform } from '../types'
 
 export default function Channels({ manage = false }: { manage?: boolean }) {
-  const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
+  const { channels: allChannels, chatChannels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
+  // Trang Kênh Chat (chọn kênh chat) không hiện Zalo nhân viên đang giám sát; trang Kết nối kênh hiện tất cả
+  const channels = manage ? allChannels : chatChannels
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
   const [detailId, setDetailId] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)

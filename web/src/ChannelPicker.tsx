@@ -10,8 +10,8 @@ import { fold } from './util'
  * Hộp thư chỉ hiện hội thoại của các kênh đã chọn.
  */
 export default function ChannelPicker() {
-  const { channels, workingChannelIds, setWorkingChannels, zaloStatuses } = useApp()
-  const list = channels.filter((c) => c.active)
+  const { chatChannels, workingChannelIds, setWorkingChannels, zaloStatuses } = useApp()
+  const list = chatChannels.filter((c) => c.active)
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<number[]>([])
   const [q, setQ] = useState('')

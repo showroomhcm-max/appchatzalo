@@ -9,9 +9,11 @@ import type { AuthUser } from "./auth.js";
  *   và hội thoại chưa thuộc bộ phận nào trong các kênh mà bộ phận mình được gán.
  */
 export type Scope =
-  | { all: true }
+  | { all: true; hiddenChannelIds?: number[] }
   | {
       all: false;
+      /** Zalo nhân viên đang giám sát mà người này không được xem (không có quyền Giám sát, không phải người giữ máy) */
+      hiddenChannelIds?: number[];
       departmentIds: number[];
       /** Kênh dùng được (qua bộ phận hoặc được cấp thẳng) */
       channelIds: number[];
@@ -19,8 +21,19 @@ export type Scope =
       fullChannelIds: number[];
     };
 
+/** Kênh giám sát người này không được xem. */
+function hiddenMonitorChannels(user: Pick<AuthUser, "id" | "super_admin" | "permissions">) {
+  if (user.super_admin || user.permissions?.includes("monitor.view")) return [];
+  return all<{ id: number }>(
+    `SELECT ch.id FROM channels ch LEFT JOIN channel_assets a ON a.channel_id = ch.id
+     WHERE ch.mode = 'monitor' AND (a.holder_id IS NULL OR a.holder_id != ?)`,
+    user.id,
+  ).map((r) => r.id);
+}
+
 export function scopeOf(user: Pick<AuthUser, "id" | "role" | "super_admin" | "permissions">): Scope {
-  if (user.super_admin || user.permissions?.includes("conversations.all")) return { all: true };
+  const hiddenChannelIds = hiddenMonitorChannels(user);
+  if (user.super_admin || user.permissions?.includes("conversations.all")) return { all: true, hiddenChannelIds };
   const departmentIds = all<{ department_id: number }>(
     "SELECT department_id FROM user_departments WHERE user_id = ?",
     user.id,
@@ -34,20 +47,29 @@ export function scopeOf(user: Pick<AuthUser, "id" | "role" | "super_admin" | "pe
   const fullChannelIds = all<{ channel_id: number }>("SELECT channel_id FROM user_channels WHERE user_id = ?", user.id).map(
     (r) => r.channel_id,
   );
-  return { all: false, departmentIds, channelIds: [...new Set([...deptChannelIds, ...fullChannelIds])], fullChannelIds };
+  const visible = (id: number) => !hiddenChannelIds.includes(id);
+  return {
+    all: false,
+    departmentIds,
+    channelIds: [...new Set([...deptChannelIds, ...fullChannelIds])].filter(visible),
+    fullChannelIds: fullChannelIds.filter(visible),
+    hiddenChannelIds,
+  };
 }
 
 const list = (ids: number[]) => (ids.length ? ids.join(",") : "NULL");
 
 /** Điều kiện SQL lọc hội thoại theo phạm vi (alias bảng conversations mặc định "c"). */
 export function conversationFilter(scope: Scope, alias = "c") {
-  if (scope.all) return "1 = 1";
+  const hidden = scope.hiddenChannelIds?.length ? ` AND ${alias}.channel_id NOT IN (${scope.hiddenChannelIds.join(",")})` : "";
+  if (scope.all) return `(1 = 1${hidden})`;
   // Chỉ chứa số nguyên lấy từ database nên ghép thẳng vào SQL là an toàn.
-  return `(${alias}.channel_id IN (${list(scope.fullChannelIds)}) OR ${alias}.department_id IN (${list(scope.departmentIds)})
-    OR (${alias}.department_id IS NULL AND ${alias}.channel_id IN (${list(scope.channelIds)})))`;
+  return `((${alias}.channel_id IN (${list(scope.fullChannelIds)}) OR ${alias}.department_id IN (${list(scope.departmentIds)})
+    OR (${alias}.department_id IS NULL AND ${alias}.channel_id IN (${list(scope.channelIds)})))${hidden})`;
 }
 
 export function canSeeConversation(scope: Scope, conv: { channel_id: number; department_id: number | null }) {
+  if (scope.hiddenChannelIds?.includes(conv.channel_id)) return false;
   if (scope.all) return true;
   if (scope.fullChannelIds.includes(conv.channel_id)) return true;
   if (conv.department_id !== null) return scope.departmentIds.includes(conv.department_id);
@@ -55,6 +77,7 @@ export function canSeeConversation(scope: Scope, conv: { channel_id: number; dep
 }
 
 export function canUseChannel(scope: Scope, channelId: number) {
+  if (scope.hiddenChannelIds?.includes(channelId)) return false;
   return scope.all || scope.channelIds.includes(channelId);
 }
 

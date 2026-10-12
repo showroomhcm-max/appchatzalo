@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowRightLeft, History, Pencil, Smartphone } from 'lucide-react'
+import { AlertTriangle, ArrowRightLeft, Eye, History, Pencil, Plus, QrCode, ShieldAlert, Smartphone } from 'lucide-react'
 import { api } from '../api'
 import { useApp, useSocketEvent } from '../store'
 import type { ZaloStatus } from '../types'
 import { Avatar, Badge, Modal } from '../components'
-import { fullTime, timeLabel } from '../util'
+import { fullTime } from '../util'
 
 type Account = {
   channel_id: number
@@ -34,129 +34,171 @@ type Data = { accounts: Account[]; statuses: Record<string, string>; checklist: 
 
 const STATUS_TONE: Record<Account['status'], string> = { in_use: 'green', stored: 'neutral', revoking: 'danger', lost: 'danger', locked: 'warning' }
 
-/** Cài đặt › Zalo & SĐT công ty: tài khoản Zalo cá nhân + SIM công ty cấp cho nhân viên. */
+/** Cài đặt › Zalo nhân viên (giám sát): SĐT công ty cấp, nhân viên tự chat trên điện thoại, quản lý giám sát. */
 export default function CompanyZalo() {
+  const { channels, users } = useApp()
   const [data, setData] = useState<Data | null>(null)
+  const [accounts, setAccounts] = useState<(Account & MonitorInfo)[]>([])
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<Account | null>(null)
   const [handing, setHanding] = useState<Account | null>(null)
   const [history, setHistory] = useState<Account | null>(null)
+  const [adding, setAdding] = useState(false)
 
-  const load = () =>
+  const load = () => {
     api<Data>('/company-accounts')
       .then(setData)
       .catch((e) => setError(e.message))
+    api<(Account & MonitorInfo)[]>('/monitor/accounts')
+      .then(setAccounts)
+      .catch((e) => setError(e.message))
+  }
   useEffect(() => {
-    void load()
+    load()
   }, [])
-  useSocketEvent('settings:changed', () => void load())
-  useSocketEvent('zalo:status', () => void load())
+  useSocketEvent('settings:changed', load)
+  useSocketEvent('zalo:status', load)
+  // Đang chờ quét QR: tải lại mỗi 3 giây để thấy mã mới / trạng thái đã quét
+  const waitingQr = accounts.some((a) => a.connection?.state === 'qr' || a.connection?.state === 'scanned' || a.connection?.state === 'connecting')
+  useEffect(() => {
+    if (!waitingQr) return
+    const t = window.setInterval(load, 3000)
+    return () => window.clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingQr])
+
+  async function channelCall(id: number, action: string) {
+    try {
+      await api(`/channels/${id}/${action}`, { method: 'POST' })
+    } catch (e: any) {
+      alert(e.message)
+    }
+    load()
+  }
+  async function stopMonitoring(a: Account) {
+    if (!confirm(`Bỏ giám sát "${a.name}" và chuyển thành kênh CSKH chung? Lịch sử tin nhắn vẫn giữ.`)) return
+    await api(`/monitor/accounts/${a.channel_id}/mode`, { body: { mode: 'shared' } })
+    load()
+  }
 
   if (!data) return error ? <div className="banner warn inline">{error}</div> : <div className="muted">Đang tải…</div>
-  const list = data.accounts
-  const count = (s: Account['status']) => list.filter((a) => a.status === s).length
-  const needRevoke = list.filter((a) => a.status === 'revoking' || (a.holder_id && a.holder_active === 0))
-  const offline = list.filter((a) => a.active && a.connection?.state !== 'connected')
+  const offline = accounts.filter((a) => !a.monitoring)
+  const needRevoke = accounts.filter((a) => a.status === 'revoking' || (a.holder_id && a.holder_active === 0))
+  const sharedZalo = channels.filter((c) => c.platform === 'zalo' && c.mode !== 'monitor')
 
   return (
     <div className="stack company-zalo">
       <div className="page-head">
         <div>
-          <h1>Zalo & SĐT công ty</h1>
+          <h1>Zalo nhân viên (giám sát)</h1>
           <p className="muted">
-            Tài khoản Zalo cá nhân và SIM công ty cấp cho nhân viên. Khách hàng và lịch sử chat luôn thuộc tài khoản công ty: nhân viên nghỉ thì
-            thu hồi, bàn giao cho người khác mà không mất khách. Tin nhân viên nhắn trực tiếp trên điện thoại vẫn được lưu, ghi tên người đang
-            giữ máy.
+            Công ty cấp SIM cho nhân viên, nhân viên tạo Zalo trên số đó và tự chat với khách bằng điện thoại. Gắn Zalo đó vào app ở chế độ
+            giám sát để quản lý xem được toàn bộ tin nhắn với khách, kể cả tin nhân viên đã thu hồi. Khách và lịch sử chat thuộc SĐT công ty,
+            nhân viên nghỉ thì thu hồi, bàn giao cho người khác.
           </p>
         </div>
+        <button className="btn primary" onClick={() => setAdding(true)}>
+          <Plus size={18} /> Thêm Zalo nhân viên
+        </button>
       </div>
 
-      <div className="kpis">
-        <div className="kpi">
-          <span className="muted small">Tổng tài khoản</span>
-          <b>{list.length}</b>
+      <div className="sapo-flow">
+        <div>
+          <b>1. Cấp SIM</b>
+          <span className="muted small">Bấm "Thêm Zalo nhân viên", nhập SĐT công ty và chọn nhân viên nhận.</span>
         </div>
-        <div className="kpi">
-          <span className="muted small">Đang cấp cho nhân viên</span>
-          <b>{count('in_use')}</b>
+        <div>
+          <b>2. Nhân viên tạo Zalo</b>
+          <span className="muted small">Tạo tài khoản Zalo bằng SĐT đó trên điện thoại, chat với khách như bình thường.</span>
         </div>
-        <div className="kpi">
-          <span className="muted small">Trong kho</span>
-          <b>{count('stored')}</b>
+        <div>
+          <b>3. Quét QR giám sát</b>
+          <span className="muted small">Bấm "Quét QR", dùng Zalo trên điện thoại đó quét mã. Từ lúc này mọi tin được lưu về app.</span>
         </div>
-        <div className={`kpi ${needRevoke.length ? 'kpi-bad' : ''}`}>
-          <span className="muted small">Cần thu hồi</span>
-          <b>{needRevoke.length}</b>
-        </div>
-        <div className={`kpi ${offline.length ? 'kpi-bad' : ''}`}>
-          <span className="muted small">Mất kết nối</span>
-          <b>{offline.length}</b>
+        <div>
+          <b>4. Xem ở menu Giám sát</b>
+          <span className="muted small">Xem từng hội thoại, tin thu hồi, tin bị gắn cờ (chuyển khoản riêng, SĐT khác…).</span>
         </div>
       </div>
 
+      {offline.length > 0 && (
+        <div className="banner warn inline">
+          <ShieldAlert size={16} /> Mất giám sát: {offline.map((a) => a.holder_name ?? a.name).join(', ')}. Nhân viên có thể đã đăng xuất phiên Zalo Web
+          trên điện thoại, hoặc chưa quét QR. Bấm "Quét QR" để kết nối lại.
+        </div>
+      )}
       {needRevoke.length > 0 && (
         <div className="banner warn inline">
-          <AlertTriangle size={16} />
-          Nhân viên đã khóa / nghỉ nhưng còn giữ Zalo công ty: {needRevoke.map((a) => `${a.name} (${a.holder_name ?? '?'})`).join(', ')}. Bấm "Thu hồi" để bàn
-          giao khách và lưu checklist.
+          <AlertTriangle size={16} /> Nhân viên đã khóa / nghỉ nhưng còn giữ SĐT: {needRevoke.map((a) => `${a.name} (${a.holder_name ?? '?'})`).join(', ')}. Bấm "Thu hồi".
         </div>
       )}
 
-      {!list.length && (
-        <div className="card center pad muted">
-          Chưa có tài khoản Zalo nào. Thêm ở <a href="#/settings/channels">Tích hợp › Kết nối kênh</a> (quét QR bằng Zalo trên máy công ty).
-        </div>
-      )}
+      {!accounts.length && <div className="card center pad muted">Chưa có Zalo nhân viên nào đang giám sát.</div>}
 
       <div className="account-grid">
-        {list.map((a) => {
-          const connected = a.connection?.state === 'connected'
+        {accounts.map((a) => {
+          const st = a.connection?.state
           return (
-            <div key={a.channel_id} className={`card account-card ${a.status === 'revoking' ? 'alert' : ''}`}>
+            <div key={a.channel_id} className={`card account-card ${!a.monitoring || a.status === 'revoking' ? 'alert' : ''}`}>
               <div className="row">
-                <Avatar name={a.zalo_name ?? a.name} src={a.connection?.account?.avatar || a.avatar} size={44} />
+                <Avatar name={a.holder_name ?? a.name} src={a.connection?.account?.avatar || a.avatar} size={44} />
                 <div className="grow">
-                  <b>{a.name}</b>
+                  <b>{a.holder_name ?? 'Chưa cấp cho ai'}</b>
                   <div className="muted small">
-                    {a.connection?.account?.name ?? a.zalo_name ?? 'Chưa gắn Zalo'}
+                    {a.name}
                     {a.phone ? ` · ${a.phone}` : ''}
+                    {a.connection?.account?.name ? ` · Zalo: ${a.connection.account.name}` : ''}
                   </div>
                 </div>
-                <Badge tone={STATUS_TONE[a.status]}>{a.status_label}</Badge>
+                {a.monitoring ? <Badge tone="green">Đang giám sát</Badge> : <Badge tone="danger">Mất giám sát</Badge>}
               </div>
 
+              {(st === 'qr' || st === 'scanned') && (
+                <div className="qr-box">
+                  {st === 'qr' && a.connection?.qrImage && <img src={a.connection.qrImage} alt="Mã QR đăng nhập Zalo" className="qr" />}
+                  {st === 'scanned' && <b>Đã quét, bấm xác nhận đăng nhập trên điện thoại</b>}
+                  <ol className="steps">
+                    <li>Mở Zalo trên điện thoại của nhân viên (SĐT {a.phone ?? 'công ty'}).</li>
+                    <li>Bấm biểu tượng QR ở thanh tìm kiếm, quét mã này, bấm Đăng nhập.</li>
+                  </ol>
+                  <button className="btn ghost sm" onClick={() => channelCall(a.channel_id, 'cancel')}>
+                    Hủy
+                  </button>
+                </div>
+              )}
+
               <dl className="account-facts">
-                <dt>Người giữ</dt>
+                <dt>Trạng thái</dt>
                 <dd>
-                  {a.holder_name ? (
-                    <span className="row">
-                      <Avatar name={a.holder_name} size={20} /> {a.holder_name}
-                      {a.holder_active === 0 && <Badge tone="danger">đã khóa</Badge>}
-                      {a.holder_since && <span className="muted small">từ {fullTime(a.holder_since)}</span>}
-                    </span>
-                  ) : (
-                    <span className="muted">Chưa cấp</span>
-                  )}
+                  <Badge tone={STATUS_TONE[a.status]}>{a.status_label}</Badge>
                 </dd>
-                <dt>SIM / máy</dt>
-                <dd>{[a.carrier, a.sim_serial && `SIM ${a.sim_serial}`, a.device].filter(Boolean).join(' · ') || <span className="muted">Chưa nhập</span>}</dd>
-                <dt>Kết nối</dt>
+                <dt>Giám sát</dt>
                 <dd>
-                  <span className={`status-dot ${connected ? 'ok' : 'bad'}`} /> {!a.active ? 'Kênh đang tắt' : connected ? 'Đang kết nối' : a.connection?.error ?? 'Mất kết nối'}
-                  {a.last_disconnect && <span className="muted small"> · ngắt gần nhất {timeLabel(a.last_disconnect.ts)}</span>}
+                  <span className={`status-dot ${a.monitoring ? 'ok' : 'bad'}`} />
+                  {a.monitoring ? 'Đang lưu tin nhắn' : a.connection?.error ?? 'Chưa quét QR'}
+                  {!a.monitoring && a.since_drop && <span className="muted small"> · từ {fullTime(a.since_drop)}</span>}
                 </dd>
                 <dt>Hôm nay</dt>
                 <dd>
-                  {a.today.customers} khách nhắn · {a.today.out_app} tin trả lời trên app ·{' '}
-                  <span className={a.today.out_phone ? 'warn-text' : ''}>{a.today.out_phone} tin nhắn từ điện thoại</span>
+                  {a.today.customers} khách · {a.today.msg_in} tin khách · {a.today.msg_out} tin nhân viên
+                  {a.today.undone > 0 && <span className="warn-text"> · {a.today.undone} tin thu hồi</span>}
                 </dd>
+                <dt>Cần chú ý</dt>
+                <dd className={a.open_flags ? 'err-text' : ''}>{a.open_flags} tin</dd>
                 <dt>Chờ trả lời</dt>
-                <dd className={a.waiting ? 'err-text' : ''}>{a.waiting} hội thoại</dd>
+                <dd className={a.waiting ? 'err-text' : ''}>{a.waiting} khách</dd>
               </dl>
-              {a.note && <p className="small muted">Ghi chú: {a.note}</p>}
 
               <div className="row wrap">
-                <button className={`btn sm ${a.holder_id ? 'outline' : 'primary'} ${a.status === 'revoking' ? 'danger' : ''}`} onClick={() => setHanding(a)}>
+                <a className="btn primary sm" href={`#/monitor/${a.channel_id}`}>
+                  <Eye size={14} /> Xem tin nhắn
+                </a>
+                {!a.monitoring && st !== 'qr' && st !== 'scanned' && (
+                  <button className="btn outline sm" onClick={() => channelCall(a.channel_id, 'login-qr')}>
+                    <QrCode size={14} /> Quét QR
+                  </button>
+                )}
+                <button className={`btn sm ${a.status === 'revoking' ? 'danger' : 'outline'}`} onClick={() => setHanding(a)}>
                   <ArrowRightLeft size={14} /> {a.holder_id ? 'Thu hồi / bàn giao' : 'Cấp cho nhân viên'}
                 </button>
                 <button className="btn ghost sm" onClick={() => setEditing(a)}>
@@ -165,38 +207,206 @@ export default function CompanyZalo() {
                 <button className="btn ghost sm" onClick={() => setHistory(a)}>
                   <History size={14} /> Lịch sử
                 </button>
+                <button className="btn ghost sm" onClick={() => stopMonitoring(a)}>
+                  Bỏ giám sát
+                </button>
               </div>
             </div>
           )
         })}
       </div>
 
+      <KeywordSettings />
+
       <div className="card notice">
         <h3>
-          <Smartphone size={18} /> Quy trình gợi ý
+          <Smartphone size={18} /> Lưu ý
         </h3>
         <ul>
           <li>
-            <b>Cấp máy:</b> quét QR kênh bằng Zalo trên máy công ty, nhập SĐT / SIM ở "Hồ sơ SIM", rồi "Cấp cho nhân viên". Người nhận được vào
-            thẳng kênh trên app.
+            App giám sát qua <b>phiên Zalo Web</b> của tài khoản nhân viên. Nhân viên vẫn chat trên điện thoại bình thường, nhưng
+            <b> không mở Zalo PC / chat.zalo.me</b> bằng tài khoản này (sẽ đẩy phiên giám sát ra).
           </li>
           <li>
-            <b>Hằng ngày:</b> nhân viên nên trả lời trên app để tin có tên người gửi và được chấm điểm; tin nhắn từ điện thoại vẫn lưu, ghi tên người giữ
-            máy. Số "tin nhắn từ điện thoại" cao là dấu hiệu cần nhắc.
+            Nhân viên có thể thấy và đăng xuất phiên web trong Zalo › Cài đặt › Tài khoản và bảo mật › Thiết bị đăng nhập. Khi đó app báo
+            <b> "Mất giám sát"</b> và ghi vào Lịch sử; tin nhắn trong lúc mất kết nối có thể không được lưu.
           </li>
-          <li>
-            <b>Nghỉ việc:</b> khóa nhân viên ở mục Nhân viên → tài khoản họ giữ tự chuyển "Cần thu hồi". Bấm Thu hồi: chọn người nhận, khách đang
-            tư vấn tự chuyển sang, tick checklist (thu SIM, đổi mật khẩu Zalo…).
-          </li>
-          <li>
-            <b>Mất kết nối bất thường</b> (đăng nhập Zalo PC / Web ở máy khác) được ghi lại trong Lịch sử để kiểm tra.
-          </li>
+          <li>Tin nhân viên thu hồi vẫn còn trong app, có ghi giờ thu hồi. Tin xóa "chỉ ở phía tôi" trên điện thoại không ảnh hưởng bản lưu.</li>
+          <li>Quản lý chỉ xem, không gửi tin thay nhân viên. Mỗi lần mở xem hội thoại được ghi nhật ký.</li>
+          <li>Nên ghi rõ trong quy định / hợp đồng: SĐT và Zalo công ty cấp là tài sản công ty, nội dung chat với khách được giám sát.</li>
         </ul>
       </div>
 
-      {editing && <AssetForm account={editing} statuses={data.statuses} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), void load())} />}
-      {handing && <HandoverModal account={handing} checklist={data.checklist} onClose={() => setHanding(null)} onDone={() => (setHanding(null), void load())} />}
+      {adding && (
+        <AddMonitorModal
+          users={users.filter((u) => u.active)}
+          sharedZalo={sharedZalo}
+          onClose={() => setAdding(false)}
+          onDone={() => {
+            setAdding(false)
+            load()
+          }}
+        />
+      )}
+      {editing && <AssetForm account={editing} statuses={data.statuses} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), load())} />}
+      {handing && <HandoverModal account={handing} checklist={data.checklist} onClose={() => setHanding(null)} onDone={() => (setHanding(null), load())} />}
       {history && <HistoryModal account={history} onClose={() => setHistory(null)} />}
+    </div>
+  )
+}
+
+type MonitorInfo = {
+  monitoring: boolean
+  since_drop: number | null
+  open_flags: number
+  today: { msg_in: number; msg_out: number; undone: number; customers: number; out_app?: number; out_phone?: number }
+}
+
+function AddMonitorModal({
+  users,
+  sharedZalo,
+  onClose,
+  onDone,
+}: {
+  users: { id: number; display_name: string }[]
+  sharedZalo: { id: number; name: string }[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [mode, setMode] = useState<'new' | 'existing'>('new')
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [holder, setHolder] = useState('')
+  const [existing, setExisting] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    setError('')
+    try {
+      const r = await api<{ channel_id: number }>('/monitor/accounts', {
+        body: mode === 'existing' ? { channel_id: Number(existing) } : { name, phone, holder_id: holder ? Number(holder) : null },
+      })
+      // Tạo xong: mở luôn mã QR để quét bằng Zalo trên điện thoại nhân viên
+      if (mode === 'new') await api(`/channels/${r.channel_id}/login-qr`, { method: 'POST' }).catch(() => {})
+      onDone()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Thêm Zalo nhân viên để giám sát" onClose={onClose}>
+      <div className="stack">
+        <div className="seg">
+          <button className={mode === 'new' ? 'on' : ''} onClick={() => setMode('new')}>
+            SĐT mới cấp
+          </button>
+          <button className={mode === 'existing' ? 'on' : ''} onClick={() => setMode('existing')} disabled={!sharedZalo.length}>
+            Chuyển kênh Zalo có sẵn
+          </button>
+        </div>
+        {mode === 'new' ? (
+          <>
+            <label className="field">
+              <span>Số điện thoại công ty cấp</span>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="09xx xxx xxx" />
+            </label>
+            <label className="field">
+              <span>Nhân viên nhận SIM</span>
+              <select className="select" value={holder} onChange={(e) => setHolder(e.target.value)}>
+                <option value="">Chọn nhân viên…</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Tên gọi (tùy chọn)</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Zalo NV Kỳ Anh" />
+            </label>
+            <p className="muted small">Lưu xong app hiện mã QR: dùng Zalo trên điện thoại của nhân viên quét để bắt đầu giám sát.</p>
+          </>
+        ) : (
+          <label className="field">
+            <span>Kênh Zalo đang dùng chung</span>
+            <select className="select" value={existing} onChange={(e) => setExisting(e.target.value)}>
+              <option value="">Chọn kênh…</option>
+              {sharedZalo.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="muted small">Kênh sẽ rời hộp thư chung, chỉ người có quyền Giám sát và nhân viên giữ máy xem được.</span>
+          </label>
+        )}
+        {error && <div className="form-error">{error}</div>}
+        <div className="row end">
+          <button className="btn ghost" onClick={onClose}>
+            Hủy
+          </button>
+          <button className="btn primary" disabled={busy || (mode === 'new' ? !phone.trim() : !existing)} onClick={submit}>
+            {mode === 'new' ? 'Lưu và quét QR' : 'Chuyển sang giám sát'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** Từ khóa / dấu hiệu gắn cờ tin nhắn */
+function KeywordSettings() {
+  const [cfg, setCfg] = useState<{ bank: boolean; otherPhone: boolean; checkCustomer: boolean; keywords: string[] } | null>(null)
+  const [text, setText] = useState('')
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    api<NonNullable<typeof cfg>>('/monitor/config').then((c) => {
+      setCfg(c)
+      setText(c.keywords.join(', '))
+    })
+  }, [])
+  if (!cfg) return null
+  async function save() {
+    const c = await api<NonNullable<typeof cfg>>('/monitor/config', {
+      method: 'PUT',
+      body: { ...cfg, keywords: text.split(/[,\n]/).map((k) => k.trim()).filter(Boolean) },
+    })
+    setCfg(c)
+    setText(c.keywords.join(', '))
+    setMsg('Đã lưu')
+  }
+  return (
+    <div className="card stack">
+      <h3>Gắn cờ tin cần chú ý</h3>
+      <label className="check">
+        <input type="checkbox" checked={cfg.bank} onChange={(e) => setCfg({ ...cfg, bank: e.target.checked })} />
+        Nhân viên gửi số tài khoản ngân hàng / ví
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={cfg.otherPhone} onChange={(e) => setCfg({ ...cfg, otherPhone: e.target.checked })} />
+        Nhân viên gửi số điện thoại khác số công ty cấp
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={cfg.checkCustomer} onChange={(e) => setCfg({ ...cfg, checkCustomer: e.target.checked })} />
+        Kiểm tra cả tin của khách
+      </label>
+      <label className="field">
+        <span>Từ khóa (cách nhau bằng dấu phẩy, không phân biệt dấu)</span>
+        <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+      </label>
+      <div className="row">
+        {msg && <span className="small ok-text">{msg}</span>}
+        <span className="grow" />
+        <button className="btn primary sm" onClick={save}>
+          Lưu
+        </button>
+      </div>
     </div>
   )
 }

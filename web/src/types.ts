@@ -79,6 +79,8 @@ export type Message = {
   agent_name: string | null
   /** Zalo công ty: người đang giữ máy khi tin được gửi từ điện thoại */
   holder_name?: string | null
+  /** Giờ tin bị thu hồi */
+  undone_at?: number | null
   source: 'web' | 'api' | 'phone' | 'history' | 'customer'
   msg_type: string | null
   text: string | null
@@ -121,6 +123,10 @@ export type Channel = {
   id: number
   name: string
   platform: Platform
+  /** shared = kênh CSKH chung; monitor = Zalo nhân viên đang giám sát */
+  mode?: 'shared' | 'monitor'
+  /** Nhân viên đang giữ SĐT / Zalo này */
+  holder_id?: number | null
   capabilities?: Capabilities
   zalo_uid: string | null
   zalo_name: string | null

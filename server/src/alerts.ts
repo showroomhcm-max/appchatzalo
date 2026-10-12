@@ -143,8 +143,11 @@ export function detectKeyword(text: string, keywords: string[]) {
   return keywords.find((k) => t.includes(fold(k))) ?? null;
 }
 
+const isMonitored = (channelId: number) => get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", channelId)?.mode === "monitor";
+
 function onCustomerMessage(message: any, conversation: any) {
   if (message.direction !== "in" || message.source === "history" || !message.text) return;
+  if (isMonitored(conversation.channel_id)) return;
   const text = String(message.text);
   const now = message.ts ?? Date.now();
   const cfg = alertConfig();
@@ -228,7 +231,8 @@ export async function scan() {
   if (cfg.noReply.enabled) {
     const late = all<{ id: string; last_message_at: number }>(
       `SELECT id, last_message_at FROM conversations
-       WHERE status != 'closed' AND last_direction = 'in' AND last_message_at BETWEEN ? AND ?`,
+       WHERE status != 'closed' AND last_direction = 'in' AND last_message_at BETWEEN ? AND ?
+         AND channel_id NOT IN (SELECT id FROM channels WHERE mode = 'monitor')`,
       now - WINDOW,
       now - cfg.noReply.minutes * 60_000,
     );

@@ -36,6 +36,7 @@ import { openConversationWith, searchContacts, searchMessages } from "./people.j
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
 import { alertConfig, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
+import { createMonitorAccount, monitorAccounts, monitorConfig, monitorConversations, monitorFlags, reviewFlag, saveMonitorConfig, setChannelMode } from "./monitor.js";
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
@@ -575,6 +576,53 @@ appRouter.get("/company-accounts/:id/history", requirePerm("channels.manage"), (
 /** Tài khoản Zalo công ty một nhân viên đang giữ (hiện trong hồ sơ nhân viên) */
 appRouter.get("/users/:id/company-accounts", requirePerm("users.manage"), (req, res) => res.json(accountsHeldBy(Number(req.params.id))));
 appRouter.get("/me/company-accounts", (req, res) => res.json(accountsHeldBy(req.user!.id)));
+
+// ───────────── Giám sát Zalo nhân viên ─────────────
+appRouter.get("/monitor/accounts", requirePerm("monitor.view"), (_req, res) => {
+  const assets = new Map(listAccounts().map((a) => [a.channel_id, a]));
+  res.json(monitorAccounts().map((m) => ({ ...assets.get(m.channel_id), ...m })));
+});
+appRouter.post(
+  "/monitor/accounts",
+  requirePerm("channels.manage"),
+  h((req, res) => {
+    const b = req.body ?? {};
+    if (b.channel_id) {
+      // Chuyển kênh Zalo có sẵn sang chế độ giám sát
+      setChannelMode(Number(b.channel_id), "monitor", req.user!.id);
+      return res.json({ channel_id: Number(b.channel_id) });
+    }
+    try {
+      res.json({ channel_id: createMonitorAccount({ name: String(b.name ?? ""), phone: b.phone, holderId: b.holder_id ? Number(b.holder_id) : null }, req.user!.id) });
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post("/monitor/accounts/:id/mode", requirePerm("channels.manage"), (req, res) => {
+  setChannelMode(Number(req.params.id), req.body?.mode === "monitor" ? "monitor" : "shared", req.user!.id);
+  res.json({ ok: true });
+});
+appRouter.get("/monitor/accounts/:id/conversations", requirePerm("monitor.view"), (req, res) =>
+  res.json(monitorConversations(Number(req.params.id), typeof req.query.q === "string" ? req.query.q : undefined)),
+);
+appRouter.get("/monitor/conversations/:id/messages", requirePerm("monitor.view"), (req, res) => {
+  const conv = getConversation(req.params.id);
+  const mode = conv ? get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", conv.channel_id)?.mode : null;
+  if (!conv || mode !== "monitor") return res.status(404).json({ error: "Không tìm thấy hội thoại giám sát" });
+  // Ghi nhật ký mỗi lần quản lý mở xem tin nhắn của nhân viên
+  logEvent(conv.id, req.user!.id, "monitor.viewed", { channel: conv.channel_id });
+  res.json({ conversation: conv, messages: listMessages(conv.id, { before: num(req.query.before), limit: 200 }) });
+});
+appRouter.get("/monitor/flags", requirePerm("monitor.view"), (req, res) =>
+  res.json(monitorFlags(num(req.query.channelId), req.query.all === "1")),
+);
+appRouter.post("/monitor/flags/:id/review", requirePerm("monitor.view"), (req, res) => {
+  reviewFlag(Number(req.params.id), req.user!.id);
+  res.json({ ok: true });
+});
+appRouter.get("/monitor/config", requirePerm("monitor.view"), (_req, res) => res.json(monitorConfig()));
+appRouter.put("/monitor/config", requirePerm("channels.manage"), (req, res) => res.json(saveMonitorConfig(req.body, req.user!.id)));
 
 // ───────────── Đơn hàng (Sapo / API) ─────────────
 appRouter.get("/conversations/:id/orders", (req, res) => {

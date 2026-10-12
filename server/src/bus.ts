@@ -17,6 +17,8 @@ export type BusEvents = {
   "alerts.changed": [];
   /** Đơn hàng mới / cập nhật (Sapo, API) */
   "order.updated": [order: any];
+  /** Giám sát Zalo nhân viên: có tin bị gắn cờ */
+  "monitor.flagged": [flag: any];
 };
 
 export const bus = new EventEmitter<BusEvents>();

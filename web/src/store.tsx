@@ -22,6 +22,8 @@ type Ctx = {
   setWorkingChannels: (ids: number[] | null) => Promise<void>
   /** Kênh hiển thị trong hộp thư (đã áp lựa chọn ở trang Kênh Chat) */
   activeChannels: Channel[]
+  /** Kênh dùng để chat (bỏ Zalo nhân viên đang giám sát, trừ khi chính mình giữ máy) */
+  chatChannels: Channel[]
   socket: Socket | null
   socketConnected: boolean
   logout: () => void
@@ -143,7 +145,10 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
         workingChannelIds,
         setWorkingChannels,
         can: (perm: Permission) => can(user, perm),
-        activeChannels: workingChannelIds ? channels.filter((c) => workingChannelIds.includes(c.id)) : channels,
+        activeChannels: (workingChannelIds ? channels.filter((c) => workingChannelIds.includes(c.id)) : channels).filter(
+          (c) => c.mode !== 'monitor' || c.holder_id === user.id,
+        ),
+        chatChannels: channels.filter((c) => c.mode !== 'monitor' || c.holder_id === user.id),
         socket,
         socketConnected,
         logout,
