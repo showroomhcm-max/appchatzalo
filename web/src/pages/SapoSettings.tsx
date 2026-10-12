@@ -40,7 +40,7 @@ export default function SapoSettings() {
   return (
     <div className="card settings-panel stack">
       <div className="row wrap panel-head">
-        <h2 className="grow">Đồng bộ Sapo POS</h2>
+        <h2 className="grow">Đồng bộ đơn Sapo</h2>
         <Badge tone="warning">Đang chuẩn bị, chưa bật</Badge>
       </div>
       <p className="muted">
@@ -67,19 +67,20 @@ export default function SapoSettings() {
         <label className="field">
           <span>Tên cửa hàng Sapo</span>
           <div className="row">
-            <input value={form.store} onChange={(e) => setForm({ ...form, store: e.target.value })} placeholder="memoryzone" />
+            <input name="sapo-store" autoComplete="off" value={form.store} onChange={(e) => setForm({ ...form, store: e.target.value })} placeholder="memoryzone" />
             <span className="muted small">.mysapo.net</span>
           </div>
         </label>
         <label className="field">
           <span>API key (ứng dụng riêng)</span>
-          <input value={form.apiKey} autoComplete="off" onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+          <input name="sapo-api-key" autoComplete="off" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
         </label>
         <label className="field">
           <span>Mật khẩu API (API secret)</span>
           <input
+            name="sapo-api-secret"
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             value={form.apiSecret}
             onChange={(e) => setForm({ ...form, apiSecret: e.target.value })}
             placeholder={cfg?.apiSecret ? `Đã lưu (${cfg.apiSecret}). Để trống nếu không đổi` : ''}
@@ -88,8 +89,9 @@ export default function SapoSettings() {
         <label className="field">
           <span>Khóa ký webhook</span>
           <input
+            name="sapo-webhook-secret"
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             value={form.webhookSecret}
             onChange={(e) => setForm({ ...form, webhookSecret: e.target.value })}
             placeholder={cfg?.webhookSecret ? `Đã lưu (${cfg.webhookSecret}). Để trống nếu không đổi` : ''}

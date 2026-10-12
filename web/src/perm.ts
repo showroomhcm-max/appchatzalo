@@ -13,6 +13,7 @@ export type Permission =
   | 'tags.manage'
   | 'templates.manage'
   | 'alerts.manage'
+  | 'orders.create'
   | 'integrations.manage'
   | 'logs.view'
   | 'permissions.manage'

@@ -18,6 +18,7 @@ export const PERMISSIONS = [
   { key: "tags.manage", group: "Cài đặt", label: "Quản lý tag" },
   { key: "templates.manage", group: "Cài đặt", label: "Quản lý tin nhắn mẫu" },
   { key: "alerts.manage", group: "Cài đặt", label: "Cấu hình cảnh báo đơn \"rơi\"" },
+  { key: "orders.create", group: "Hội thoại", label: "Lên đơn hàng POS (Odoo) từ hội thoại" },
   { key: "integrations.manage", group: "Hệ thống", label: "Tích hợp: API key, webhook" },
   { key: "logs.view", group: "Hệ thống", label: "Xem và tải nhật ký hệ thống" },
   { key: "permissions.manage", group: "Hệ thống", label: "Quản lý nhóm quyền, cấp quyền cho người khác" },
@@ -82,6 +83,17 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
     run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
   }
   run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.alerts', '1')");
+})();
+
+/** Quyền lên đơn POS: cấp sẵn cho các nhóm mẫu (một lần), quản trị có thể bỏ. */
+(function grantOrderPermission() {
+  if (get("SELECT 1 FROM settings WHERE key = 'perm.migrated.orders'")) return;
+  for (const g of all<{ id: number; permissions: string }>("SELECT id, permissions FROM permission_groups WHERE name IN ('Quản trị', 'Trưởng nhóm', 'Nhân viên CSKH')")) {
+    const list = new Set<string>(JSON.parse(g.permissions || "[]"));
+    list.add("orders.create");
+    run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
+  }
+  run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.orders', '1')");
 })();
 
 function parse(json: string | null | undefined): string[] {

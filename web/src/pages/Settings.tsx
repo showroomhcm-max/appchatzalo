@@ -13,6 +13,7 @@ import PermissionsTab from './Permissions'
 import AlertsSettings from './AlertsSettings'
 import CompanyZalo from './CompanyZalo'
 import SapoSettings from './SapoSettings'
+import OdooPosSettings from './OdooPosSettings'
 import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
 import { ScrollText, ShieldCheck } from 'lucide-react'
@@ -21,7 +22,7 @@ export type SettingsTab =
   | 'channels'
   | 'apps'
   | 'integrations'
-  | 'sapo'
+  | 'orders'
   | 'alerts'
   | 'company'
   | 'logs'
@@ -40,7 +41,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
       { id: 'channels', label: 'Kết nối kênh', icon: <Radio size={18} />, perms: ['channels.manage'] },
       { id: 'apps', label: 'App nền tảng', icon: <KeyRound size={18} />, perms: ['integrations.manage'] },
       { id: 'integrations', label: 'API & Webhook', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
-      { id: 'sapo', label: 'Đồng bộ Sapo', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
+      { id: 'orders', label: 'Đồng bộ đơn hàng', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
     ],
   },
   {
@@ -73,7 +74,9 @@ const TABS = ITEMS.map((i) => i.id)
 const TAB_KEY = 'zcskh.settingsTab'
 const COLLAPSE_KEY = 'zcskh.settingsCollapsed'
 
-export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
+export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
+  // Link cũ #/settings/sapo → Đồng bộ đơn hàng
+  const fromLink = (rawLink as string) === 'sapo' ? 'orders' : rawLink
   const { user } = useApp()
   const allowed = (t: Tab) => canAny(user, ITEMS.find((i) => i.id === t)?.perms ?? [])
   const firstAllowed = TABS.find(allowed) ?? 'users'
@@ -165,11 +168,16 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
             </optgroup>
           ))}
         </select>
-        {current && !['alerts', 'sapo', 'channels', 'company'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
+        {current && !['alerts', 'channels', 'company'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
         {tab === 'channels' && allowed('channels') && <Channels manage />}
         {tab === 'apps' && allowed('apps') && <PlatformApps />}
         {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
-        {tab === 'sapo' && allowed('sapo') && <SapoSettings />}
+        {tab === 'orders' && allowed('orders') && (
+          <>
+            <SapoSettings />
+            <OdooPosSettings />
+          </>
+        )}
         {tab === 'alerts' && allowed('alerts') && <AlertsSettings />}
         {tab === 'company' && allowed('company') && <CompanyZalo />}
         {tab === 'logs' && allowed('logs') && <LogsTab />}

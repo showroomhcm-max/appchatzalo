@@ -34,6 +34,7 @@ import { Avatar, Badge, Empty } from '../components'
 import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
+import PosOrderModal from './PosOrderModal'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
 import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
@@ -1322,9 +1323,11 @@ function InfoPanel({
   onPatch: (b: Partial<Conversation>) => Promise<void>
   onClose: () => void
 }) {
-  const { user, tags, alerts, reloadAlerts } = useApp()
+  const { user, tags, alerts, reloadAlerts, can: allowed } = useApp()
   const convAlerts = alerts.filter((a) => a.conversation_id === conv.id)
   const [orders, setOrders] = useState<Order[]>([])
+  const [posOpen, setPosOpen] = useState(false)
+  const [posMsg, setPosMsg] = useState('')
   const [notes, setNotes] = useState<Note[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [note, setNote] = useState('')
@@ -1413,9 +1416,28 @@ function InfoPanel({
       )}
 
       <div className="info-section">
-        <div className="section-title">
-          <ShoppingBag size={14} /> Đơn hàng
+        <div className="section-title row">
+          <span className="grow">
+            <ShoppingBag size={14} /> Đơn hàng
+          </span>
+          {allowed('orders.create') && (
+            <button className="btn primary sm" onClick={() => setPosOpen(true)}>
+              Lên đơn POS
+            </button>
+          )}
         </div>
+        {posMsg && <div className="small ok-text">{posMsg}</div>}
+        {posOpen && (
+          <PosOrderModal
+            conv={conv}
+            onClose={() => setPosOpen(false)}
+            onDone={(text) => {
+              setPosOpen(false)
+              setPosMsg(text)
+              api<Order[]>(`/conversations/${enc}/orders`).then(setOrders).catch(() => {})
+            }}
+          />
+        )}
         {orders.length ? (
           orders.map((o) => (
             <div key={o.id} className="order-item">
@@ -1424,9 +1446,9 @@ function InfoPanel({
                 {o.total !== null && <span>{o.total.toLocaleString('vi-VN')}₫</span>}
               </div>
               <span className="small muted">
-                {o.source === 'sapo' ? 'Sapo' : o.source} · {new Date(o.created_at).toLocaleDateString('vi-VN')}
+                {SOURCE_LABEL[o.source] ?? o.source} · {new Date(o.created_at).toLocaleDateString('vi-VN')}
+                {o.status ? ` · ${POS_STATE[o.status] ?? o.status}` : ''}
                 {` · ${shippingLabel(o.fulfillment_status)}`}
-                {o.status === 'cancelled' ? ' · đã hủy' : ''}
               </span>
             </div>
           ))
@@ -1571,6 +1593,19 @@ function Stars({ value, onChange }: { value: number; onChange?: (v: number) => v
       )}
     </span>
   )
+}
+
+const SOURCE_LABEL: Record<string, string> = { sapo: 'Sapo', odoo_pos: 'POS Odoo', api: 'API', web: 'Web' }
+const POS_STATE: Record<string, string> = {
+  pending_pos: 'chờ ca POS mở',
+  draft: 'nháp trên POS',
+  to_pay: 'chờ thanh toán',
+  reserve: 'giữ hàng',
+  paid: 'đã thanh toán',
+  done: 'hoàn tất',
+  invoiced: 'đã xuất hóa đơn',
+  cancel: 'đã hủy',
+  open: 'mới',
 }
 
 /** Trạng thái giao hàng dễ đọc */

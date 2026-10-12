@@ -2907,3 +2907,13 @@ details.notice[open] > summary { margin-bottom: 12px; }
   .account-grid { grid-template-columns: 1fr; }
   .account-facts { grid-template-columns: 1fr; }
 }
+
+/* ───────────── Lên đơn POS (v3.4) ───────────── */
+.product-results { display: flex; flex-direction: column; border: 1px solid var(--mz-ink-200); border-radius: var(--radius); max-height: 240px; overflow-y: auto; }
+.product-results button { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #fff; border: 0; border-bottom: 1px solid var(--mz-ink-100); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.product-results button:hover { background: var(--mz-green-50); }
+.pos-lines input.num { width: 120px; }
+.pos-lines input.num.sm { width: 64px; }
+.pos-lines .qty { display: inline-flex; align-items: center; gap: 6px; }
+.pos-total { font-size: 20px; color: var(--mz-green-700); }
+.section-title.row { display: flex; align-items: center; gap: 8px; }

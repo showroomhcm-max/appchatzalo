@@ -38,6 +38,7 @@ import { platformRouter } from "./platform-routes.js";
 import { alertConfig, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
+import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
@@ -590,8 +591,105 @@ appRouter.post("/orders/:id/link", requirePerm("conversations.assign"), (req, re
   linkOrder(Number(req.params.id), conversationId, req.user!.id);
   res.json({ ok: true });
 });
+// ───────────── Lên đơn POS trên Odoo ─────────────
+appRouter.get("/odoo-pos/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicOdooPosConfig()));
+appRouter.put(
+  "/odoo-pos/config",
+  requirePerm("integrations.manage"),
+  h((req, res) => {
+    try {
+      res.json(saveOdooPosConfig(req.body, req.user!.id));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post(
+  "/odoo-pos/test",
+  requirePerm("integrations.manage"),
+  h(async (req, res) => {
+    try {
+      res.json(await testOdooPos(req.body));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post(
+  "/odoo-pos/sync",
+  requirePerm("integrations.manage"),
+  h(async (_req, res) => {
+    try {
+      await syncPosOrders();
+    } catch (e: any) {
+      throw new HttpError(502, e.message);
+    }
+    res.json(publicOdooPosConfig());
+  }),
+);
+/** Nhân viên: có bật lên đơn POS không + danh sách điểm bán */
+appRouter.get(
+  "/odoo-pos/status",
+  h(async (req, res) => {
+    const cfg = odooPosConfig();
+    if (!cfg.enabled || !can(req.user, "orders.create")) return res.json({ enabled: false, configs: [], defaultConfigId: null });
+    let configs: Awaited<ReturnType<typeof posConfigs>> = [];
+    try {
+      configs = await posConfigs();
+    } catch (e: any) {
+      return res.json({ enabled: true, configs: [], defaultConfigId: cfg.configId, error: e.message });
+    }
+    res.json({ enabled: true, configs, defaultConfigId: cfg.configId });
+  }),
+);
+appRouter.get(
+  "/odoo-pos/products",
+  requirePerm("orders.create"),
+  h(async (req, res) => {
+    try {
+      res.json(await searchProducts(String(req.query.q ?? "")));
+    } catch (e: any) {
+      throw new HttpError(502, e.message);
+    }
+  }),
+);
+appRouter.post(
+  "/conversations/:id/pos-orders",
+  requirePerm("orders.create"),
+  h(async (req, res) => {
+    const conv = getConversation(req.params.id);
+    if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) throw new HttpError(404, "Không tìm thấy hội thoại");
+    const b = req.body ?? {};
+    const lines = (Array.isArray(b.lines) ? b.lines : [])
+      .map((l: any) => ({ productId: Number(l.productId), name: String(l.name ?? ""), qty: Number(l.qty), price: Number(l.price), discount: Number(l.discount ?? 0) }))
+      .filter((l: any) => l.productId > 0 && l.qty > 0 && l.price >= 0 && l.discount >= 0 && l.discount <= 100);
+    const odooUid = get<{ odoo_uid: number | null }>("SELECT odoo_uid FROM users WHERE id = ?", req.user!.id)?.odoo_uid ?? null;
+    try {
+      res.json(
+        await createPosOrder({
+          conversationId: conv.id,
+          platform: (conv as any).platform ?? "zalo",
+          configId: Number(b.configId) || odooPosConfig().configId || 0,
+          customer: { name: String(b.customer?.name ?? conv.name ?? "").trim(), phone: String(b.customer?.phone ?? conv.phone ?? "").trim(), address: b.customer?.address ?? null },
+          lines,
+          note: typeof b.note === "string" ? b.note.slice(0, 1000) : null,
+          agent: { id: req.user!.id, name: req.user!.display_name, odooUid },
+        }),
+      );
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+
 appRouter.get("/sapo/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicSapoConfig()));
-appRouter.put("/sapo/config", requirePerm("integrations.manage"), (req, res) => res.json(saveSapoConfig(req.body, req.user!.id)));
+appRouter.put("/sapo/config", requirePerm("integrations.manage"), (req, res) => {
+  try {
+    res.json(saveSapoConfig(req.body, req.user!.id));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
 
 appRouter.get(
   "/conversations/:id",

@@ -11,6 +11,7 @@ import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { startAlerts } from "./alerts.js";
 import { startAccountWatch } from "./company-accounts.js";
+import { startPosSync } from "./odoo-pos.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
@@ -49,6 +50,7 @@ setupRealtime(server);
 setupWebhooks();
 startAlerts();
 startAccountWatch();
+startPosSync();
 
 server.listen(config.port, () => {
   console.log(`[server] Chat Siêu Tốc chạy tại http://localhost:${config.port}`);

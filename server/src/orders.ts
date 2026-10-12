@@ -148,6 +148,8 @@ export function publicSapoConfig() {
 export function saveSapoConfig(input: any, userId: number) {
   const cur = sapoConfig();
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  // Trình duyệt hay tự điền email + mật khẩu đăng nhập vào ô API key / mật khẩu: chặn lại
+  if (/@/.test(str(input?.apiKey))) throw new Error("API key Sapo không phải email. Có thể trình duyệt đã tự điền tài khoản đăng nhập của bạn, hãy xóa ô API key và mật khẩu rồi nhập lại.");
   const next: SapoConfig = {
     // Chưa làm xong phần kết nối thật: chưa cho bật
     enabled: false,

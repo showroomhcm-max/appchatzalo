@@ -7,6 +7,21 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.4.0 — 13/10/2026
+
+**Đồng bộ đơn hàng** (Cài đặt › Tích hợp, trước là "Đồng bộ Sapo")
+- Phần Sapo đổi tên thành **Đồng bộ đơn Sapo** (vẫn đang chuẩn bị, chưa bật).
+- Mới: **Đồng bộ đơn hàng POS (Odoo)**: nhân viên bấm **Lên đơn POS** trong khung thông tin khách, tìm sản phẩm (tên, mã, mã vạch, có tồn kho), chỉnh số lượng / giá / chiết khấu → đơn tạo trên POS Odoo ở trạng thái nháp, trong ca đang mở của điểm bán được chọn.
+  - Khách tìm theo số điện thoại trên Odoo, chưa có thì tạo mới. Đơn ghi tên nhân viên bán (theo tài khoản Odoo của nhân viên), kênh bán theo nền tảng chat, địa chỉ và ghi chú.
+  - Giá đã gồm thuế như POS; app tự tách tiền trước thuế theo thuế của sản phẩm.
+  - Ca POS chưa mở: đơn chờ trong app, tự đẩy lên khi thu ngân mở ca.
+  - Trạng thái đơn (nháp, chờ thanh toán, giữ hàng, đã thanh toán, hoàn tất, hủy) và "Trạng thái giao hàng" lấy về mỗi 2 phút → cảnh báo "chưa tạo đơn" / "chưa đẩy vận chuyển" tự cập nhật.
+  - Quản trị nhập tài khoản Odoo tích hợp + API key, bấm **Kiểm tra kết nối**, chọn điểm bán mặc định và kênh bán, rồi **Bật**.
+  - Quyền mới **Lên đơn hàng POS (Odoo) từ hội thoại**, các nhóm mẫu có sẵn.
+
+**Sửa lỗi**
+- Trình duyệt tự điền email + mật khẩu đăng nhập vào ô API key / mật khẩu Sapo. Đã tắt tự điền ở các ô khóa bí mật và chặn lưu API key dạng email.
+
 ## v3.3.0 — 13/10/2026
 
 **Đổi tên: Chat Siêu Tốc**
