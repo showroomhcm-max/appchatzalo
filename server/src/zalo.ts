@@ -34,6 +34,8 @@ export type StickerInfo = { id: number; cateId: number; type: number; url: strin
 
 export type ZaloStatus = ChannelStatus;
 
+export type ZaloGroup = { groupId: string; name: string; avatar: string; members: number };
+
 export type ZaloPerson = {
   uid: string;
   name: string;
@@ -65,6 +67,7 @@ export class ChannelSession implements ChannelAdapter {
   private status: ZaloStatus;
   private profileFetchQueue = new Set<string>();
   private friendsCache: { at: number; list: ZaloPerson[] } | null = null;
+  private groupsCache: { at: number; list: ZaloGroup[] } | null = null;
   private lookupTimes: number[] = [];
 
   constructor(readonly channelId: number) {
@@ -405,6 +408,24 @@ export class ChannelSession implements ChannelAdapter {
     return list;
   }
 
+  /** Tất cả nhóm Zalo tài khoản đang tham gia (lưu tạm 10 phút). */
+  async groups(refresh = false): Promise<ZaloGroup[]> {
+    const api = this.requireApi();
+    if (!refresh && this.groupsCache && Date.now() - this.groupsCache.at < 10 * 60_000) return this.groupsCache.list;
+    const ids = Object.keys((await api.getAllGroups()).gridVerMap ?? {});
+    const list: ZaloGroup[] = [];
+    // Lấy thông tin theo từng đợt để không gọi quá dài
+    for (let i = 0; i < ids.length; i += 50) {
+      const r = await api.getGroupInfo(ids.slice(i, i + 50));
+      for (const [id, g] of Object.entries(r.gridInfoMap ?? {})) {
+        list.push({ groupId: id, name: g.name || `Nhóm ${id}`, avatar: g.avt || g.fullAvt || "", members: g.totalMember ?? 0 });
+      }
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name, "vi"));
+    this.groupsCache = { at: Date.now(), list };
+    return list;
+  }
+
   /** Lời mời kết bạn đang chờ mình xác nhận. */
   async friendRequests() {
     const api = this.requireApi();
@@ -449,6 +470,7 @@ export class ChannelSession implements ChannelAdapter {
   async createGroup(name: string, members: string[]) {
     const r = await this.requireApi().createGroup({ name, members });
     if (!r?.groupId) throw new Error("Zalo không tạo được nhóm");
+    this.groupsCache = null;
     return { groupId: String(r.groupId), failed: r.errorMembers ?? [] };
   }
 

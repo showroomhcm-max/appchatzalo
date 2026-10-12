@@ -431,4 +431,106 @@ export function FriendButton({ conv }: { conv: Conversation }) {
   )
 }
 
+
+// ───────────── Danh sách nhóm Zalo: tìm nhóm khi có nhiều nhóm ─────────────
+
+type ZaloGroupRow = { groupId: string; name: string; avatar: string; members: number; conversation_id: string | null; last_message_at: number | null; unread: number }
+
+export function GroupsModal({ onClose, onOpen, onCreate }: { onClose: () => void; onOpen: (convId: string) => void; onCreate: () => void }) {
+  const { chatChannels, zaloStatuses } = useApp()
+  const zaloChannels = chatChannels.filter((c) => c.platform === 'zalo' && c.active && zaloStatuses.find((s) => s.channelId === c.id)?.state === 'connected')
+  const [channelId, setChannelId] = useState(zaloChannels[0]?.id ?? 0)
+  const [groups, setGroups] = useState<ZaloGroupRow[] | null>(null)
+  const [q, setQ] = useState('')
+  const [error, setError] = useState('')
+  const [opening, setOpening] = useState('')
+  const load = (refresh = false) => {
+    if (!channelId) return
+    setGroups(null)
+    setError('')
+    api<ZaloGroupRow[]>(`/zalo/${channelId}/groups${refresh ? '?refresh=1' : ''}`)
+      .then(setGroups)
+      .catch((e) => setError(e.message))
+  }
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId])
+
+  const needle = fold(q.trim())
+  // Nhóm có tin mới gần đây lên trước, sau đó theo tên
+  const shown = (groups ?? [])
+    .filter((g) => !needle || fold(g.name).includes(needle))
+    .sort((a, b) => (b.last_message_at ?? 0) - (a.last_message_at ?? 0) || a.name.localeCompare(b.name, 'vi'))
+
+  async function open(g: ZaloGroupRow) {
+    if (g.conversation_id) return onOpen(g.conversation_id)
+    setOpening(g.groupId)
+    try {
+      const r = await api<{ conversation_id: string }>(`/zalo/${channelId}/groups/${g.groupId}/open`, { body: { name: g.name, avatar: g.avatar } })
+      onOpen(r.conversation_id)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setOpening('')
+    }
+  }
+
+  return (
+    <Modal title="Nhóm Zalo" onClose={onClose}>
+      <div className="stack">
+        {!zaloChannels.length ? (
+          <div className="muted">Chưa có kênh Zalo cá nhân nào đang kết nối.</div>
+        ) : (
+          <>
+            <div className="row wrap">
+              {zaloChannels.length > 1 && (
+                <select className="select sm" value={channelId} onChange={(e) => setChannelId(Number(e.target.value))} aria-label="Tài khoản Zalo">
+                  {zaloChannels.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <label className="search-box grow">
+                <Search size={16} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên nhóm" aria-label="Tìm nhóm" autoFocus />
+              </label>
+              <button className="btn ghost sm" onClick={() => load(true)} title="Tải lại danh sách nhóm từ Zalo" aria-label="Tải lại">
+                <RotateCcw size={14} />
+              </button>
+              <button className="btn primary sm" onClick={onCreate}>
+                <UsersRound size={14} /> Tạo nhóm mới
+              </button>
+            </div>
+            {groups && (
+              <span className="small muted">
+                {shown.length}/{groups.length} nhóm
+              </span>
+            )}
+            <div className="group-list">
+              {!groups && !error && <div className="muted small pad">Đang tải danh sách nhóm…</div>}
+              {groups && !shown.length && <div className="muted small pad">Không có nhóm nào khớp.</div>}
+              {shown.map((g) => (
+                <button key={g.groupId} className="group-row" onClick={() => open(g)} disabled={opening === g.groupId}>
+                  <Avatar name={g.name} src={g.avatar} size={40} />
+                  <span className="grow">
+                    <b>{g.name}</b>
+                    <span className="small muted">
+                      {g.members} thành viên{g.conversation_id ? '' : ' · chưa có tin trong app'}
+                    </span>
+                  </span>
+                  {g.unread > 0 && <span className="unread-count">{g.unread}</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {error && <div className="form-error">{error}</div>}
+      </div>
+    </Modal>
+  )
+}
+
 export type { User }

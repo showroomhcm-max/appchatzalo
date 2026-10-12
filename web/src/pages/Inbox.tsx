@@ -40,7 +40,7 @@ import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
-import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, type ConvAction } from './inbox-tools'
+import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
 import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
@@ -67,6 +67,9 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   const [listMsg, setListMsg] = useState('')
   const [friendReqOpen, setFriendReqOpen] = useState(false)
   const [groupOpen, setGroupOpen] = useState(false)
+  const [groupsOpen, setGroupsOpen] = useState(false)
+  // Loại hội thoại: '' = tất cả, '0' = khách 1-1, '1' = nhóm
+  const [typeFilter, setTypeFilter] = useState<string>('')
   const [friendReqCount, setFriendReqCount] = useState(0)
   // Chỉ hội thoại đang có cảnh báo đơn "rơi"
   const [alertOnly, setAlertOnly] = useState(false)
@@ -92,7 +95,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
 
   // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
   const myDepartments = can(user, 'conversations.all') ? departments : departments.filter((d) => d.user_ids.includes(user.id))
-  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || tagFilters.length > 0 || alertOnly
+  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || tagFilters.length > 0 || alertOnly || !!typeFilter
   const deletedView = status === 'deleted'
 
   const matches = useCallback(
@@ -110,9 +113,10 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       if (tagFilters.length && (tagMode === 'all' ? !tagFilters.every((t) => c.tags.includes(t)) : !tagFilters.some((t) => c.tags.includes(t)))) return false
       if (status === 'deleted' ? !c.deleted_at : !!c.deleted_at) return false
       if (alertOnly && !alertIds.has(c.id)) return false
+      if (typeFilter && c.type !== Number(typeFilter)) return false
       return true
     },
-    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, user.id, workingChannelIds, alertOnly, alertIds, monitorIds],
+    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, user.id, workingChannelIds, alertOnly, alertIds, monitorIds, typeFilter],
   )
 
   const load = useCallback(
@@ -129,6 +133,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
         params.set('tagMode', tagMode)
       }
       if (alertOnly) params.set('alert', '1')
+      if (typeFilter) params.set('type', typeFilter)
       if (before) params.set('before', String(before))
       const rows = await api<Conversation[]>(`/conversations?${params}`)
       const filtered = status === 'active' ? rows.filter((c) => c.status !== 'closed') : rows
@@ -136,7 +141,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       setList((prev) => (before ? [...prev, ...filtered.filter((r) => !prev.some((p) => p.id === r.id))] : filtered))
       setLoading(false)
     },
-    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, workingChannelIds, alertOnly],
+    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, workingChannelIds, alertOnly, typeFilter],
   )
 
   useEffect(() => {
@@ -225,7 +230,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   <UserPlus size={18} />
                   {friendReqCount > 0 && <span className="nav-badge">{friendReqCount}</span>}
                 </button>
-                <button className="icon-btn" onClick={() => setGroupOpen(true)} title="Tạo nhóm Zalo" aria-label="Tạo nhóm Zalo">
+                <button className="icon-btn" onClick={() => setGroupsOpen(true)} title="Nhóm Zalo: tìm nhóm, tạo nhóm" aria-label="Nhóm Zalo">
                   <UsersRound size={18} />
                 </button>
               </>
@@ -287,6 +292,11 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   <option value="closed">Đã xong</option>
                   {can(user, 'conversations.delete') && <option value="deleted">Đã xóa</option>}
                 </select>
+                <select className="select sm" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Loại hội thoại">
+                  <option value="">Khách và nhóm</option>
+                  <option value="0">Chỉ khách (1-1)</option>
+                  <option value="1">Chỉ nhóm</option>
+                </select>
                 {channels.length > 1 && (
                   <select className="select sm" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="Lọc kênh">
                     <option value="">Mọi kênh</option>
@@ -335,6 +345,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                       setDeptFilter('')
                       setTagFilters([])
                       setAlertOnly(false)
+                      setTypeFilter('')
                     }}
                   >
                     Bỏ lọc
@@ -415,6 +426,19 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
             onOpen={(id) => {
               setFriendReqOpen(false)
               window.location.hash = `#/inbox/${encodeURIComponent(id)}`
+            }}
+          />
+        )}
+        {groupsOpen && (
+          <GroupsModal
+            onClose={() => setGroupsOpen(false)}
+            onOpen={(id) => {
+              setGroupsOpen(false)
+              window.location.hash = `#/inbox/${encodeURIComponent(id)}`
+            }}
+            onCreate={() => {
+              setGroupsOpen(false)
+              setGroupOpen(true)
             }}
           />
         )}
@@ -502,7 +526,7 @@ type ContactResult = {
   name: string
   avatar: string | null
   phone: string | null
-  source: 'conversation' | 'friend' | 'phone'
+  source: 'conversation' | 'friend' | 'phone' | 'group'
   is_friend: boolean | null
   is_group: boolean
   conversation_id: string | null
@@ -588,7 +612,7 @@ function SearchPanel({ q, activeConv }: { q: string; activeConv: string | null }
     setOpening(`${c.channel_id}_${c.uid}`)
     try {
       const conv = await api<Conversation>('/zalo/people/open', {
-        body: { uid: c.uid, channel_id: c.channel_id, name: c.name, avatar: c.avatar, phone: c.phone },
+        body: { uid: c.uid, channel_id: c.channel_id, name: c.name, avatar: c.avatar, phone: c.phone, is_group: c.is_group },
       })
       window.location.hash = `#/inbox/${encodeURIComponent(conv.id)}`
     } catch (e: any) {
@@ -675,7 +699,9 @@ function SearchPanel({ q, activeConv }: { q: string; activeConv: string | null }
                         {' · '}
                       </>
                     )}
-                    {c.source === 'conversation'
+                    {c.source === 'group'
+                      ? `Nhóm Zalo · ${c.last_message_preview ?? ''}`
+                      : c.source === 'conversation'
                       ? c.last_message_preview ?? 'Đã có hội thoại'
                       : c.source === 'phone'
                         ? c.is_friend

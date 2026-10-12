@@ -7,6 +7,13 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.7.0 — 13/10/2026
+
+**Tìm nhóm Zalo khi có nhiều nhóm**
+- Nút **Nhóm Zalo** (biểu tượng nhiều người, đầu danh sách hội thoại): liệt kê **tất cả nhóm** tài khoản Zalo đang tham gia, kể cả nhóm chưa có tin nhắn nào trong app. Có ô **tìm theo tên nhóm**, số thành viên, số tin chưa đọc; nhóm có tin gần đây lên trước. Bấm vào nhóm là mở hội thoại nhóm. Nút "Tạo nhóm mới" nằm trong đây.
+- Ô **tìm kiếm** ở Hộp thư giờ ra cả nhóm Zalo (giống trên app Zalo).
+- Bộ lọc mới **"Khách và nhóm / Chỉ khách (1-1) / Chỉ nhóm"** trong Hộp thư.
+
 ## v3.6.1 — 13/10/2026
 
 **Sửa giao diện**

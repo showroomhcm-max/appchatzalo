@@ -636,6 +636,42 @@ appRouter.get(
     }
   }),
 );
+/** Zalo: tất cả nhóm của kênh (tìm nhóm khi có nhiều nhóm), kèm hội thoại đã có trong app */
+appRouter.get(
+  "/zalo/:channelId/groups",
+  h(async (req, res) => {
+    const channelId = Number(req.params.channelId);
+    const s = zaloChannelFor(req, channelId);
+    let groups;
+    try {
+      groups = await s.groups(req.query.refresh === "1");
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    const scope = scopeOf(req.user!);
+    res.json(
+      groups.map((g) => {
+        const conv = getConversation(`${channelId}_${g.groupId}`);
+        const visible = conv && canSeeConversation(scope, conv);
+        return { ...g, conversation_id: visible ? conv.id : null, last_message_at: visible ? conv.last_message_at : null, unread: visible ? conv.unread_count : 0 };
+      }),
+    );
+  }),
+);
+/** Zalo: mở hội thoại với một nhóm (tạo nếu chưa có) */
+appRouter.post(
+  "/zalo/:channelId/groups/:groupId/open",
+  h((req, res) => {
+    const channelId = Number(req.params.channelId);
+    zaloChannelFor(req, channelId);
+    const conv = openConversationWith(
+      { uid: String(req.params.groupId), channel_id: channelId, name: req.body?.name, avatar: req.body?.avatar, is_group: true },
+      scopeOf(req.user!),
+      req.user!.id,
+    );
+    res.json({ conversation_id: conv.id });
+  }),
+);
 /** Zalo: tạo nhóm với các khách / bạn bè đã chọn */
 appRouter.post(
   "/zalo/:channelId/groups",

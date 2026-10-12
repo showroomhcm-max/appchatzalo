@@ -3025,3 +3025,10 @@ details.notice[open] > summary { margin-bottom: 12px; }
 .friend-pick .picker-item .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seg.sm button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag-mode-hint { line-height: 1.4; }
+
+/* Danh sách nhóm Zalo */
+.group-list { display: flex; flex-direction: column; max-height: 55vh; overflow-y: auto; border: 1px solid var(--mz-ink-200); border-radius: var(--radius); }
+.group-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff; border: 0; border-bottom: 1px solid var(--mz-ink-100); font: inherit; text-align: left; cursor: pointer; }
+.group-row:hover { background: var(--mz-green-50); }
+.group-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.group-row .grow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

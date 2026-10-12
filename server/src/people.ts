@@ -22,8 +22,8 @@ export type ContactResult = {
   name: string;
   avatar: string | null;
   phone: string | null;
-  /** conversation = đã từng chat, friend = bạn bè Zalo, phone = tra qua số điện thoại */
-  source: "conversation" | "friend" | "phone";
+  /** conversation = đã từng chat, friend = bạn bè Zalo, phone = tra qua số điện thoại, group = nhóm Zalo */
+  source: "conversation" | "friend" | "phone" | "group";
   is_friend: boolean | null;
   is_group: boolean;
   conversation_id: string | null;
@@ -141,6 +141,34 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
     } catch (e: any) {
       console.warn("[search] Không tải được danh sách bạn bè:", e?.message ?? e);
     }
+    // Nhóm Zalo trùng tên (kể cả nhóm chưa từng nhắn trong app)
+    try {
+      const needle = fold(q);
+      for (const g of await zalo.zaloSession(channelId).groups()) {
+        if (!fold(g.name).includes(needle)) continue;
+        const existing = contacts.find((c) => c.uid === g.groupId && c.channel_id === channelId);
+        if (existing) continue;
+        const conv = getConversation(conversationKey(channelId, g.groupId));
+        const visible = conv && canSeeConversation(opts.access, conv);
+        contacts.push({
+          uid: g.groupId,
+          channel_id: channelId,
+          channel_name: channelName(channelId),
+          name: g.name,
+          avatar: g.avatar,
+          phone: null,
+          source: "group",
+          is_friend: null,
+          is_group: true,
+          conversation_id: visible ? conv.id : null,
+          last_message_preview: visible ? conv.last_message_preview : `${g.members} thành viên`,
+          last_message_at: visible ? conv.last_message_at : null,
+        });
+        if (contacts.length >= 60) break;
+      }
+    } catch (e: any) {
+      console.warn("[search] Không tải được danh sách nhóm:", e?.message ?? e);
+    }
   }
 
   return { contacts, phone_lookup: !!phone && /^0\d{9}$/.test(phone), phone_error: phoneError, channel_id: channelId };
@@ -207,7 +235,7 @@ export function searchMessages(
  * (để họ còn thấy hội thoại vừa tạo).
  */
 export function openConversationWith(
-  person: { uid: string; channel_id?: number; name?: string | null; avatar?: string | null; phone?: string | null },
+  person: { uid: string; channel_id?: number; name?: string | null; avatar?: string | null; phone?: string | null; is_group?: boolean },
   access: Scope,
   byUserId: number | null,
 ) {
@@ -216,7 +244,7 @@ export function openConversationWith(
   const channelId = pickChannel(access, person.channel_id ? Number(person.channel_id) : undefined);
   if (!channelId) throw new HttpError(400, "Chưa có kênh Zalo nào để nhắn tin");
 
-  const { id, created } = ensureConversation(channelId, uid, 0, { name: person.name ?? null, avatar: person.avatar ?? null });
+  const { id, created } = ensureConversation(channelId, uid, person.is_group ? 1 : 0, { name: person.name ?? null, avatar: person.avatar ?? null });
   const phone = person.phone ? normalizePhone(String(person.phone)) : null;
   if (phone) run("UPDATE conversations SET phone = COALESCE(phone, ?) WHERE id = ?", phone, id);
   if (!created && (person.name || person.avatar)) updateConversationProfile(id, { name: person.name, avatar: person.avatar });
