@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
+  AlertTriangle,
   ArrowLeft,
+  ShoppingBag,
   ExternalLink,
   Globe,
   Lock,
@@ -27,7 +29,7 @@ import {
 } from 'lucide-react'
 import { api, exportUrl } from '../api'
 import { useApp, useSocketEvent } from '../store'
-import type { Conversation, ConvStatus, Message, Note, Review, Sticker, Template } from '../types'
+import type { Alert, Conversation, ConvStatus, Message, Note, Order, Review, Sticker, Template } from '../types'
 import { Avatar, Badge, Empty } from '../components'
 import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
@@ -39,7 +41,7 @@ import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf }
 type Scope = 'mine' | 'unassigned' | 'all'
 
 export default function Inbox({ convId, focusMsgId }: { convId: string | null; focusMsgId: number | null }) {
-  const { user, departments, tags, activeChannels, workingChannelIds } = useApp()
+  const { user, departments, tags, activeChannels, workingChannelIds, alerts } = useApp()
   const channels = activeChannels
   const [scope, setScope] = useState<Scope>(can(user, 'conversations.all') ? 'all' : 'mine')
   // Mặc định hiện mọi trạng thái như Zalo: bấm "Xong" không làm hội thoại biến mất.
@@ -47,6 +49,10 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   const [channelFilter, setChannelFilter] = useState<string>('')
   const [deptFilter, setDeptFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
+  // Chỉ hội thoại đang có cảnh báo đơn "rơi"
+  const [alertOnly, setAlertOnly] = useState(false)
+  const alertIds = useMemo(() => new Set(alerts.map((a) => a.conversation_id)), [alerts])
+  const myAlerts = alerts.filter((a) => !workingChannelIds || (a.channel_id !== null && workingChannelIds.includes(a.channel_id)))
   // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
   const [showTagFilter, setShowTagFilter] = useState(true)
   const [q, setQ] = useState('')
@@ -62,7 +68,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
 
   // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
   const myDepartments = can(user, 'conversations.all') ? departments : departments.filter((d) => d.user_ids.includes(user.id))
-  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || !!tagFilter
+  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || !!tagFilter || alertOnly
 
   const matches = useCallback(
     (c: Conversation) => {
@@ -75,9 +81,10 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       if (deptFilter === 'none' && c.department_id !== null) return false
       if (deptFilter && deptFilter !== 'none' && c.department_id !== Number(deptFilter)) return false
       if (tagFilter && !c.tags.includes(tagFilter)) return false
+      if (alertOnly && !alertIds.has(c.id)) return false
       return true
     },
-    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds],
+    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds, alertOnly, alertIds],
   )
 
   const load = useCallback(
@@ -89,6 +96,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       if (workingChannelIds) params.set('channelIds', workingChannelIds.join(','))
       if (deptFilter) params.set('departmentId', deptFilter)
       if (tagFilter) params.set('tag', tagFilter)
+      if (alertOnly) params.set('alert', '1')
       if (before) params.set('before', String(before))
       const rows = await api<Conversation[]>(`/conversations?${params}`)
       const filtered = status === 'active' ? rows.filter((c) => c.status !== 'closed') : rows
@@ -96,13 +104,19 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       setList((prev) => (before ? [...prev, ...filtered.filter((r) => !prev.some((p) => p.id === r.id))] : filtered))
       setLoading(false)
     },
-    [scope, status, channelFilter, deptFilter, tagFilter, workingChannelIds],
+    [scope, status, channelFilter, deptFilter, tagFilter, workingChannelIds, alertOnly],
   )
 
   useEffect(() => {
     setLoading(true)
     void load()
   }, [load])
+  // Đang lọc "Cảnh báo": danh sách cảnh báo đổi thì tải lại
+  const alertKey = alerts.map((a) => a.id).join(',')
+  useEffect(() => {
+    if (alertOnly) void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertKey])
 
   // Ctrl+F / Ctrl+K: nhảy vào ô tìm kiếm như Zalo PC.
   useEffect(() => {
@@ -209,6 +223,14 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   </select>
                 ) : null}
 
+                <button
+                  className={`btn ghost sm alert-filter ${alertOnly ? 'on' : ''} ${myAlerts.length ? 'has' : ''}`}
+                  onClick={() => setAlertOnly((v) => !v)}
+                  aria-pressed={alertOnly}
+                  title='Hội thoại có cảnh báo đơn "rơi": chưa phản hồi, chưa tạo đơn, chưa đẩy vận chuyển'
+                >
+                  <AlertTriangle size={14} /> Cảnh báo{myAlerts.length ? ` (${myAlerts.length})` : ''}
+                </button>
                 {tags.length > 0 && (
                   <button
                     className={`btn ghost sm ${showTagFilter || tagFilter ? 'on' : ''}`}
@@ -226,6 +248,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                       setChannelFilter('')
                       setDeptFilter('')
                       setTagFilter('')
+                      setAlertOnly(false)
                     }}
                   >
                     Bỏ lọc
@@ -581,7 +604,8 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
 }
 
 function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean; showChannel: boolean }) {
-  const { presence, user, tags, channels } = useApp()
+  const { presence, user, tags, channels, alerts } = useApp()
+  const convAlerts = alerts.filter((a) => a.conversation_id === c.id)
   const viewers = (presence.byConversation[c.id] ?? []).filter((p) => p.userId !== user.id)
   // Chỉ hiện ký hiệu nền tảng khi có từ 2 nền tảng trở lên
   const mixed = new Set(channels.map((ch) => ch.platform ?? 'zalo')).size > 1 || platformOf(c.platform) !== 'zalo'
@@ -627,6 +651,11 @@ function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean
           )}
           {waiting && <Badge tone="info">Chờ trả lời</Badge>}
           {c.kind === 'comment' && <Badge tone="lime">Bình luận</Badge>}
+          {convAlerts.map((a) => (
+            <Badge key={a.id} tone="danger">
+              <AlertTriangle size={12} /> {a.label}
+            </Badge>
+          ))}
           {c.status !== 'open' && <Badge tone={c.status === 'closed' ? 'neutral' : 'lime'}>{STATUS_LABEL[c.status]}</Badge>}
           {viewers.length > 0 && !typing && (
             <span className="viewers" title={`Đang xem: ${viewers.map((v) => v.name).join(', ')}`}>
@@ -1293,7 +1322,9 @@ function InfoPanel({
   onPatch: (b: Partial<Conversation>) => Promise<void>
   onClose: () => void
 }) {
-  const { user, tags } = useApp()
+  const { user, tags, alerts, reloadAlerts } = useApp()
+  const convAlerts = alerts.filter((a) => a.conversation_id === conv.id)
+  const [orders, setOrders] = useState<Order[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [note, setNote] = useState('')
@@ -1305,9 +1336,19 @@ function InfoPanel({
   useEffect(() => {
     api<Note[]>(`/conversations/${enc}/notes`).then(setNotes)
     api<Review[]>(`/conversations/${enc}/reviews`).then(setReviews)
+    api<Order[]>(`/conversations/${enc}/orders`).then(setOrders).catch(() => setOrders([]))
     setRef(conv.external_ref ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.id])
+
+  useSocketEvent<{ conversation_id: string }>('orders:changed', ({ conversation_id }) => {
+    if (conversation_id === conv.id) api<Order[]>(`/conversations/${enc}/orders`).then(setOrders).catch(() => {})
+  })
+
+  async function resolveAlert(a: Alert) {
+    await api(`/alerts/${a.id}/resolve`, { body: {} })
+    reloadAlerts()
+  }
 
   async function addNote() {
     if (!note.trim()) return
@@ -1343,11 +1384,55 @@ function InfoPanel({
       <div className="info-profile">
         <Avatar name={conv.name ?? conv.id} src={conv.avatar} size={64} />
         <div className="info-name">{conv.name ?? 'Chưa rõ tên'}</div>
-        <code className="muted small">ID Zalo: {conv.thread_id}</code>
+        <code className="muted small">
+          ID {PLATFORM_LABEL[platformOf(conv.platform)]}: {conv.thread_id}
+        </code>
         <span className="muted small">
           {conv.channel_name}
           {conv.department_name ? ` · ${conv.department_name}` : ''}
         </span>
+      </div>
+
+      {convAlerts.length > 0 && (
+        <div className="info-section alert-box">
+          <div className="section-title">
+            <AlertTriangle size={14} /> Cảnh báo đơn "rơi"
+          </div>
+          {convAlerts.map((a) => (
+            <div key={a.id} className="alert-item">
+              <div className="grow">
+                <b>{a.label}</b>
+                <span className="small muted">{alertDetail(a)}</span>
+              </div>
+              <button className="btn outline sm" onClick={() => resolveAlert(a)} title="Đánh dấu đã xử lý, tắt cảnh báo này">
+                Đã xử lý
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="info-section">
+        <div className="section-title">
+          <ShoppingBag size={14} /> Đơn hàng
+        </div>
+        {orders.length ? (
+          orders.map((o) => (
+            <div key={o.id} className="order-item">
+              <div className="row">
+                <b className="grow">{o.code ?? o.external_id}</b>
+                {o.total !== null && <span>{o.total.toLocaleString('vi-VN')}₫</span>}
+              </div>
+              <span className="small muted">
+                {o.source === 'sapo' ? 'Sapo' : o.source} · {new Date(o.created_at).toLocaleDateString('vi-VN')}
+                {` · ${shippingLabel(o.fulfillment_status)}`}
+                {o.status === 'cancelled' ? ' · đã hủy' : ''}
+              </span>
+            </div>
+          ))
+        ) : (
+          <span className="muted small">Chưa có đơn gắn với hội thoại. Đơn tự gắn theo số điện thoại khi kết nối Sapo hoặc web bán hàng.</span>
+        )}
       </div>
 
       <div className="info-section">
@@ -1486,4 +1571,23 @@ function Stars({ value, onChange }: { value: number; onChange?: (v: number) => v
       )}
     </span>
   )
+}
+
+/** Trạng thái giao hàng dễ đọc */
+function shippingLabel(s: string | null) {
+  const v = (s ?? '').toLowerCase()
+  if (v === 'fulfilled' || v === 'shipped' || v === 'delivered') return 'đã đẩy vận chuyển'
+  if (v === 'partial') return 'giao một phần'
+  if (!v || v === 'unshipped' || v === 'pending' || v === 'unfulfilled') return 'chưa đẩy vận chuyển'
+  return v
+}
+
+/** Mô tả ngắn lý do cảnh báo */
+function alertDetail(a: Alert) {
+  const d = a.detail ?? {}
+  const since = d.since ? `từ ${new Date(d.since).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : ''
+  if (a.type === 'no_reply') return `Khách chờ trả lời ${since}`
+  if (a.type === 'no_shipping') return `Đơn ${d.order ?? ''} chưa đẩy vận chuyển ${since}`
+  const why = [d.phone ? `SĐT ${d.phone}` : '', d.address ? 'có địa chỉ' : '', d.keyword ? `nói "${d.keyword}"` : ''].filter(Boolean).join(', ')
+  return `Khách ${why || 'tiềm năng'} nhưng chưa có đơn ${since}`
 }

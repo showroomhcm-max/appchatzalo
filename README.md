@@ -46,6 +46,8 @@ Hướng dẫn tạo app Zalo OA / Facebook / TikTok: [docs/ket-noi-facebook-tik
 
 **Tích hợp với web app khác**
 - REST API `/api/v1` xác thực bằng API key: đọc hội thoại, gửi tin, gắn mã KH, cập nhật trạng thái, xuất dữ liệu.
+- `POST /api/v1/orders` (từ v3.2.0): đẩy đơn hàng vào để gắn với hội thoại theo số điện thoại. Body: `external_id` (bắt buộc), `source`, `code`, `customer_phone`, `customer_name`, `status`, `fulfillment_status`, `total`, `created_at`, `conversation_id` (tùy chọn). Gửi lại cùng `external_id` để cập nhật trạng thái.
+- Cảnh báo đơn "rơi" (từ v3.2.0): chưa phản hồi, chưa tạo đơn, chưa đẩy vận chuyển. Webhook gửi sự kiện `alert.created`, `order.updated`.
 - Webhook realtime có chữ ký HMAC: `message.received`, `message.sent`, `conversation.assigned`, `conversation.status_changed`.
 - Link mở thẳng hội thoại: `https://<domain>/?c=<threadId>`.
 - Tài liệu API chi tiết có trong trang **Tích hợp** của app.

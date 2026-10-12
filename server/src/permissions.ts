@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   { key: "departments.manage", group: "Cài đặt", label: "Quản lý bộ phận" },
   { key: "tags.manage", group: "Cài đặt", label: "Quản lý tag" },
   { key: "templates.manage", group: "Cài đặt", label: "Quản lý tin nhắn mẫu" },
+  { key: "alerts.manage", group: "Cài đặt", label: "Cấu hình cảnh báo đơn \"rơi\"" },
   { key: "integrations.manage", group: "Hệ thống", label: "Tích hợp: API key, webhook" },
   { key: "logs.view", group: "Hệ thống", label: "Xem và tải nhật ký hệ thống" },
   { key: "permissions.manage", group: "Hệ thống", label: "Quản lý nhóm quyền, cấp quyền cho người khác" },
@@ -68,6 +69,19 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
   for (const u of all<{ id: number }>("SELECT id FROM users WHERE role = 'admin' AND super_admin = 0")) {
     run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", u.id, admin);
   }
+})();
+
+/** Quyền mới thêm sau: cấp sẵn cho nhóm "Quản trị" (một lần). */
+(function grantNewPermissions() {
+  const done = get<{ value: string }>("SELECT value FROM settings WHERE key = 'perm.migrated.alerts'");
+  if (done) return;
+  const g = get<{ id: number; permissions: string }>("SELECT id, permissions FROM permission_groups WHERE name = 'Quản trị'");
+  if (g) {
+    const list = new Set<string>(JSON.parse(g.permissions || "[]"));
+    list.add("alerts.manage");
+    run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
+  }
+  run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.alerts', '1')");
 })();
 
 function parse(json: string | null | undefined): string[] {

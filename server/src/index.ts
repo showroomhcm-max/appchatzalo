@@ -9,6 +9,7 @@ import { ensureAdmin, applySuperAdmins } from "./db.js";
 import { appRouter, publicRouter, errorHandler } from "./routes.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
+import { startAlerts } from "./alerts.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
@@ -45,6 +46,7 @@ if (fs.existsSync(config.webDist)) {
 const server = http.createServer(app);
 setupRealtime(server);
 setupWebhooks();
+startAlerts();
 
 server.listen(config.port, () => {
   console.log(`[server] Zalo CSKH chạy tại http://localhost:${config.port}`);

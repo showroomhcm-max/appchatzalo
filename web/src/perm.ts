@@ -12,6 +12,7 @@ export type Permission =
   | 'departments.manage'
   | 'tags.manage'
   | 'templates.manage'
+  | 'alerts.manage'
   | 'integrations.manage'
   | 'logs.view'
   | 'permissions.manage'

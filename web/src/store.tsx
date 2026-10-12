@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import { api, connectSocket, setToken, setUnauthorizedHandler } from './api'
-import type { Channel, Department, PresenceState, Tag, User, ZaloStatus } from './types'
+import type { Alert, Channel, Department, PresenceState, Tag, User, ZaloStatus } from './types'
 import { can, type Permission } from './perm'
 
 type Ctx = {
@@ -25,6 +25,9 @@ type Ctx = {
   socket: Socket | null
   socketConnected: boolean
   logout: () => void
+  /** Cảnh báo đơn "rơi" đang mở (trong phạm vi người này xem được) */
+  alerts: Alert[]
+  reloadAlerts: () => void
 }
 
 const AppContext = createContext<Ctx | null>(null)
@@ -76,6 +79,11 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
     onLogout()
   }
 
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const reloadAlerts = useCallback(() => {
+    api<Alert[]>('/alerts').then(setAlerts).catch(() => {})
+  }, [])
+
   const reloadUsers = useCallback(() => {
     api<User[]>('/users').then(setUsers).catch(() => {})
   }, [])
@@ -91,7 +99,9 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
     setUnauthorizedHandler(logout)
     reloadUsers()
     reloadSettings()
+    reloadAlerts()
     const s = connectSocket()
+    s.on('alerts:changed', reloadAlerts)
     s.on('connect', () => setSocketConnected(true))
     s.on('disconnect', () => setSocketConnected(false))
     s.on('connect_error', (e) => {
@@ -137,6 +147,8 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
         socket,
         socketConnected,
         logout,
+        alerts,
+        reloadAlerts,
       }}
     >
       {children}

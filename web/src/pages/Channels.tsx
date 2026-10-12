@@ -8,7 +8,7 @@ import { PLATFORM_LABEL, PLATFORM_ORDER, PlatformBadge, PlatformDot, platformOf 
 import { fold } from '../util'
 import type { Platform } from '../types'
 
-export default function Channels() {
+export default function Channels({ manage = false }: { manage?: boolean }) {
   const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
   const [detailId, setDetailId] = useState<number | null>(null)
@@ -18,17 +18,18 @@ export default function Channels() {
   const [tab, setTab] = useState<Platform | 'all'>('all')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  const isAdmin = allowed('channels.manage')
+  // Trang Kênh Chat (menu trên) chỉ để chọn kênh chat; kết nối / cài đặt kênh nằm ở Cài đặt › Tích hợp › Kết nối kênh
+  const isAdmin = manage && allowed('channels.manage')
 
   // Quay về từ trang đăng nhập Facebook / TikTok / Zalo OA: #/channels/<kết quả>
   useEffect(() => {
-    const raw = window.location.hash.split('/')[2]
+    const raw = window.location.hash.split('/')[manage ? 3 : 2]
     if (!raw) return
     const params = new URLSearchParams(decodeURIComponent(raw))
     if (params.get('error')) setFlash({ ok: false, text: params.get('error')! })
     else if (params.get('connected')) setFlash({ ok: true, text: 'Đã kết nối kênh mới. Bấm vào kênh để gán bộ phận và nhân viên.' })
     if (params.get('connect') === 'facebook' && params.get('key')) setFbKey(params.get('key'))
-    history.replaceState(null, '', '#/channels')
+    history.replaceState(null, '', manage ? '#/settings/channels' : '#/channels')
     reloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -92,15 +93,20 @@ export default function Channels() {
   )
 
   return (
-    <div className="page channels-page">
+    <div className={manage ? 'stack channels-page' : 'page channels-page'}>
       <div className="page-head">
         <div>
-          <h1>Kênh Chat</h1>
+          <h1>{manage ? 'Kết nối kênh' : 'Kênh Chat'}</h1>
           <p className="muted">
             {isAdmin
-              ? 'Kết nối Zalo, Zalo OA, Fanpage Facebook, TikTok, TikTok Shop. Tick các kênh muốn chat rồi bấm "Truy cập"; bấm vào kênh để xem trạng thái, phân quyền.'
+              ? 'Kết nối Zalo, Zalo OA, Fanpage Facebook, TikTok, TikTok Shop. Bấm vào kênh để xem trạng thái, quét QR, gán bộ phận và nhân viên.'
               : 'Các kênh bạn được phân công. Tick kênh đang trực rồi bấm "Truy cập", hộp thư chỉ hiện hội thoại của các kênh đó.'}
           </p>
+          {!manage && allowed('channels.manage') && (
+            <p className="small">
+              Kết nối kênh mới, quét QR, phân quyền kênh: <a href="#/settings/channels">Cài đặt › Tích hợp › Kết nối kênh</a>
+            </p>
+          )}
         </div>
         {isAdmin && (
           <button className="btn primary" onClick={() => setAdding(true)}>
@@ -817,8 +823,8 @@ function AddChannelModal({ onClose, onZalo, onConnected }: { onClose: () => void
     <div className="muted small">
       Chưa nhập thông tin app {label}.{' '}
       {allowed('integrations.manage') ? (
-        <a href="#/settings/integrations" onClick={onClose}>
-          Nhập ở Cài đặt › Tích hợp
+        <a href="#/settings/apps" onClick={onClose}>
+          Nhập ở Cài đặt › Tích hợp › App nền tảng
         </a>
       ) : (
         'Nhờ quản trị viên nhập ở Cài đặt › Tích hợp.'

@@ -159,7 +159,7 @@ export default function PlatformApps() {
       <div>
         <h2>Kết nối Zalo OA, Facebook và TikTok</h2>
         <p className="muted">
-          Nhập thông tin app nhà phát triển một lần ở đây, rồi vào <a href="#/channels">Kênh Chat › Thêm kênh</a> để đăng nhập Fanpage, tài
+          Nhập thông tin app nhà phát triển một lần ở đây, rồi vào <a href="#/settings/channels">Tích hợp › Kết nối kênh</a> để đăng nhập Fanpage, tài
           khoản TikTok hoặc shop. Chép các đường dẫn bên dưới vào trang quản lý app của từng nền tảng.
         </p>
       </div>

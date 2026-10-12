@@ -11,6 +11,12 @@ export type BusEvents = {
   "zalo.status": [status: any];
   /** Cài đặt (tag, bộ phận…) thay đổi → giao diện tải lại danh sách. */
   "settings.changed": [what: string];
+  /** Cảnh báo đơn "rơi" mới mở */
+  "alert.created": [alert: any];
+  /** Danh sách cảnh báo thay đổi (mở / đóng) */
+  "alerts.changed": [];
+  /** Đơn hàng mới / cập nhật (Sapo, API) */
+  "order.updated": [order: any];
 };
 
 export const bus = new EventEmitter<BusEvents>();

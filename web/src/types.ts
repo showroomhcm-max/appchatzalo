@@ -132,6 +132,38 @@ export type Channel = {
   status: ZaloStatus | null
 }
 
+export type AlertType = 'no_reply' | 'no_order' | 'no_shipping'
+
+/** Cảnh báo đơn "rơi" đang mở */
+export type Alert = {
+  id: number
+  conversation_id: string
+  type: AlertType
+  label: string
+  detail: { since?: number; phone?: string | null; address?: boolean; keyword?: string | null; order?: string } | null
+  created_at: number
+  conversation_name: string | null
+  conversation_avatar: string | null
+  assigned_to: number | null
+  assigned_name: string | null
+  channel_id: number | null
+  channel_name: string | null
+  platform: Platform | null
+}
+
+export type Order = {
+  id: number
+  source: string
+  external_id: string
+  code: string | null
+  customer_phone: string | null
+  customer_name: string | null
+  status: string | null
+  fulfillment_status: string | null
+  total: number | null
+  created_at: number
+}
+
 export type Sticker = { id: number; cateId: number; type: number; url: string | null; text: string }
 
 export type Department = { id: number; name: string; color: string; channel_ids: number[]; user_ids: number[] }

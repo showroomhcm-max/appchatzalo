@@ -158,13 +158,14 @@ function parseHash(): Route {
 }
 
 function Shell() {
-  const { user, zaloStatuses: allStatuses, workingChannelIds, logout, socketConnected } = useApp()
+  const { user, zaloStatuses: allStatuses, workingChannelIds, logout, socketConnected, alerts } = useApp()
+  const alertCount = alerts.filter((a) => !workingChannelIds || (a.channel_id !== null && workingChannelIds.includes(a.channel_id))).length
   const zaloStatuses = workingChannelIds ? allStatuses.filter((s) => workingChannelIds.includes(s.channelId)) : allStatuses
   const [route, setRoute] = useState(parseHash)
   const [pwOpen, setPwOpen] = useState(false)
   const { can: allowed } = useApp()
   const canData = allowed('data.view') || allowed('data.export')
-  const canSettings = (['users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
+  const canSettings = (['channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash())
@@ -206,6 +207,11 @@ function Shell() {
               >
                 {n.icon}
                 <span className="nav-label">{n.label}</span>
+                {n.id === 'inbox' && alertCount > 0 && (
+                  <span className="nav-badge" title={`${alertCount} cảnh báo đơn "rơi"`}>
+                    {alertCount > 99 ? '99+' : alertCount}
+                  </span>
+                )}
               </a>
             ))}
         </nav>
@@ -249,7 +255,7 @@ function Shell() {
               : offline.every((s) => s.state === 'connecting')
                 ? `Đang kết nối kênh: ${offline.map((s) => s.channelName).join(', ')}…`
                 : `Kênh chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}. Tin nhắn của kênh này chưa nhận/gửi được.`}
-            <a href="#/channels">Mở trang Kênh Chat</a>
+            <a href={allowed('channels.manage') ? '#/settings/channels' : '#/channels'}>{allowed('channels.manage') ? 'Mở Kết nối kênh' : 'Mở trang Kênh Chat'}</a>
           </div>
         )}
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}

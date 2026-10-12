@@ -134,9 +134,12 @@ export function listConversations(opts: {
   type?: number;
   limit?: number;
   before?: number;
+  /** Chỉ hội thoại đang có cảnh báo đơn "rơi" */
+  alert?: boolean;
 }) {
   const where: string[] = [conversationFilter(opts.access)];
   const params: any[] = [];
+  if (opts.alert) where.push("EXISTS (SELECT 1 FROM conversation_alerts a WHERE a.conversation_id = c.id AND a.resolved_at IS NULL)");
   if (opts.channelId) {
     where.push("c.channel_id = ?");
     params.push(opts.channelId);

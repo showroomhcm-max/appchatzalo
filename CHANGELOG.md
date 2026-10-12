@@ -7,6 +7,26 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.2.0 — 13/10/2026
+
+**Cài đặt có menu bên trái**
+- Cài đặt chia nhóm như các phần mềm bán hàng: **Tích hợp** (Kết nối kênh, App nền tảng, API & Webhook, Đồng bộ Sapo), **Quản lý chung** (Cảnh báo đơn "rơi", Nhật ký hệ thống), **Quản lý hội thoại** (Tin nhắn mẫu, Tag, Bộ phận), **Phân quyền** (Nhân viên, Nhóm quyền).
+- **Kết nối kênh** chuyển vào Cài đặt › Tích hợp: thêm kênh, quét QR, kích hoạt, phân công nhân viên. Trang **Kênh Chat** ở menu chính giờ chỉ để chọn kênh đang chat.
+- Mỗi mục có link riêng (`#/settings/alerts`, `#/settings/channels`…); trên điện thoại menu thành ô chọn.
+
+**Cảnh báo đơn "rơi"** (Cài đặt › Quản lý chung)
+- **Chưa phản hồi**: khách nhắn mà quá thời gian chọn (15 phút đến 1 ngày) chưa ai trả lời.
+- **Chưa tạo đơn**: khách đã để lại **số điện thoại**, **địa chỉ** hoặc nói **từ khóa** mua hàng (tự nhận ra trong tin nhắn, không phân biệt dấu) mà chưa có đơn.
+- **Chưa đẩy vận chuyển**: hội thoại có đơn nhưng quá giờ chưa giao vận chuyển (chạy khi có đơn từ Sapo / API).
+- Hộp thư: nhãn đỏ trên hội thoại, nút lọc **Cảnh báo (n)**, số đếm trên menu Hội thoại. Khung thông tin khách có nút **Đã xử lý**.
+- Cảnh báo tự tắt khi đã trả lời, đã có đơn, đã giao vận chuyển.
+- Quyền mới: **Cấu hình cảnh báo đơn "rơi"** (nhóm Quản trị có sẵn).
+
+**Chuẩn bị kết nối Sapo POS (chưa bật)**
+- Bảng đơn hàng gắn với hội thoại; đơn tự ghép vào hội thoại theo số điện thoại khách (số khách gõ trong chat cũng được nhận ra và lưu).
+- Trang **Đồng bộ Sapo**: nhập trước tên cửa hàng, API key, mật khẩu API, khóa ký webhook. Phần nhận webhook Sapo đã viết sẵn nhưng chưa bật.
+- API mới `POST /api/v1/orders`: web bán hàng / hệ thống khác đẩy đơn vào ngay từ bây giờ. Khung thông tin khách hiện danh sách đơn.
+
 ## v3.1.0 — 13/10/2026
 
 **Zalo OA**

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Building2, Download, MessageSquareText, Pencil, PlugZap, Plus, Tag as TagIcon, Trash2, Upload, Users as UsersIcon } from 'lucide-react'
+import { AlertTriangle, Building2, ChevronDown, Download, KeyRound, MessageSquareText, Pencil, PlugZap, Plus, Radio, RefreshCw, Tag as TagIcon, Trash2, Upload, Users as UsersIcon } from 'lucide-react'
 import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Department, Tag, Template } from '../types'
@@ -10,27 +10,69 @@ import PlatformApps from './PlatformApps'
 import Integrations from './Integrations'
 import LogsTab from './Logs'
 import PermissionsTab from './Permissions'
+import AlertsSettings from './AlertsSettings'
+import SapoSettings from './SapoSettings'
+import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
 import { ScrollText, ShieldCheck } from 'lucide-react'
 
-export type SettingsTab = 'users' | 'permissions' | 'departments' | 'tags' | 'templates' | 'integrations' | 'logs'
+export type SettingsTab =
+  | 'channels'
+  | 'apps'
+  | 'integrations'
+  | 'sapo'
+  | 'alerts'
+  | 'logs'
+  | 'templates'
+  | 'tags'
+  | 'departments'
+  | 'users'
+  | 'permissions'
 type Tab = SettingsTab
-const TABS: Tab[] = ['users', 'permissions', 'departments', 'tags', 'templates', 'integrations', 'logs']
-const TAB_PERMS: Record<Tab, Permission[]> = {
-  users: ['users.manage', 'permissions.manage'],
-  permissions: ['permissions.manage'],
-  departments: ['departments.manage'],
-  tags: ['tags.manage'],
-  templates: ['templates.manage'],
-  integrations: ['integrations.manage'],
-  logs: ['logs.view'],
-}
+
+type MenuItem = { id: Tab; label: string; icon: React.ReactNode; perms: Permission[] }
+const MENU: { title: string; items: MenuItem[] }[] = [
+  {
+    title: 'Tích hợp',
+    items: [
+      { id: 'channels', label: 'Kết nối kênh', icon: <Radio size={18} />, perms: ['channels.manage'] },
+      { id: 'apps', label: 'App nền tảng', icon: <KeyRound size={18} />, perms: ['integrations.manage'] },
+      { id: 'integrations', label: 'API & Webhook', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
+      { id: 'sapo', label: 'Đồng bộ Sapo', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
+    ],
+  },
+  {
+    title: 'Quản lý chung',
+    items: [
+      { id: 'alerts', label: 'Cảnh báo đơn "rơi"', icon: <AlertTriangle size={18} />, perms: ['alerts.manage'] },
+      { id: 'logs', label: 'Nhật ký hệ thống', icon: <ScrollText size={18} />, perms: ['logs.view'] },
+    ],
+  },
+  {
+    title: 'Quản lý hội thoại',
+    items: [
+      { id: 'templates', label: 'Tin nhắn mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
+      { id: 'tags', label: 'Tag hội thoại', icon: <TagIcon size={18} />, perms: ['tags.manage'] },
+      { id: 'departments', label: 'Bộ phận (phân chia hội thoại)', icon: <Building2 size={18} />, perms: ['departments.manage'] },
+    ],
+  },
+  {
+    title: 'Phân quyền',
+    items: [
+      { id: 'users', label: 'Nhân viên', icon: <UsersIcon size={18} />, perms: ['users.manage', 'permissions.manage'] },
+      { id: 'permissions', label: 'Nhóm quyền', icon: <ShieldCheck size={18} />, perms: ['permissions.manage'] },
+    ],
+  },
+]
+const ITEMS = MENU.flatMap((g) => g.items)
+const TABS = ITEMS.map((i) => i.id)
 
 const TAB_KEY = 'zcskh.settingsTab'
+const COLLAPSE_KEY = 'zcskh.settingsCollapsed'
 
 export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
   const { user } = useApp()
-  const allowed = (t: Tab) => canAny(user, TAB_PERMS[t])
+  const allowed = (t: Tab) => canAny(user, ITEMS.find((i) => i.id === t)?.perms ?? [])
   const firstAllowed = TABS.find(allowed) ?? 'users'
   const [tab, setTabRaw] = useState<Tab>(() => {
     if (fromLink && TABS.includes(fromLink)) return fromLink
@@ -39,6 +81,13 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
       return TABS.includes(saved) && allowed(saved) ? saved : firstAllowed
     } catch {
       return firstAllowed
+    }
+  })
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')
+    } catch {
+      return []
     }
   })
   const setTab = (t: Tab) => setTabRaw(allowed(t) ? t : firstAllowed)
@@ -53,57 +102,79 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
   useEffect(() => {
     try {
       localStorage.setItem(TAB_KEY, tab)
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed))
     } catch {
       /* ignore */
     }
-  }, [tab])
+  }, [tab, collapsed])
+
+  const go = (t: Tab) => {
+    setTab(t)
+    // Giữ link chia sẻ được: #/settings/<mục>
+    if (window.location.hash.split('/')[2] !== t) history.replaceState(null, '', `#/settings/${t}`)
+  }
+  const current = ITEMS.find((i) => i.id === tab)
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Cài đặt</h1>
-          <p className="muted">
-            Nhân viên, bộ phận, tag, tin nhắn mẫu và kết nối với web app khác. Nhân viên thuộc bộ phận nào thì thấy kênh, hội
-            thoại, tag và tin nhắn mẫu của bộ phận đó.
-          </p>
-          <p className="muted small">
-            Phiên bản {BUILD.version} · cập nhật lúc {buildTimeLabel(BUILD.builtAt)}
-            {BUILD.commit ? ` · mã ${BUILD.commit}` : ''}
-          </p>
-        </div>
+    <div className="settings-layout">
+      <aside className="settings-nav" aria-label="Menu cài đặt">
+        {MENU.map((g) => {
+          const items = g.items.filter((i) => allowed(i.id))
+          if (!items.length) return null
+          const closed = collapsed.includes(g.title) && !items.some((i) => i.id === tab)
+          return (
+            <div key={g.title} className="settings-group">
+              <button
+                className="settings-group-title"
+                aria-expanded={!closed}
+                onClick={() => setCollapsed(closed ? collapsed.filter((x) => x !== g.title) : [...collapsed, g.title])}
+              >
+                {g.title}
+                <ChevronDown size={16} className={closed ? 'rot' : ''} />
+              </button>
+              {!closed &&
+                items.map((i) => (
+                  <button key={i.id} className={`settings-item ${tab === i.id ? 'on' : ''}`} onClick={() => go(i.id)} aria-current={tab === i.id ? 'page' : undefined}>
+                    {i.icon}
+                    {i.label}
+                  </button>
+                ))}
+            </div>
+          )
+        })}
+        <p className="muted small settings-version">
+          Phiên bản {BUILD.version} · {buildTimeLabel(BUILD.builtAt)}
+          {BUILD.commit ? ` · ${BUILD.commit}` : ''}
+        </p>
+      </aside>
+
+      <div className="settings-content">
+        <select className="select settings-mobile-nav" value={tab} onChange={(e) => go(e.target.value as Tab)} aria-label="Chọn mục cài đặt">
+          {MENU.map((g) => (
+            <optgroup key={g.title} label={g.title}>
+              {g.items
+                .filter((i) => allowed(i.id))
+                .map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.label}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </select>
+        {current && !['alerts', 'sapo', 'channels'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
+        {tab === 'channels' && allowed('channels') && <Channels manage />}
+        {tab === 'apps' && allowed('apps') && <PlatformApps />}
+        {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
+        {tab === 'sapo' && allowed('sapo') && <SapoSettings />}
+        {tab === 'alerts' && allowed('alerts') && <AlertsSettings />}
+        {tab === 'logs' && allowed('logs') && <LogsTab />}
+        {tab === 'templates' && allowed('templates') && <TemplatesTab />}
+        {tab === 'tags' && allowed('tags') && <TagsTab />}
+        {tab === 'departments' && allowed('departments') && <DepartmentsTab />}
+        {tab === 'users' && allowed('users') && <UsersPage embedded />}
+        {tab === 'permissions' && allowed('permissions') && <PermissionsTab />}
       </div>
-      <div className="tabs" role="tablist">
-        {(
-          [
-            ['users', 'Nhân viên', <UsersIcon size={16} key="u" />],
-            ['permissions', 'Phân quyền', <ShieldCheck size={16} key="p" />],
-            ['departments', 'Bộ phận', <Building2 size={16} key="d" />],
-            ['tags', 'Tag', <TagIcon size={16} key="t" />],
-            ['templates', 'Tin nhắn mẫu', <MessageSquareText size={16} key="m" />],
-            ['integrations', 'Tích hợp', <PlugZap size={16} key="i" />],
-            ['logs', 'Nhật ký', <ScrollText size={16} key="l" />],
-          ] as [Tab, string, React.ReactNode][]
-        )
-          .filter(([id]) => allowed(id))
-          .map(([id, label, icon]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-            {icon} {label}
-          </button>
-        ))}
-      </div>
-      {tab === 'users' && allowed('users') && <UsersPage embedded />}
-      {tab === 'permissions' && allowed('permissions') && <PermissionsTab />}
-      {tab === 'departments' && allowed('departments') && <DepartmentsTab />}
-      {tab === 'tags' && allowed('tags') && <TagsTab />}
-      {tab === 'templates' && allowed('templates') && <TemplatesTab />}
-      {tab === 'integrations' && allowed('integrations') && (
-        <>
-          <PlatformApps />
-          <Integrations embedded />
-        </>
-      )}
-      {tab === 'logs' && allowed('logs') && <LogsTab />}
     </div>
   )
 }

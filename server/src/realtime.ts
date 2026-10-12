@@ -100,6 +100,12 @@ export function setupRealtime(server: HttpServer) {
       if (canUseChannel(scopeFor(socket), status.channelId)) socket.emit("zalo:status", status);
     }
   });
+  // Cảnh báo / đơn hàng: báo giao diện tải lại (dữ liệu tải qua API theo đúng phạm vi người xem)
+  bus.on("alerts.changed", () => io.to("agents").emit("alerts:changed"));
+  bus.on("alert.created", () => io.to("agents").emit("alerts:changed"));
+  bus.on("order.updated", (order) => {
+    if (order?.conversation_id) io.to("agents").emit("orders:changed", { conversation_id: order.conversation_id });
+  });
   bus.on("settings.changed", (what) => {
     scopes.clear();
     io.to("agents").emit("settings:changed", what);

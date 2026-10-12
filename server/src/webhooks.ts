@@ -51,9 +51,13 @@ export const WEBHOOK_EVENTS = [
   "conversation.assigned",
   "conversation.status_changed",
   "conversation.updated",
+  "alert.created",
+  "order.updated",
 ] as const;
 
 export function setupWebhooks() {
+  bus.on("alert.created", (alert) => dispatch("alert.created", { alert }));
+  bus.on("order.updated", (order) => dispatch("order.updated", { order }));
   bus.on("message.created", (message, conversation) => {
     if (message.source === "history") return;
     dispatch(message.direction === "in" ? "message.received" : "message.sent", { message, conversation });

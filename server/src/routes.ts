@@ -35,6 +35,8 @@ import { bus } from "./bus.js";
 import { openConversationWith, searchContacts, searchMessages } from "./people.js";
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
+import { alertConfig, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
+import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
@@ -523,9 +525,42 @@ appRouter.get("/conversations", (req, res) =>
       type: num(req.query.type),
       before: num(req.query.before),
       limit: num(req.query.limit),
+      alert: req.query.alert === "1",
     }),
   ),
 );
+
+// ───────────── Cảnh báo đơn "rơi" ─────────────
+appRouter.get("/alerts", (req, res) => res.json(listAlerts(scopeOf(req.user!))));
+appRouter.post("/alerts/:id/resolve", (req, res) => {
+  const id = Number(req.params.id);
+  const a = get<{ conversation_id: string }>("SELECT conversation_id FROM conversation_alerts WHERE id = ?", id);
+  const conv = a ? getConversation(a.conversation_id) : null;
+  if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy cảnh báo" });
+  resolveAlert(id, req.user!.id, typeof req.body?.note === "string" ? req.body.note : undefined);
+  res.json({ ok: true });
+});
+appRouter.get("/alerts/config", (_req, res) => res.json(alertConfig()));
+appRouter.put("/alerts/config", requirePerm("alerts.manage"), (req, res) => res.json(saveAlertConfig(req.body, req.user!)));
+
+// ───────────── Đơn hàng (Sapo / API) ─────────────
+appRouter.get("/conversations/:id/orders", (req, res) => {
+  const conv = getConversation(req.params.id);
+  if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy hội thoại" });
+  res.json(ordersOfConversation(conv.id));
+});
+appRouter.post("/orders/:id/link", requirePerm("conversations.assign"), (req, res) => {
+  const conversationId = req.body?.conversation_id ? String(req.body.conversation_id) : null;
+  if (conversationId) {
+    const conv = getConversation(conversationId);
+    if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy hội thoại" });
+  }
+  linkOrder(Number(req.params.id), conversationId, req.user!.id);
+  res.json({ ok: true });
+});
+appRouter.get("/sapo/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicSapoConfig()));
+appRouter.put("/sapo/config", requirePerm("integrations.manage"), (req, res) => res.json(saveSapoConfig(req.body, req.user!.id)));
+
 appRouter.get(
   "/conversations/:id",
   h((req, res) => {
@@ -972,6 +1007,27 @@ publicRouter.post(
   "/zalo/people/open",
   h((req, res) => res.json(openConversationWith(req.body ?? {}, FULL, null))),
 );
+/** Hệ thống khác (Sapo, Odoo, web bán hàng…) đẩy đơn hàng vào để gắn với hội thoại và tắt cảnh báo "chưa tạo đơn". */
+publicRouter.post("/orders", (req, res) => {
+  const b = req.body ?? {};
+  if (!b.external_id) return res.status(400).json({ error: "Thiếu external_id (mã đơn bên hệ thống của bạn)" });
+  res.json(
+    upsertOrder({
+      source: String(b.source ?? "api").slice(0, 30),
+      external_id: String(b.external_id),
+      code: b.code ?? null,
+      conversation_id: b.conversation_id ?? null,
+      customer_phone: b.customer_phone ?? b.phone ?? null,
+      customer_name: b.customer_name ?? null,
+      status: b.status ?? null,
+      fulfillment_status: b.fulfillment_status ?? null,
+      total: b.total !== undefined ? Number(b.total) : null,
+      created_at: b.created_at ? Number(new Date(b.created_at)) : null,
+      raw: b.raw,
+    }),
+  );
+});
+
 publicRouter.get("/conversations", (req, res) =>
   res.json(
     listConversations({

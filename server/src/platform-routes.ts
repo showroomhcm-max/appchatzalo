@@ -18,6 +18,7 @@ import { metaConfig, publicConfigs, saveConfig, tiktokConfig, tiktokShopConfig, 
 import { FACEBOOK_SCOPES, MetaSession, exchangeCodeForPages, graph, verifyMetaSignature } from "./platforms/meta.js";
 import { TikTokSession, exchangeTikTokCode, registerTikTokWebhook, verifyTikTokWebhook } from "./platforms/tiktok.js";
 import { TikTokShopSession, exchangeTikTokShopCode, verifyTikTokShopWebhook } from "./platforms/tiktok-shop.js";
+import { orderFromSapo, sapoConfig, upsertOrder, verifySapoWebhook } from "./orders.js";
 import { ZaloOaSession, exchangeZaloOaCode, verifyZaloOaWebhook, zaloOaAuthorizeUrl } from "./platforms/zalo-oa.js";
 
 const h =
@@ -138,6 +139,19 @@ webhookRouter.post("/zalo-oa", (req, res) => {
   session.handleEvent(ev);
 });
 
+// Sapo POS: đã chuẩn bị, chỉ nhận khi bật trong Cài đặt › Tích hợp › Sapo
+webhookRouter.post("/sapo", (req, res) => {
+  if (!sapoConfig().enabled) return res.sendStatus(404);
+  if (!verifySapoWebhook(req.body as Buffer, req.header("x-sapo-hmac-sha256"))) {
+    console.warn("[webhook/sapo] Sai chữ ký, bỏ qua");
+    return res.sendStatus(401);
+  }
+  res.sendStatus(200);
+  const body = parseBody(req);
+  const order = body?.order ?? body;
+  if (order?.id) upsertOrder(orderFromSapo(order));
+});
+
 /** File xác thực tên miền của Zalo: /zalo_verifier<mã>.html */
 export function zaloVerifierHandler(req: Request, res: Response, next: NextFunction) {
   const m = /^\/zalo_verifier([A-Za-z0-9_-]+)\.html$/.exec(req.path);
@@ -179,7 +193,7 @@ function managerFromQuery(req: Request) {
 
 /** Quay về trang Kênh Chat kèm thông báo */
 function backToChannels(res: Response, params: Record<string, string>) {
-  res.redirect(`/#/channels/${encodeURIComponent(new URLSearchParams(params).toString())}`);
+  res.redirect(`/#/settings/channels/${encodeURIComponent(new URLSearchParams(params).toString())}`);
 }
 
 // Danh sách Fanpage vừa lấy được, chờ người dùng chọn (giữ 15 phút trong bộ nhớ)
