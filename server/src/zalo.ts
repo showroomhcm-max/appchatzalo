@@ -25,6 +25,7 @@ import {
 import { MetaSession } from "./platforms/meta.js";
 import { TikTokSession } from "./platforms/tiktok.js";
 import { TikTokShopSession } from "./platforms/tiktok-shop.js";
+import { ZaloOaSession } from "./platforms/zalo-oa.js";
 export type { OutgoingAttachment, StoredMessage } from "./platforms/common.js";
 
 export type StickerInfo = { id: number; cateId: number; type: number; url: string | null; text: string };
@@ -619,7 +620,9 @@ class ChannelManager {
             ? new TikTokSession(channelId)
             : row.platform === "tiktok_shop"
               ? new TikTokShopSession(channelId)
-              : new ChannelSession(channelId);
+              : row.platform === "zalo_oa"
+                ? new ZaloOaSession(channelId)
+                : new ChannelSession(channelId);
       this.sessions.set(channelId, s);
     }
     return s;

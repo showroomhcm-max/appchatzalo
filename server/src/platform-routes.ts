@@ -14,10 +14,11 @@ import { bus } from "./bus.js";
 import { zalo } from "./zalo.js";
 import { HttpError } from "./conversations.js";
 import { publicBaseUrl, type Platform } from "./platforms/common.js";
-import { metaConfig, publicConfigs, saveConfig, tiktokConfig, tiktokShopConfig, type AppKind } from "./platforms/app-config.js";
+import { metaConfig, publicConfigs, saveConfig, tiktokConfig, tiktokShopConfig, zaloOaConfig, type AppKind } from "./platforms/app-config.js";
 import { FACEBOOK_SCOPES, MetaSession, exchangeCodeForPages, graph, verifyMetaSignature } from "./platforms/meta.js";
 import { TikTokSession, exchangeTikTokCode, registerTikTokWebhook, verifyTikTokWebhook } from "./platforms/tiktok.js";
 import { TikTokShopSession, exchangeTikTokShopCode, verifyTikTokShopWebhook } from "./platforms/tiktok-shop.js";
+import { ZaloOaSession, exchangeZaloOaCode, verifyZaloOaWebhook, zaloOaAuthorizeUrl } from "./platforms/zalo-oa.js";
 
 const h =
   (fn: (req: Request, res: Response) => unknown) =>
@@ -34,6 +35,9 @@ export const callbackUrls = () => {
     tiktokRedirect: `${base}/api/oauth/tiktok/callback`,
     tiktokShopWebhook: `${base}/webhooks/tiktok-shop`,
     tiktokShopRedirect: `${base}/api/oauth/tiktok-shop/callback`,
+    zaloOaWebhook: `${base}/webhooks/zalo-oa?k=${zaloOaConfig()?.webhookKey ?? ""}`,
+    zaloOaRedirect: `${base}/api/oauth/zalo-oa/callback`,
+    zaloOaVerifyFile: zaloOaConfig()?.verifyCode ? `${base}/zalo_verifier${zaloOaConfig()!.verifyCode}.html` : "",
   };
 };
 
@@ -114,6 +118,35 @@ webhookRouter.post("/tiktok-shop", (req, res) => {
     session.syncConversation(String(convId)).catch((e) => console.error("[webhook/tiktok-shop] Tải tin lỗi:", e.message));
   }
 });
+
+webhookRouter.post("/zalo-oa", (req, res) => {
+  if (!verifyZaloOaWebhook(req.body as Buffer, req.header("x-zevent-signature"), req.query.k)) {
+    console.warn("[webhook/zalo-oa] Sai chữ ký / khóa URL, bỏ qua");
+    return res.sendStatus(401);
+  }
+  res.sendStatus(200);
+  const ev = parseBody(req);
+  if (!ev) return;
+  const name = String(ev.event_name ?? "");
+  // OA là người gửi với oa_send_*, là người nhận với user_send_*
+  const oaId = String(name.startsWith("oa_") ? ev.sender?.id ?? "" : ev.recipient?.id ?? "");
+  const session = zalo.byExternal("zalo_oa", oaId);
+  if (!(session instanceof ZaloOaSession)) {
+    if (name.includes("send")) console.warn(`[webhook/zalo-oa] Chưa có kênh cho OA ${oaId}`);
+    return;
+  }
+  session.handleEvent(ev);
+});
+
+/** File xác thực tên miền của Zalo: /zalo_verifier<mã>.html */
+export function zaloVerifierHandler(req: Request, res: Response, next: NextFunction) {
+  const m = /^\/zalo_verifier([A-Za-z0-9_-]+)\.html$/.exec(req.path);
+  const code = zaloOaConfig()?.verifyCode;
+  if (!m || !code || m[1] !== code) return next();
+  res.type("html").send(
+    `<!DOCTYPE html><html lang="en"><head><meta property="zalo-platform-site-verification" content="${code}" /></head><body>There Is No Limit To What You Can Accomplish Using Zalo!</body></html>`,
+  );
+}
 
 // ───────────── OAuth: chuyển hướng qua lại giữa app và nền tảng ─────────────
 
@@ -251,6 +284,33 @@ oauthRouter.get(
   }),
 );
 
+oauthRouter.get(
+  "/zalo-oa/start",
+  h((req, res) => {
+    const user = managerFromQuery(req);
+    if (!zaloOaConfig()) throw new HttpError(400, "Chưa nhập Zalo OA App ở Cài đặt › Tích hợp");
+    res.redirect(zaloOaAuthorizeUrl(callbackUrls().zaloOaRedirect, makeState(user.id)));
+  }),
+);
+
+oauthRouter.get(
+  "/zalo-oa/callback",
+  h(async (req, res) => {
+    const state = String(req.query.state ?? "");
+    const st = readState(state);
+    if (!req.query.code) return backToChannels(res, { error: "Zalo không trả về mã ủy quyền" });
+    try {
+      const creds = await exchangeZaloOaCode(String(req.query.code), state, req.query.oa_id ? String(req.query.oa_id) : undefined);
+      const id = upsertChannel("zalo_oa", creds.oaId, creds.name || "Zalo OA", creds, st.u);
+      await zalo.session(id).init();
+      backToChannels(res, { connected: String(id) });
+    } catch (e: any) {
+      console.error("[oauth/zalo-oa]", e.message);
+      backToChannels(res, { error: e.message });
+    }
+  }),
+);
+
 /** Tạo kênh mới, hoặc cập nhật token nếu tài khoản này đã có kênh. */
 function upsertChannel(platform: Platform, externalId: string, name: string, creds: unknown, userId: number) {
   const existing = get<{ id: number }>("SELECT id FROM channels WHERE platform = ? AND external_id = ?", platform, externalId);
@@ -289,7 +349,7 @@ platformRouter.put(
   requirePerm("integrations.manage"),
   h((req, res) => {
     const kind = req.params.kind as AppKind;
-    if (!["meta", "tiktok", "tiktok_shop"].includes(kind)) throw new HttpError(400, "Loại cấu hình không hợp lệ");
+    if (!["meta", "tiktok", "tiktok_shop", "zalo_oa"].includes(kind)) throw new HttpError(400, "Loại cấu hình không hợp lệ");
     const r = saveConfig(kind, req.body ?? {});
     // Kênh đang báo "chưa nhập app" thì thử kết nối lại
     const platform = kind === "meta" ? "facebook" : kind;

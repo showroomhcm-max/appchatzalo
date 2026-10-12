@@ -7,6 +7,21 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.1.0 — 13/10/2026
+
+**Zalo OA**
+- Kết nối **Zalo Official Account** bằng API chính thức của Zalo: nhận chữ, ảnh, tệp, sticker, link, vị trí; trả lời chữ, ảnh, tệp. Tin gửi từ trang quản lý OA cũng được lưu.
+- Cài đặt › Tích hợp có thẻ **Zalo OA**: nhập App ID, khóa bí mật, OA Secret Key; app tự phục vụ file xác thực tên miền của Zalo.
+
+**Kênh Chat làm lại**
+- Tab theo nền tảng: Tất cả / Zalo / Zalo OA / Facebook / TikTok / TikTok Shop, kèm số kênh.
+- Kênh xếp theo nhóm nền tảng, mỗi kênh một ô gọn (ảnh, tên, ID tài khoản, chấm trạng thái). Bấm vào kênh để xem chi tiết, quét QR, phân quyền.
+- Tick các kênh muốn chat rồi bấm **Truy cập** để vào hộp thư chỉ với các kênh đó.
+- Quản lý thấy cột **Kênh chưa kích hoạt** (kênh đang tắt), tick rồi bấm **Kích hoạt**.
+
+**Chọn nhanh kênh ở góc trên**
+- Nút **"Đã chọn N kênh"** ở góc phải trên mọi trang (khi được chia từ 2 kênh trở lên): tick kênh theo nhóm nền tảng, bấm Áp dụng, hộp thư lọc ngay.
+
 ## v3.0.0 — 12/10/2026
 
 **Đa kênh: Facebook, TikTok, TikTok Shop chung một hộp thư với Zalo**

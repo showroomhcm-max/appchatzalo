@@ -1,50 +1,110 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, CheckCircle2, ExternalLink, KeyRound, LogIn, LogOut, MessagesSquare, Plus, QrCode, RefreshCw, Settings2, Smartphone, Users } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, KeyRound, LogIn, LogOut, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
 import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Channel, User, ZaloStatus } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
-import { PLATFORM_LABEL, PlatformBadge, platformOf } from '../platform'
+import { PLATFORM_LABEL, PLATFORM_ORDER, PlatformBadge, PlatformDot, platformOf } from '../platform'
+import { fold } from '../util'
 import type { Platform } from '../types'
 
 export default function Channels() {
-  const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed } = useApp()
+  const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
+  const [detailId, setDetailId] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
   const [fbKey, setFbKey] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null)
+  const [tab, setTab] = useState<Platform | 'all'>('all')
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
   const isAdmin = allowed('channels.manage')
 
-  // Quay về từ trang đăng nhập Facebook / TikTok: #/channels/<kết quả>
+  // Quay về từ trang đăng nhập Facebook / TikTok / Zalo OA: #/channels/<kết quả>
   useEffect(() => {
     const raw = window.location.hash.split('/')[2]
     if (!raw) return
-    const q = new URLSearchParams(decodeURIComponent(raw))
-    if (q.get('error')) setFlash({ ok: false, text: q.get('error')! })
-    else if (q.get('connected')) setFlash({ ok: true, text: 'Đã kết nối kênh mới. Gán bộ phận và nhân viên cho kênh bên dưới.' })
-    if (q.get('connect') === 'facebook' && q.get('key')) setFbKey(q.get('key'))
+    const params = new URLSearchParams(decodeURIComponent(raw))
+    if (params.get('error')) setFlash({ ok: false, text: params.get('error')! })
+    else if (params.get('connected')) setFlash({ ok: true, text: 'Đã kết nối kênh mới. Bấm vào kênh để gán bộ phận và nhân viên.' })
+    if (params.get('connect') === 'facebook' && params.get('key')) setFbKey(params.get('key'))
     history.replaceState(null, '', '#/channels')
     reloadSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const statusOf = (c: Channel) => zaloStatuses.find((s) => s.channelId === c.id) ?? c.status
-  const visible = isAdmin ? channels : channels.filter((c) => c.active)
+  const activeList = channels.filter((c) => c.active)
+  const inactiveList = isAdmin ? channels.filter((c) => !c.active) : []
+  const matches = (c: Channel) => {
+    if (tab !== 'all' && platformOf(c.platform) !== tab) return false
+    if (!q.trim()) return true
+    const st = statusOf(c)
+    return fold(`${c.name} ${st?.account?.name ?? ''} ${st?.account?.id ?? ''} ${c.zalo_uid ?? ''}`).includes(fold(q.trim()))
+  }
+  const shownActive = activeList.filter(matches)
+  const shownInactive = inactiveList.filter(matches)
+
+  // Kênh đang chọn để chat (lưu khi bấm "Truy cập")
+  const workingKey = `${(workingChannelIds ?? []).join(',')}|${activeList.map((c) => c.id).join(',')}`
+  const [picked, setPicked] = useState<number[]>([])
+  useEffect(() => {
+    setPicked(workingChannelIds ? activeList.filter((c) => workingChannelIds.includes(c.id)).map((c) => c.id) : activeList.map((c) => c.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workingKey])
+  const [pickedOff, setPickedOff] = useState<number[]>([])
+
+  const toggle = (list: number[], set: (v: number[]) => void, id: number, on: boolean) =>
+    set(on ? [...new Set([...list, id])] : list.filter((x) => x !== id))
+  const allShownPicked = shownActive.length > 0 && shownActive.every((c) => picked.includes(c.id))
+
+  async function access() {
+    setBusy(true)
+    try {
+      await setWorkingChannels(picked.length >= activeList.length ? null : picked)
+      window.location.hash = '#/inbox'
+    } catch (e: any) {
+      setFlash({ ok: false, text: e.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function activate(ids: number[]) {
+    setBusy(true)
+    try {
+      for (const id of ids) await api(`/channels/${id}`, { method: 'PATCH', body: { active: true } })
+      setPickedOff([])
+      setFlash({ ok: true, text: `Đã kích hoạt ${ids.length} kênh.` })
+    } catch (e: any) {
+      setFlash({ ok: false, text: e.message })
+    } finally {
+      setBusy(false)
+      reloadSettings()
+    }
+  }
+
+  const count = (p: Platform | 'all') => channels.filter((c) => (isAdmin || c.active) && (p === 'all' || platformOf(c.platform) === p)).length
+  const detail = channels.find((c) => c.id === detailId) ?? null
+
+  const tile = (c: Channel, checked: boolean, onToggle: (on: boolean) => void) => (
+    <ChannelTile key={c.id} channel={c} status={statusOf(c)} checked={checked} onToggle={onToggle} onOpen={() => setDetailId(c.id)} />
+  )
 
   return (
-    <div className="page">
+    <div className="page channels-page">
       <div className="page-head">
         <div>
           <h1>Kênh Chat</h1>
           <p className="muted">
             {isAdmin
-              ? 'Mỗi kênh là một tài khoản Zalo, Fanpage Facebook, tài khoản TikTok hoặc shop TikTok. Kết nối kênh, chọn bộ phận được xem và phân công nhân viên vào kênh.'
-              : 'Các kênh chat bạn được phân công. Tick chọn kênh đang trực để hộp thư chỉ hiện hội thoại của các kênh đó.'}
+              ? 'Kết nối Zalo, Zalo OA, Fanpage Facebook, TikTok, TikTok Shop. Tick các kênh muốn chat rồi bấm "Truy cập"; bấm vào kênh để xem trạng thái, phân quyền.'
+              : 'Các kênh bạn được phân công. Tick kênh đang trực rồi bấm "Truy cập", hộp thư chỉ hiện hội thoại của các kênh đó.'}
           </p>
         </div>
         {isAdmin && (
           <button className="btn primary" onClick={() => setAdding(true)}>
-            <Plus size={18} /> Thêm kênh
+            <Plus size={18} /> Kết nối kênh
           </button>
         )}
       </div>
@@ -58,37 +118,102 @@ export default function Channels() {
         </div>
       )}
 
-      <WorkingChannels channels={visible} />
-      {isAdmin && <PublicLink />}
-
-      {visible.length === 0 && (
-        <div className="card center pad">
-          <QrCode size={40} className="muted" />
-          <div>
-            {isAdmin
-              ? 'Chưa có kênh nào. Bấm "Thêm kênh" để kết nối tài khoản đầu tiên.'
-              : 'Bạn chưa được phân công kênh nào. Nhờ quản lý thêm bạn vào kênh hoặc bộ phận.'}
-          </div>
-        </div>
-      )}
-
-      <div className="channel-grid">
-        {visible.map((c) =>
-          isAdmin ? (
-            <ChannelCard key={c.id} channel={c} status={statusOf(c)} onEdit={() => setEditing(c)} />
-          ) : (
-            <AgentChannelCard key={c.id} channel={c} status={statusOf(c)} />
-          ),
-        )}
+      <div className="platform-tabs" role="tablist" aria-label="Lọc theo nền tảng">
+        {(['all', ...PLATFORM_ORDER] as const).map((p) => (
+          <button key={p} role="tab" aria-selected={tab === p} className={tab === p ? 'on' : ''} onClick={() => setTab(p)}>
+            {p !== 'all' && <PlatformDot platform={p} inline />}
+            {p === 'all' ? 'Tất cả' : PLATFORM_LABEL[p]}
+            <span className="tab-count">{count(p)}</span>
+          </button>
+        ))}
       </div>
 
+      <div className={`channel-board ${inactiveList.length ? 'two' : ''}`}>
+        {inactiveList.length > 0 && (
+          <section className="card board-col">
+            <h3>Kênh chưa kích hoạt ({inactiveList.length})</h3>
+            <label className="check select-all">
+              <input
+                type="checkbox"
+                checked={shownInactive.length > 0 && shownInactive.every((c) => pickedOff.includes(c.id))}
+                onChange={(e) => setPickedOff(e.target.checked ? shownInactive.map((c) => c.id) : [])}
+              />
+              Chọn tất cả
+            </label>
+            <div className="board-list">
+              {shownInactive.map((c) => tile(c, pickedOff.includes(c.id), (on) => toggle(pickedOff, setPickedOff, c.id, on)))}
+              {!shownInactive.length && <div className="muted small pad">Không có kênh nào.</div>}
+            </div>
+            <div className="board-foot">
+              <button className="btn outline block" disabled={busy || !pickedOff.length} onClick={() => activate(pickedOff)}>
+                Kích hoạt
+              </button>
+            </div>
+          </section>
+        )}
+
+        <section className="card board-col">
+          <div className="row wrap">
+            <h3 className="grow">
+              {isAdmin ? 'Kênh đang hoạt động' : 'Kênh được phân công'} ({activeList.length})
+            </h3>
+            <label className="search-box">
+              <Search size={16} />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, ID" aria-label="Tìm kênh" />
+            </label>
+          </div>
+          <label className="check select-all">
+            <input
+              type="checkbox"
+              checked={allShownPicked}
+              onChange={(e) =>
+                setPicked(e.target.checked ? [...new Set([...picked, ...shownActive.map((c) => c.id)])] : picked.filter((id) => !shownActive.some((c) => c.id === id)))
+              }
+            />
+            Chọn tất cả
+          </label>
+          <div className="board-list">
+            {PLATFORM_ORDER.filter((p) => shownActive.some((c) => platformOf(c.platform) === p)).map((p) => (
+              <div key={p} className="board-group">
+                <div className="board-group-title">{PLATFORM_LABEL[p]}</div>
+                <div className="tile-grid">
+                  {shownActive.filter((c) => platformOf(c.platform) === p).map((c) => tile(c, picked.includes(c.id), (on) => toggle(picked, setPicked, c.id, on)))}
+                </div>
+              </div>
+            ))}
+            {!shownActive.length && (
+              <div className="center pad muted">
+                {activeList.length
+                  ? 'Không có kênh phù hợp.'
+                  : isAdmin
+                    ? 'Chưa có kênh nào. Bấm "Kết nối kênh" để thêm tài khoản đầu tiên.'
+                    : 'Bạn chưa được phân công kênh nào. Nhờ quản lý thêm bạn vào kênh hoặc bộ phận.'}
+              </div>
+            )}
+          </div>
+          <div className="board-foot row">
+            <span className="small">
+              <b>{picked.length}</b>/{activeList.length} kênh đã chọn để chat
+            </span>
+            <span className="grow" />
+            <button className="btn primary" disabled={busy || !picked.length} onClick={access}>
+              Truy cập <ArrowRight size={16} />
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {isAdmin && <PublicLink />}
       {isAdmin && channels.length > 0 && <AssignmentMatrix />}
 
-      <div className="card notice">
-        <h3>
+      <details className="card notice">
+        <summary>
           <Smartphone size={18} /> Lưu ý khi dùng các kênh
-        </h3>
+        </summary>
         <ul>
+          <li>
+            <b>Zalo OA:</b> gửi tin tư vấn miễn phí trong 7 ngày kể từ lần cuối khách nhắn hoặc tương tác với OA. Khách phải nhắn OA trước.
+          </li>
           <li>
             <b>Facebook Messenger:</b> chỉ trả lời được trong 24 giờ kể từ tin cuối của khách. <b>Bình luận:</b> trả lời công khai bất kỳ
             lúc nào, nhắn riêng được 1 lần cho mỗi bình luận trong 7 ngày.
@@ -98,18 +223,30 @@ export default function Channels() {
             tự.
           </li>
           <li>
-            Mỗi tài khoản Zalo chỉ cho <b>một phiên web</b>. Đừng mở chat.zalo.me hoặc Zalo PC bằng tài khoản đã gắn vào app.
-            Ứng dụng trên điện thoại vẫn dùng bình thường.
+            <b>Zalo cá nhân:</b> mỗi tài khoản chỉ cho <b>một phiên web</b>, đừng mở chat.zalo.me hoặc Zalo PC bằng tài khoản đã gắn vào
+            app. Kết nối dùng thư viện không chính thức (zca-js), Zalo có thể khóa tài khoản nếu gửi hàng loạt.
           </li>
-          <li>
-            Kết nối dùng thư viện không chính thức (zca-js). Zalo có thể khóa tài khoản nếu gửi hàng loạt. Chỉ dùng để trả lời
-            khách.
-          </li>
-          <li>Tin gửi trực tiếp từ điện thoại vẫn được lưu nhưng ghi "Gửi từ điện thoại", không gắn tên nhân viên.</li>
+          <li>Tin gửi trực tiếp từ điện thoại / trang quản lý vẫn được lưu nhưng ghi "Gửi từ điện thoại", không gắn tên nhân viên.</li>
           {isAdmin && <li>Tắt kênh thì giữ nguyên lịch sử chat để training. Chỉ xóa được kênh chưa có hội thoại nào.</li>}
         </ul>
-      </div>
+      </details>
 
+      {detail && (
+        <Modal title={detail.name} onClose={() => setDetailId(null)}>
+          {isAdmin ? (
+            <ChannelCard
+              channel={detail}
+              status={statusOf(detail)}
+              onEdit={() => {
+                setDetailId(null)
+                setEditing(detail)
+              }}
+            />
+          ) : (
+            <AgentChannelCard channel={detail} status={statusOf(detail)} />
+          )}
+        </Modal>
+      )}
       {adding && (
         <AddChannelModal
           onClose={() => setAdding(false)}
@@ -130,7 +267,7 @@ export default function Channels() {
           onClose={() => setFbKey(null)}
           onDone={(n) => {
             setFbKey(null)
-            setFlash({ ok: true, text: `Đã kết nối ${n} Fanpage. Gán bộ phận và nhân viên cho kênh bên dưới.` })
+            setFlash({ ok: true, text: `Đã kết nối ${n} Fanpage. Bấm vào kênh để gán bộ phận và nhân viên.` })
             reloadSettings()
           }}
         />
@@ -152,67 +289,47 @@ export default function Channels() {
   )
 }
 
-/** Tick chọn kênh đang chat: một kênh, nhiều kênh, hoặc tất cả. Hộp thư chỉ hiện các kênh đã chọn. */
-function WorkingChannels({ channels }: { channels: Channel[] }) {
-  const { workingChannelIds, setWorkingChannels, zaloStatuses } = useApp()
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const allSelected = !workingChannelIds
-  const selected = (id: number) => allSelected || workingChannelIds!.includes(id)
+const STATE_TEXT: Record<string, string> = {
+  connected: 'Đã kết nối',
+  connecting: 'Đang kết nối',
+  qr: 'Chờ quét QR',
+  scanned: 'Chờ xác nhận',
+  error: 'Lỗi kết nối',
+  disconnected: 'Chưa kết nối',
+  off: 'Đã tắt',
+}
 
-  async function save(ids: number[] | null) {
-    setSaving(true)
-    setError('')
-    try {
-      // Chọn đủ mọi kênh = "tất cả" (kênh mới được phân công sau này cũng tự hiện).
-      await setWorkingChannels(ids && ids.length && ids.length < channels.length ? ids : null)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function toggle(id: number, on: boolean) {
-    const current = allSelected ? channels.map((c) => c.id) : workingChannelIds!
-    const next = on ? [...new Set([...current, id])] : current.filter((x) => x !== id)
-    if (!next.length) {
-      setError('Chọn ít nhất 1 kênh')
-      return
-    }
-    void save(next)
-  }
-
-  if (channels.length < 2) return null
-
+/** Một ô kênh: tick chọn, ảnh + ký hiệu nền tảng, tên, ID tài khoản, trạng thái, mở chi tiết. */
+function ChannelTile({
+  channel: c,
+  status,
+  checked,
+  onToggle,
+  onOpen,
+}: {
+  channel: Channel
+  status: ZaloStatus | null
+  checked: boolean
+  onToggle: (on: boolean) => void
+  onOpen: () => void
+}) {
+  const state = c.active ? status?.state ?? 'disconnected' : 'off'
+  const accountId = status?.account?.id ?? c.zalo_uid ?? ''
   return (
-    <div className="card working-card">
-      <div className="row wrap">
-        <h3 className="grow">
-          <MessagesSquare size={18} /> Kênh đang chat
-        </h3>
-        <button className={`btn sm ${allSelected ? 'primary' : 'outline'}`} disabled={saving} onClick={() => save(null)}>
-          Tất cả kênh
-        </button>
-      </div>
-      <div className="working-list">
-        {channels.map((c) => {
-          const st = zaloStatuses.find((s) => s.channelId === c.id)
-          return (
-            <label key={c.id} className={`working-item ${selected(c.id) ? 'on' : ''}`}>
-              <input type="checkbox" checked={selected(c.id)} disabled={saving} onChange={(e) => toggle(c.id, e.target.checked)} />
-              <span className={`status-dot ${st?.state === 'connected' ? 'ok' : 'bad'}`} />
-              {c.name}
-            </label>
-          )
-        })}
-      </div>
-      <p className="muted small">
-        {allSelected
-          ? 'Đang hiện hội thoại của mọi kênh bạn được phân công.'
-          : `Hộp thư chỉ hiện ${workingChannelIds!.length} kênh đã chọn. Tin nhắn ở kênh khác vẫn được lưu, bỏ chọn không làm mất dữ liệu.`}
-      </p>
-      {error && <div className="form-error">{error}</div>}
+    <div className={`channel-tile ${checked ? 'on' : ''}`}>
+      <input type="checkbox" checked={checked} onChange={(e) => onToggle(e.target.checked)} aria-label={`Chọn kênh ${c.name}`} />
+      <span className="avatar-wrap">
+        <Avatar name={status?.account?.name ?? c.name} src={status?.account?.avatar || c.avatar} size={40} />
+        <PlatformDot platform={c.platform} />
+      </span>
+      <button type="button" className="tile-main" onClick={onOpen} title="Xem chi tiết kênh">
+        <b>{c.name}</b>
+        <span className="muted small">{accountId || status?.account?.name || 'Chưa gắn tài khoản'}</span>
+      </button>
+      <span className={`status-dot ${state === 'connected' ? 'ok' : state === 'off' ? '' : 'bad'}`} title={STATE_TEXT[state] ?? state} />
+      <button type="button" className="icon-btn sm tile-open" onClick={onOpen} aria-label={`Mở chi tiết kênh ${c.name}`}>
+        <ArrowRightCircle size={18} />
+      </button>
     </div>
   )
 }
@@ -220,7 +337,7 @@ function WorkingChannels({ channels }: { channels: Channel[] }) {
 function AgentChannelCard({ channel: c, status }: { channel: Channel; status: ZaloStatus | null }) {
   const state = status?.state ?? 'disconnected'
   return (
-    <div className="card channel-card">
+    <div className="stack">
       <div className="channel-head">
         <Avatar name={status?.account?.name ?? c.zalo_name ?? c.name} src={status?.account?.avatar ?? c.avatar} size={48} />
         <div className="grow">
@@ -231,12 +348,7 @@ function AgentChannelCard({ channel: c, status }: { channel: Channel; status: Za
         </div>
         <ChannelState state={state} />
       </div>
-      {state !== 'connected' && (
-        <div className="muted small">Kênh đang mất kết nối. Báo quản lý kết nối lại để tiếp tục nhận/gửi tin.</div>
-      )}
-      <a className="btn outline sm" href="#/inbox" style={{ alignSelf: 'flex-start' }}>
-        <MessagesSquare size={14} /> Mở hộp thư
-      </a>
+      {state !== 'connected' && <div className="muted small">Kênh đang mất kết nối. Báo quản lý kết nối lại để tiếp tục nhận/gửi tin.</div>}
     </div>
   )
 }
@@ -373,7 +485,7 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
   const direct = (c.user_ids ?? []).map((id) => users.find((u) => u.id === id)).filter(Boolean)
 
   return (
-    <div className={`card channel-card ${c.active ? '' : 'dim'}`}>
+    <div className={`channel-card ${c.active ? '' : 'dim'}`}>
       <div className="channel-head">
         <Avatar name={status?.account?.name ?? c.zalo_name ?? c.name} src={status?.account?.avatar ?? c.avatar} size={48} />
         <div className="grow">
@@ -665,9 +777,10 @@ function ChannelForm({
   )
 }
 
-const OAUTH_SLUG: Record<Platform, string> = { zalo: '', facebook: 'facebook', tiktok: 'tiktok', tiktok_shop: 'tiktok-shop' }
+const OAUTH_SLUG: Record<Platform, string> = { zalo: '', zalo_oa: 'zalo-oa', facebook: 'facebook', tiktok: 'tiktok', tiktok_shop: 'tiktok-shop' }
 
 type PlatformConfig = {
+  zalo_oa: { configured: boolean }
   meta: { configured: boolean }
   tiktok: { configured: boolean; authUrl?: string }
   tiktok_shop: { configured: boolean; serviceId?: string }
@@ -725,6 +838,25 @@ function AddChannelModal({ onClose, onZalo, onConnected }: { onClose: () => void
           <button className="btn primary sm" onClick={onZalo}>
             <QrCode size={14} /> Thêm kênh Zalo
           </button>
+        </div>
+
+        <div className="platform-option">
+          <div className="row">
+            <PlatformBadge platform="zalo_oa" />
+            <b className="grow">Zalo Official Account (OA)</b>
+          </div>
+          {!cfg ? (
+            <div className="muted small">Đang tải…</div>
+          ) : cfg.zalo_oa?.configured ? (
+            <>
+              <div className="muted small">Đăng nhập Zalo bằng tài khoản quản trị OA và bấm Cho phép. API chính thức của Zalo, không lo khóa tài khoản.</div>
+              <a className="btn primary sm" href={authUrl('/oauth/zalo-oa/start')}>
+                <LogIn size={14} /> Đăng nhập Zalo OA
+              </a>
+            </>
+          ) : (
+            needConfig('Zalo OA')
+          )}
         </div>
 
         <div className="platform-option">

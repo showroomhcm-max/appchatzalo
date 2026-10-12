@@ -1,6 +1,6 @@
 export type Role = 'admin' | 'agent'
 
-export type Platform = 'zalo' | 'facebook' | 'tiktok' | 'tiktok_shop'
+export type Platform = 'zalo' | 'zalo_oa' | 'facebook' | 'tiktok' | 'tiktok_shop'
 
 /** Tính năng nền tảng hỗ trợ (ẩn nút không dùng được) */
 export type Capabilities = {

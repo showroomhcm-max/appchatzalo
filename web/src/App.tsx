@@ -10,6 +10,7 @@ import Channels from './pages/Channels'
 import SettingsPage from './pages/Settings'
 import { Avatar, Modal } from './components'
 import { UpdateBanner, VersionTag } from './version'
+import ChannelPicker from './ChannelPicker'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -128,6 +129,8 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
 
 type Page = 'inbox' | 'channels' | 'data' | 'settings'
 
+const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', data: 'Dữ liệu', settings: 'Cài đặt' }
+
 type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab }
 
 function parseHash(): Route {
@@ -234,6 +237,10 @@ function Shell() {
         </div>
       </aside>
       <main className="main">
+        <header className="topbar">
+          <span className="topbar-title">{PAGE_TITLE[route.page]}</span>
+          <ChannelPicker />
+        </header>
         <UpdateBanner />
         {route.page !== 'channels' && (offline.length > 0 || (allowed('channels.manage') && zaloStatuses.length === 0)) && (
           <div className="banner warn">

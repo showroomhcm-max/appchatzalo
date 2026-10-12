@@ -5,10 +5,11 @@
 import { get, run } from "../db.js";
 import type { Conversation, Source } from "../store.js";
 
-export type Platform = "zalo" | "facebook" | "tiktok" | "tiktok_shop";
+export type Platform = "zalo" | "zalo_oa" | "facebook" | "tiktok" | "tiktok_shop";
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   zalo: "Zalo",
+  zalo_oa: "Zalo OA",
   facebook: "Facebook",
   tiktok: "TikTok",
   tiktok_shop: "TikTok Shop",

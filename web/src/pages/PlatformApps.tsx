@@ -11,8 +11,12 @@ type Urls = {
   tiktokRedirect: string
   tiktokShopWebhook: string
   tiktokShopRedirect: string
+  zaloOaWebhook: string
+  zaloOaRedirect: string
+  zaloOaVerifyFile: string
 }
 type Config = {
+  zalo_oa: { configured: boolean; appId?: string; appSecret?: string; oaSecretKey?: string; verifyCode?: string }
   meta: { configured: boolean; appId?: string; appSecret?: string; verifyToken?: string; graphVersion?: string }
   tiktok: { configured: boolean; appId?: string; secret?: string; authUrl?: string }
   tiktok_shop: { configured: boolean; appKey?: string; appSecret?: string; serviceId?: string }
@@ -86,6 +90,8 @@ export default function PlatformApps() {
       .then((c) => {
         setCfg(c)
         setForm({
+          'zalo_oa.appId': c.zalo_oa.appId ?? '',
+          'zalo_oa.verifyCode': c.zalo_oa.verifyCode ?? '',
           'meta.appId': c.meta.appId ?? '',
           'tiktok.appId': c.tiktok.appId ?? '',
           'tiktok.authUrl': c.tiktok.authUrl ?? '',
@@ -111,7 +117,7 @@ export default function PlatformApps() {
     </label>
   )
 
-  async function save(kind: 'meta' | 'tiktok' | 'tiktok_shop') {
+  async function save(kind: 'zalo_oa' | 'meta' | 'tiktok' | 'tiktok_shop') {
     setBusy(kind)
     const body = Object.fromEntries(
       Object.entries(form)
@@ -151,13 +157,35 @@ export default function PlatformApps() {
   return (
     <div className="stack platform-apps">
       <div>
-        <h2>Kết nối Facebook và TikTok</h2>
+        <h2>Kết nối Zalo OA, Facebook và TikTok</h2>
         <p className="muted">
           Nhập thông tin app nhà phát triển một lần ở đây, rồi vào <a href="#/channels">Kênh Chat › Thêm kênh</a> để đăng nhập Fanpage, tài
           khoản TikTok hoặc shop. Chép các đường dẫn bên dưới vào trang quản lý app của từng nền tảng.
         </p>
       </div>
       <div className="grid-3">
+        <AppCard
+          platform="zalo_oa"
+          title="Zalo OA (Official Account API)"
+          configured={cfg.zalo_oa.configured}
+          docs={{ href: 'https://developers.zalo.me/', label: 'Mở Zalo for Developers' }}
+        >
+          {field('zalo_oa.appId', 'App ID')}
+          {field('zalo_oa.appSecret', 'Khóa bí mật của ứng dụng (App Secret)', { secret: cfg.zalo_oa.appSecret ?? '' })}
+          {field('zalo_oa.oaSecretKey', 'OA Secret Key (mục Webhook)', { secret: cfg.zalo_oa.oaSecretKey ?? '' })}
+          {field('zalo_oa.verifyCode', 'Mã xác thực tên miền (tùy chọn)', { placeholder: 'Phần mã trong tên file zalo_verifier…html' })}
+          <CopyField label="Callback URL (Đăng nhập › Official Account)" value={cfg.urls.zaloOaRedirect} />
+          <CopyField label="Webhook URL" value={cfg.urls.zaloOaWebhook} />
+          {cfg.urls.zaloOaVerifyFile && <CopyField label="File xác thực tên miền (đã phục vụ sẵn)" value={cfg.urls.zaloOaVerifyFile} />}
+          <div className="row">
+            {status('zalo_oa')}
+            <span className="grow" />
+            <button className="btn primary sm" disabled={busy === 'zalo_oa'} onClick={() => save('zalo_oa')}>
+              <Save size={14} /> Lưu
+            </button>
+          </div>
+        </AppCard>
+
         <AppCard
           platform="facebook"
           title="Meta App (Messenger, bình luận)"

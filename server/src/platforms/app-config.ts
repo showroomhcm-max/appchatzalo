@@ -8,8 +8,18 @@ import { getSetting, setSetting } from "../db.js";
 export type MetaAppConfig = { appId: string; appSecret: string; verifyToken: string; graphVersion: string };
 export type TikTokAppConfig = { appId: string; secret: string; authUrl: string; /** khóa bí mật gắn vào URL webhook */ webhookKey: string };
 export type TikTokShopAppConfig = { appKey: string; appSecret: string; serviceId: string };
+export type ZaloOaAppConfig = {
+  appId: string;
+  appSecret: string;
+  /** "OA Secret Key" ở mục Webhook của app, dùng kiểm tra chữ ký */
+  oaSecretKey: string;
+  /** Mã xác thực tên miền của Zalo (tùy chọn) */
+  verifyCode: string;
+  /** khóa bí mật gắn vào URL webhook */
+  webhookKey: string;
+};
 
-const KEYS = { meta: "app.meta", tiktok: "app.tiktok", tiktok_shop: "app.tiktok_shop" } as const;
+const KEYS = { meta: "app.meta", tiktok: "app.tiktok", tiktok_shop: "app.tiktok_shop", zalo_oa: "app.zalo_oa" } as const;
 export type AppKind = keyof typeof KEYS;
 
 export function metaConfig(): MetaAppConfig | null {
@@ -25,6 +35,11 @@ export function tiktokShopConfig(): TikTokShopAppConfig | null {
   return c?.appKey && c.appSecret ? c : null;
 }
 
+export function zaloOaConfig(): ZaloOaAppConfig | null {
+  const c = getSetting<ZaloOaAppConfig>(KEYS.zalo_oa);
+  return c?.appId && c.appSecret ? c : null;
+}
+
 const mask = (v?: string) => (v ? `•••${v.slice(-3)}` : "");
 
 /** Cấu hình hiện tại (che bí mật) để hiển thị. */
@@ -32,7 +47,11 @@ export function publicConfigs() {
   const meta = getSetting<MetaAppConfig>(KEYS.meta);
   const tt = getSetting<TikTokAppConfig>(KEYS.tiktok);
   const tts = getSetting<TikTokShopAppConfig>(KEYS.tiktok_shop);
+  const zoa = getSetting<ZaloOaAppConfig>(KEYS.zalo_oa);
   return {
+    zalo_oa: zoa
+      ? { appId: zoa.appId, appSecret: mask(zoa.appSecret), oaSecretKey: mask(zoa.oaSecretKey), verifyCode: zoa.verifyCode, configured: !!zaloOaConfig() }
+      : { configured: false },
     meta: meta
       ? { appId: meta.appId, appSecret: mask(meta.appSecret), verifyToken: meta.verifyToken, graphVersion: meta.graphVersion ?? "v23.0", configured: !!metaConfig() }
       : { configured: false },
@@ -60,6 +79,15 @@ export function saveConfig(kind: AppKind, input: Record<string, unknown>) {
       appId: str(input.appId) || cur?.appId || "",
       secret: str(input.secret) || cur?.secret || "",
       authUrl: str(input.authUrl) || cur?.authUrl || "",
+      webhookKey: cur?.webhookKey || crypto.randomBytes(16).toString("hex"),
+    });
+  } else if (kind === "zalo_oa") {
+    const cur = getSetting<ZaloOaAppConfig>(KEYS.zalo_oa);
+    setSetting(KEYS.zalo_oa, {
+      appId: str(input.appId) || cur?.appId || "",
+      appSecret: str(input.appSecret) || cur?.appSecret || "",
+      oaSecretKey: str(input.oaSecretKey) || cur?.oaSecretKey || "",
+      verifyCode: input.verifyCode !== undefined ? str(input.verifyCode).replace(/[^A-Za-z0-9_-]/g, "") : cur?.verifyCode || "",
       webhookKey: cur?.webhookKey || crypto.randomBytes(16).toString("hex"),
     });
   } else {

@@ -4,8 +4,8 @@ Web app chăm sóc khách hàng: kết nối **một tài khoản Zalo cá nhân
 
 ## Tính năng
 
-**Đa kênh** (từ v3.0.0): Zalo, Facebook Messenger, bình luận Fanpage, TikTok Business, TikTok Shop chung một hộp thư.
-Hướng dẫn tạo app Facebook / TikTok: [docs/ket-noi-facebook-tiktok.md](docs/ket-noi-facebook-tiktok.md).
+**Đa kênh** (từ v3.0.0): Zalo, Zalo OA (v3.1.0), Facebook Messenger, bình luận Fanpage, TikTok Business, TikTok Shop chung một hộp thư.
+Hướng dẫn tạo app Zalo OA / Facebook / TikTok: [docs/ket-noi-facebook-tiktok.md](docs/ket-noi-facebook-tiktok.md).
 
 **Đăng nhập bằng tài khoản Odoo** (erp.sieutoc.com, giống APPDVKT)
 - Nhân viên dùng email và mật khẩu Odoo. Ai bật xác thực 2 lớp thì nhập thêm mã OTP.

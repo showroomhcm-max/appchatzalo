@@ -11,7 +11,7 @@ import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
-import { oauthRouter, webhookRouter } from "./platform-routes.js";
+import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
 
 ensureAdmin();
 applySuperAdmins();
@@ -21,6 +21,7 @@ app.disable("x-powered-by");
 app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
 // Webhook các nền tảng cần body thô để kiểm tra chữ ký → gắn trước express.json
 app.use("/webhooks", webhookRouter);
+app.use(zaloVerifierHandler);
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, version: appVersion().version, zalo: zalo.summary() }));

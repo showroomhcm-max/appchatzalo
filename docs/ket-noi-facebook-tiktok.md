@@ -1,18 +1,21 @@
-# Kết nối Facebook, TikTok, TikTok Shop
+# Kết nối Zalo OA, Facebook, TikTok, TikTok Shop
 
-Từ v3.0.0, ngoài Zalo, app nhận và trả lời được:
+Ngoài Zalo cá nhân (quét QR), app nhận và trả lời được:
 
 | Nền tảng | Nhận được | Trả lời được |
 |---|---|---|
+| Zalo OA (từ v3.1.0) | Chữ, ảnh, tệp, sticker, link, vị trí | Chữ, ảnh, tệp. Tin tư vấn trong **7 ngày** kể từ lần cuối khách tương tác |
 | Facebook Messenger | Tin nhắn, ảnh, tệp | Chữ, ảnh, tệp. Trong **24 giờ** kể từ tin cuối của khách |
 | Bình luận Fanpage | Bình luận mới dưới bài viết | Trả lời **công khai** dưới bình luận, hoặc **nhắn riêng** qua Messenger (1 lần mỗi bình luận, trong 7 ngày) |
 | TikTok Business | Tin nhắn trực tiếp | Chữ. Trong **48 giờ**, tối đa 10 tin mỗi lần khách nhắn |
 | TikTok Shop | Chat với người mua | Chữ, tối đa 2.000 ký tự |
 
-Mỗi nền tảng cần **một app nhà phát triển** (làm một lần). Sau đó vào **Kênh Chat › Thêm kênh** để đăng nhập từng Fanpage, tài khoản TikTok hoặc shop.
+Mỗi nền tảng (trừ Zalo cá nhân) cần **một app nhà phát triển** (làm một lần). Sau đó vào **Kênh Chat › Thêm kênh** để đăng nhập từng Fanpage, tài khoản TikTok hoặc shop.
 
 Tất cả đường dẫn cần dán vào trang của nền tảng đều có sẵn ở **Cài đặt › Tích hợp**, bấm "Chép" để lấy. Ví dụ với tên miền hiện tại:
 
+- Callback Zalo OA: `https://cskhzalo.sieutoc.com/api/oauth/zalo-oa/callback`
+- Webhook Zalo OA: lấy ở Cài đặt › Tích hợp (có khóa bí mật ở cuối, `?k=...`)
 - Webhook Facebook: `https://cskhzalo.sieutoc.com/webhooks/meta`
 - Redirect Facebook: `https://cskhzalo.sieutoc.com/api/oauth/facebook/callback`
 - Webhook TikTok: lấy ở Cài đặt › Tích hợp (có khóa bí mật ở cuối, `?k=...`)
@@ -21,6 +24,23 @@ Tất cả đường dẫn cần dán vào trang của nền tảng đều có s
 - Redirect TikTok Shop: `https://cskhzalo.sieutoc.com/api/oauth/tiktok-shop/callback`
 
 > App phải chạy ở tên miền công khai có HTTPS (cskhzalo.sieutoc.com qua Cloudflare là được). Link tạm `trycloudflare.com` đổi mỗi lần khởi động lại nên không dùng được cho Facebook/TikTok.
+
+---
+
+## 0. Zalo Official Account (OA)
+
+Khác Zalo cá nhân: đây là **API chính thức** của Zalo, không lo bị khóa tài khoản, nhiều nhân viên chat cùng lúc thoải mái.
+
+1. Vào https://developers.zalo.me/ → **Thêm ứng dụng mới** (đăng nhập bằng tài khoản Zalo quản trị OA).
+2. Trong ứng dụng: **Official Account › Thiết lập chung** → **Callback URL**: dán "Callback URL" từ app Zalo CSKH. Liên kết ứng dụng với OA của MemoryZone.
+3. Bật các quyền của OA: gửi tin nhắn, quản lý người dùng (đọc thông tin người quan tâm), quản lý tin nhắn.
+4. **Xác thực tên miền** (Zalo yêu cầu trước khi bật webhook): Zalo cho một tên file dạng `zalo_verifierXXXX.html`. Dán phần `XXXX` vào ô "Mã xác thực tên miền" trong app rồi **Lưu**, app tự phục vụ file đó. Quay lại Zalo bấm **Xác thực**.
+5. **Webhook**: dán "Webhook URL", bật các sự kiện `user_send_text`, `user_send_image`, `user_send_file`, `user_send_sticker`, `user_send_link`, `user_send_location`, `user_send_audio`, `user_send_video`, `user_send_gif` và `oa_send_text`, `oa_send_image`, `oa_send_file` (để lưu cả tin gửi từ trang quản lý OA). Chép **OA Secret Key** ở trang này.
+6. **Thông tin ứng dụng**: chép **ID ứng dụng** và **Khóa bí mật của ứng dụng**.
+7. Trong app Zalo CSKH: **Cài đặt › Tích hợp › Zalo OA**, dán App ID, khóa bí mật, OA Secret Key, **Lưu**.
+8. **Kênh Chat › Kết nối kênh › Đăng nhập Zalo OA** → chọn OA → **Cho phép**.
+
+Token OA tự làm mới. Nếu ngưng dùng app quá 3 tháng, bấm **Đăng nhập lại Zalo OA** trên kênh.
 
 ---
 

@@ -2,24 +2,29 @@ import type { Capabilities, Platform } from './types'
 
 export const PLATFORM_LABEL: Record<Platform, string> = {
   zalo: 'Zalo',
+  zalo_oa: 'Zalo OA',
   facebook: 'Facebook',
   tiktok: 'TikTok',
   tiktok_shop: 'TikTok Shop',
 }
 
 /** Ký hiệu ngắn hiện trên ảnh đại diện trong danh sách hội thoại */
-const SHORT: Record<Platform, string> = { zalo: 'Z', facebook: 'f', tiktok: 'T', tiktok_shop: 'S' }
+const SHORT: Record<Platform, string> = { zalo: 'Z', zalo_oa: 'OA', facebook: 'f', tiktok: 'T', tiktok_shop: 'S' }
 
 /** Tính năng của từng nền tảng (dùng khi danh sách kênh chưa tải xong) */
 export const PLATFORM_CAPS: Record<Platform, Capabilities> = {
   zalo: { stickers: true, reactions: true, undo: true, forward: true, quote: true, files: true, contacts: true },
+  zalo_oa: { stickers: false, reactions: false, undo: false, forward: false, quote: false, files: true, contacts: false },
   facebook: { stickers: false, reactions: false, undo: false, forward: false, quote: false, files: true, contacts: false },
   tiktok: { stickers: false, reactions: false, undo: false, forward: false, quote: true, files: false, contacts: false },
   tiktok_shop: { stickers: false, reactions: false, undo: false, forward: false, quote: false, files: false, contacts: false },
 }
 
+/** Thứ tự hiển thị các nền tảng */
+export const PLATFORM_ORDER: Platform[] = ['zalo', 'zalo_oa', 'facebook', 'tiktok', 'tiktok_shop']
+
 export const platformOf = (p: string | null | undefined): Platform =>
-  p === 'facebook' || p === 'tiktok' || p === 'tiktok_shop' ? p : 'zalo'
+  p === 'zalo_oa' || p === 'facebook' || p === 'tiktok' || p === 'tiktok_shop' ? p : 'zalo'
 
 /** Nhãn nền tảng dạng viên thuốc (Zalo / Facebook / TikTok / TikTok Shop) */
 export function PlatformBadge({ platform, comment }: { platform: string | null | undefined; comment?: boolean }) {
@@ -33,10 +38,10 @@ export function PlatformBadge({ platform, comment }: { platform: string | null |
 }
 
 /** Chấm nhỏ góc ảnh đại diện cho biết hội thoại thuộc nền tảng nào */
-export function PlatformDot({ platform }: { platform: string | null | undefined }) {
+export function PlatformDot({ platform, inline }: { platform: string | null | undefined; inline?: boolean }) {
   const p = platformOf(platform)
   return (
-    <span className={`platform-dot ${p}`} title={PLATFORM_LABEL[p]} aria-label={PLATFORM_LABEL[p]}>
+    <span className={`platform-dot ${p} ${inline ? 'inline' : ''}`} title={PLATFORM_LABEL[p]} aria-label={PLATFORM_LABEL[p]}>
       {SHORT[p]}
     </span>
   )
