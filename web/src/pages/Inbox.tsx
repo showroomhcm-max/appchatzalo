@@ -344,16 +344,19 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
               {showTagFilter && tags.length > 0 && (
                 <div className="tag-filter">
                   {tagFilters.length > 1 && (
-                    <div className="seg sm" role="radiogroup" aria-label="Cách lọc nhiều tag">
-                      <button role="radio" aria-checked={tagMode === 'any'} className={tagMode === 'any' ? 'on' : ''} onClick={() => setTagMode('any')}>
-                        {tagFilters.slice(0, 2).join(' hoặc ')}
-                        {tagFilters.length > 2 ? '…' : ''}
-                      </button>
-                      <button role="radio" aria-checked={tagMode === 'all'} className={tagMode === 'all' ? 'on' : ''} onClick={() => setTagMode('all')}>
-                        {tagFilters.slice(0, 2).join(' và ')}
-                        {tagFilters.length > 2 ? '…' : ''}
-                      </button>
-                    </div>
+                    <>
+                      <div className="seg sm" role="radiogroup" aria-label="Cách lọc nhiều tag">
+                        <button role="radio" aria-checked={tagMode === 'any'} className={tagMode === 'any' ? 'on' : ''} onClick={() => setTagMode('any')}>
+                          Tag A hoặc B
+                        </button>
+                        <button role="radio" aria-checked={tagMode === 'all'} className={tagMode === 'all' ? 'on' : ''} onClick={() => setTagMode('all')}>
+                          Tag A và B
+                        </button>
+                      </div>
+                      <span className="small muted tag-mode-hint">
+                        Hiện hội thoại có {tagMode === 'any' ? 'ít nhất 1 trong' : 'đủ tất cả'}: <b>{tagFilters.join(tagMode === 'any' ? ' hoặc ' : ' và ')}</b>
+                      </span>
+                    </>
                   )}
                   <TagPicker
                     compact

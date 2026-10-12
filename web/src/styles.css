@@ -3011,3 +3011,17 @@ details.notice[open] > summary { margin-bottom: 12px; }
 /* Menu chính không cuộn (để menu con không bị cắt); menu con tự cuộn */
 .conv-menu { overflow: visible; max-height: none; }
 .conv-menu.sub { overflow-y: auto; max-height: 50vh; }
+/* Ô tick trong .field không nhận kiểu ô nhập chữ (bị phóng to, tràn ngang) */
+.field input[type='checkbox'],
+.field input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  flex: none;
+  accent-color: var(--mz-green-700);
+}
+.friend-pick { overflow-x: hidden; display: flex; flex-direction: column; }
+.friend-pick .picker-item { min-width: 0; }
+.friend-pick .picker-item .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg.sm button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag-mode-hint { line-height: 1.4; }

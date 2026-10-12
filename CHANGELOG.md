@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.6.1 — 13/10/2026
+
+**Sửa giao diện**
+- Lọc nhiều tag: nút chọn cách lọc gọn lại thành **"Tag A hoặc B"** / **"Tag A và B"** (trước bị xuống dòng, cắt chữ khi tên tag dài); dòng bên dưới ghi rõ đang lọc những tag nào.
+- Tạo nhóm Zalo: ô tick chọn thành viên bị phóng to và tràn ngang. Đã sửa về đúng cỡ, tên dài tự rút gọn. Các ô tick khác nằm trong biểu mẫu cũng về đúng cỡ.
+
 ## v3.6.0 — 13/10/2026
 
 **Menu thao tác hội thoại** (nút ⋯ khi rê chuột, hoặc bấm chuột phải vào hội thoại)
