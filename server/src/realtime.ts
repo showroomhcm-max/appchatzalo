@@ -1,9 +1,10 @@
 import type { Server as HttpServer } from "node:http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import { userFromToken, type AuthUser } from "./auth.js";
 import { bus } from "./bus.js";
 import { zalo } from "./zalo.js";
 import { config } from "./config.js";
+import { canSeeConversation, canUseChannel, scopeOf, type Scope } from "./access.js";
 
 type Presence = { userId: number; name: string; viewing: string | null; typing: boolean };
 
@@ -12,6 +13,23 @@ export function setupRealtime(server: HttpServer) {
     cors: { origin: config.corsOrigins.length ? config.corsOrigins : true },
   });
   const presence = new Map<string, Presence>(); // socket.id → trạng thái
+
+  // Phạm vi nhìn thấy của từng kết nối, tính lại tối đa mỗi 30 giây hoặc khi cài đặt thay đổi.
+  const scopes = new Map<string, { at: number; scope: Scope }>();
+  function scopeFor(socket: Socket) {
+    const cached = scopes.get(socket.id);
+    if (cached && Date.now() - cached.at < 30_000) return cached.scope;
+    const scope = scopeOf(socket.data.user as AuthUser);
+    scopes.set(socket.id, { at: Date.now(), scope });
+    return scope;
+  }
+
+  /** Chỉ gửi sự kiện của hội thoại cho người được xem hội thoại đó (theo bộ phận). */
+  function emitForConversation(event: string, conversation: any, payload: unknown) {
+    for (const socket of io.of("/").sockets.values()) {
+      if (canSeeConversation(scopeFor(socket), conversation)) socket.emit(event, payload);
+    }
+  }
 
   function broadcastPresence() {
     const online = new Map<number, { userId: number; name: string }>();
@@ -38,7 +56,8 @@ export function setupRealtime(server: HttpServer) {
     const user = socket.data.user as AuthUser;
     socket.join("agents");
     presence.set(socket.id, { userId: user.id, name: user.display_name, viewing: null, typing: false });
-    socket.emit("zalo:status", zalo.getStatus());
+    const scope = scopeFor(socket);
+    for (const s of zalo.statuses()) if (canUseChannel(scope, s.channelId)) socket.emit("zalo:status", s);
     broadcastPresence();
 
     socket.on("view", (conversationId: string | null) => {
@@ -56,16 +75,35 @@ export function setupRealtime(server: HttpServer) {
     });
     socket.on("disconnect", () => {
       presence.delete(socket.id);
+      scopes.delete(socket.id);
       broadcastPresence();
     });
   });
 
-  bus.on("message.created", (message, conversation) => io.to("agents").emit("message:new", { message, conversation }));
+  bus.on("message.created", (message, conversation) => emitForConversation("message:new", conversation, { message, conversation }));
   bus.on("message.updated", (message, conversation) =>
-    io.to("agents").emit("message:update", { message, conversation }),
+    emitForConversation("message:update", conversation, { message, conversation }),
   );
-  bus.on("conversation.updated", (conversation) => io.to("agents").emit("conversation:update", conversation));
-  bus.on("zalo.status", (status) => io.to("agents").emit("zalo:status", status));
+  bus.on("conversation.updated", (conversation, change) => {
+    if (change?.type === "department") {
+      // Hội thoại chuyển bộ phận: người không còn được xem nhận "removed" để gỡ khỏi danh sách.
+      for (const socket of io.of("/").sockets.values()) {
+        socket.emit(canSeeConversation(scopeFor(socket), conversation) ? "conversation:update" : "conversation:removed",
+          canSeeConversation(scopeFor(socket), conversation) ? conversation : { id: conversation.id });
+      }
+      return;
+    }
+    emitForConversation("conversation:update", conversation, conversation);
+  });
+  bus.on("zalo.status", (status) => {
+    for (const socket of io.of("/").sockets.values()) {
+      if (canUseChannel(scopeFor(socket), status.channelId)) socket.emit("zalo:status", status);
+    }
+  });
+  bus.on("settings.changed", (what) => {
+    scopes.clear();
+    io.to("agents").emit("settings:changed", what);
+  });
 
   return io;
 }

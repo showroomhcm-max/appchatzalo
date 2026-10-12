@@ -5,9 +5,10 @@ import { useApp } from '../store'
 import type { User } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
 import { fullTime } from '../util'
+import { DeptChips, DeptPicker } from './Settings'
 
-export default function UsersPage() {
-  const { users, reloadUsers, user: me, presence } = useApp()
+export default function UsersPage({ embedded = false }: { embedded?: boolean }) {
+  const { users, reloadUsers, user: me, presence, channels } = useApp()
   const [editing, setEditing] = useState<User | 'new' | null>(null)
   const online = new Set(presence.online.map((o) => o.userId))
   // Tài khoản Odoo tự đăng nhập lần đầu: chưa được duyệt, chưa từng vào app.
@@ -19,10 +20,10 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="page">
+    <div className={embedded ? 'embedded' : 'page'}>
       <div className="page-head">
         <div>
-          <h1>Nhân viên</h1>
+          {!embedded && <h1>Nhân viên</h1>}
           <p className="muted">
             Nhân viên đăng nhập bằng tài khoản Odoo. Người mới đăng nhập lần đầu sẽ nằm ở mục "Chờ duyệt" cho tới khi bạn
             cho phép.
@@ -71,6 +72,7 @@ export default function UsersPage() {
                 <th>Nhân viên</th>
                 <th>Tài khoản</th>
                 <th>Vai trò</th>
+                <th>Bộ phận / kênh</th>
                 <th>Trạng thái</th>
                 <th>Lần vào gần nhất</th>
                 <th />
@@ -95,6 +97,23 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td>{u.role === 'admin' ? <Badge tone="green">Quản trị</Badge> : <Badge>Nhân viên</Badge>}</td>
+                    <td>
+                      {u.role === 'admin' && !u.department_ids?.length ? (
+                        <span className="muted small">Thấy tất cả</span>
+                      ) : (
+                        <span className="stack sm">
+                          <DeptChips
+                            ids={u.department_ids ?? []}
+                            empty={u.channel_ids?.length ? 'Không thuộc bộ phận' : 'Chưa có — chưa thấy hội thoại nào'}
+                          />
+                          {!!u.channel_ids?.length && (
+                            <span className="small muted">
+                              Vào thẳng: {u.channel_ids.map((id) => channels.find((c) => c.id === id)?.name).filter(Boolean).join(', ')}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </td>
                     <td>{u.active ? 'Đang hoạt động' : 'Đã khóa'}</td>
                     <td className="muted">{u.last_login_at ? fullTime(u.last_login_at) : 'Chưa vào'}</td>
                     <td className="right">
@@ -140,6 +159,9 @@ function UserForm({
   const [role, setRole] = useState(user?.role ?? 'agent')
   const [active, setActive] = useState(user ? !!user.active : true)
   const [password, setPassword] = useState('')
+  const [deptIds, setDeptIds] = useState<number[]>(user?.department_ids ?? [])
+  const [channelIds, setChannelIds] = useState<number[]>(user?.channel_ids ?? [])
+  const { channels } = useApp()
   const [error, setError] = useState('')
   const isOdoo = source === 'odoo'
 
@@ -150,10 +172,10 @@ function UserForm({
       if (user) {
         await api(`/users/${user.id}`, {
           method: 'PATCH',
-          body: { display_name: displayName, role, active, ...(password && !isOdoo ? { password } : {}) },
+          body: { display_name: displayName, role, active, department_ids: deptIds, channel_ids: channelIds, ...(password && !isOdoo ? { password } : {}) },
         })
       } else {
-        await api('/users', { body: { auth_source: source, username, display_name: displayName, role, password } })
+        await api('/users', { body: { auth_source: source, username, display_name: displayName, role, password, department_ids: deptIds, channel_ids: channelIds } })
       }
       onSaved()
     } catch (err: any) {
@@ -202,6 +224,33 @@ function UserForm({
             <option value="admin">Quản trị — thêm toàn quyền: báo cáo, đánh giá, kết nối Zalo, tích hợp</option>
           </select>
         </label>
+        <DeptPicker
+          value={deptIds}
+          onChange={setDeptIds}
+          hint={
+            role === 'admin'
+              ? 'Quản trị viên luôn thấy tất cả, bộ phận chỉ để lọc và giao việc.'
+              : 'Nhân viên thấy kênh, hội thoại, tag và tin nhắn mẫu của các bộ phận được chọn.'
+          }
+        />
+        {role !== 'admin' && channels.length > 0 && (
+          <div className="field">
+            <span>Kênh Zalo được vào thẳng</span>
+            <span className="muted small">Thấy toàn bộ hội thoại của kênh, không phụ thuộc bộ phận.</span>
+            <div className="check-grid">
+              {channels.map((c) => (
+                <label key={c.id} className="check">
+                  <input
+                    type="checkbox"
+                    checked={channelIds.includes(c.id)}
+                    onChange={(e) => setChannelIds(e.target.checked ? [...channelIds, c.id] : channelIds.filter((x) => x !== c.id))}
+                  />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         {user && !isSelf && (
           <label className="check">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

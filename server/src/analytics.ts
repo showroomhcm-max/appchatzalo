@@ -5,6 +5,8 @@ export type ExportFilter = {
   to?: number;
   agentId?: number;
   conversationId?: string;
+  channelId?: number;
+  departmentId?: number;
   /** Bỏ qua tin hệ thống/sticker khi xuất cho training. */
   textOnly?: boolean;
 };
@@ -42,6 +44,14 @@ function loadMessages(f: ExportFilter): Msg[] {
   if (f.conversationId) {
     where.push("m.conversation_id = ?");
     params.push(f.conversationId);
+  }
+  if (f.channelId) {
+    where.push("m.conversation_id IN (SELECT id FROM conversations WHERE channel_id = ?)");
+    params.push(f.channelId);
+  }
+  if (f.departmentId) {
+    where.push("m.conversation_id IN (SELECT id FROM conversations WHERE department_id = ?)");
+    params.push(f.departmentId);
   }
   if (f.agentId) {
     // Lấy trọn các hội thoại mà nhân viên này có tham gia trả lời trong khoảng thời gian.
@@ -203,7 +213,7 @@ export function toJsonl(convs: ReturnType<typeof buildConversations>) {
 
 /** Thống kê hiệu suất theo nhân viên trong khoảng thời gian. */
 export function agentStats(f: ExportFilter) {
-  const msgs = loadMessages({ from: f.from, to: f.to });
+  const msgs = loadMessages({ from: f.from, to: f.to, channelId: f.channelId, departmentId: f.departmentId });
   type Acc = {
     agent_id: number | null;
     agent_name: string;

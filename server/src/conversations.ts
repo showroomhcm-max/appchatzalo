@@ -6,7 +6,7 @@ import { get, logEvent, run } from "./db.js";
 import { bus } from "./bus.js";
 import { config } from "./config.js";
 import { getConversation, type Source } from "./store.js";
-import { zalo, type OutgoingAttachment } from "./zalo.js";
+import { zalo, type OutgoingAttachment, type StoredMessage } from "./zalo.js";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -16,6 +16,8 @@ export class HttpError extends Error {
 
 export type ConversationPatch = {
   assigned_to?: number | null;
+  /** Chuyển hội thoại sang bộ phận khác (null = chưa thuộc bộ phận nào). */
+  department_id?: number | null;
   status?: "open" | "pending" | "closed";
   tags?: string[];
   external_ref?: string | null;
@@ -27,6 +29,24 @@ export function updateConversation(id: string, patch: ConversationPatch, byUserI
   const conv = getConversation(id);
   if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
 
+  if (patch.department_id !== undefined && patch.department_id !== conv.department_id) {
+    if (patch.department_id !== null && !get("SELECT 1 FROM departments WHERE id = ?", patch.department_id)) {
+      throw new HttpError(400, "Bộ phận không tồn tại");
+    }
+    run("UPDATE conversations SET department_id = ? WHERE id = ?", patch.department_id, id);
+    // Người đang phụ trách không thuộc bộ phận mới (và không phải admin) → bỏ giao để bộ phận mới nhận.
+    if (conv.assigned_to && patch.assigned_to === undefined && patch.department_id !== null) {
+      const stays = get(
+        `SELECT 1 FROM users u WHERE u.id = ? AND (u.role = 'admin'
+           OR EXISTS (SELECT 1 FROM user_departments ud WHERE ud.user_id = u.id AND ud.department_id = ?))`,
+        conv.assigned_to,
+        patch.department_id,
+      );
+      if (!stays) run("UPDATE conversations SET assigned_to = NULL WHERE id = ?", id);
+    }
+    logEvent(id, byUserId, "department", { from: conv.department_id, to: patch.department_id });
+    bus.emit("conversation.updated", getConversation(id)!, { type: "department", by: byUserId, data: patch.department_id });
+  }
   if (patch.assigned_to !== undefined && patch.assigned_to !== conv.assigned_to) {
     if (patch.assigned_to !== null && !get("SELECT 1 FROM users WHERE id = ? AND active = 1", patch.assigned_to)) {
       throw new HttpError(400, "Nhân viên không tồn tại");
@@ -98,15 +118,29 @@ export async function sendToConversation(opts: {
   files?: UploadedFile[];
   agentId: number | null;
   source: Source;
+  /** id (trong app) của tin được trả lời */
+  quoteMessageId?: number | null;
 }) {
   const conv = getConversation(opts.conversationId);
   if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
   const text = (opts.text ?? "").trim();
   if (!text && !opts.files?.length) throw new HttpError(400, "Nội dung trống");
-  if (zalo.getStatus().state !== "connected") throw new HttpError(503, "Zalo chưa kết nối, chưa gửi được tin");
+  const session = zalo.session(conv.channel_id);
+  if (!session.connected) {
+    throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo, chưa gửi được tin`);
+  }
 
-  const messages = await zalo.send({
-    conversationId: opts.conversationId,
+  const quote = opts.quoteMessageId
+    ? get<StoredMessage & { raw: string | null }>(
+        "SELECT zalo_msg_id, cli_msg_id, msg_type, sender_uid, sender_name, text, raw, ts FROM messages WHERE id = ? AND conversation_id = ?",
+        opts.quoteMessageId,
+        opts.conversationId,
+      )
+    : null;
+  const messages = await session.send({
+    threadId: conv.thread_id,
+    isGroup: conv.type === 1,
+    quote: quote ? { ...quote, raw: quote.raw ? JSON.parse(quote.raw) : null } : null,
     text,
     attachments: opts.files?.map(storeUpload),
     agentId: opts.agentId,
@@ -118,4 +152,22 @@ export async function sendToConversation(opts: {
   }
   if (conv.status === "closed") updateConversation(opts.conversationId, { status: "open" }, opts.agentId);
   return messages;
+}
+
+/** Lấy tin nhắn trong hội thoại để thả cảm xúc / thu hồi / chuyển tiếp. */
+export function messageInConversation(conversationId: string, messageId: number) {
+  const m = get<StoredMessage & { id: number; direction: string; agent_id: number | null; undone: number; raw: string | null }>(
+    `SELECT id, zalo_msg_id, cli_msg_id, msg_type, sender_uid, sender_name, text, raw, ts, direction, agent_id, undone
+     FROM messages WHERE id = ? AND conversation_id = ?`,
+    messageId,
+    conversationId,
+  );
+  if (!m) throw new HttpError(404, "Không tìm thấy tin nhắn");
+  return { ...m, raw: m.raw ? JSON.parse(m.raw) : null };
+}
+
+export function connectedSession(conv: { channel_id: number; channel_name: string | null }) {
+  const session = zalo.session(conv.channel_id);
+  if (!session.connected) throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo`);
+  return session;
 }

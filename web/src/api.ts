@@ -56,6 +56,11 @@ export function exportUrl(params: Record<string, string | number | undefined>) {
   return `/api/export?${q}`
 }
 
+/** Link tải file cần đăng nhập (Excel, xuất dữ liệu): gắn token vào query. */
+export function authUrl(path: string) {
+  return `/api${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(getToken() ?? '')}`
+}
+
 export function connectSocket(): Socket {
   return io({ auth: { token: getToken() }, transports: ['websocket', 'polling'] })
 }

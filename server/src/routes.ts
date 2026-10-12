@@ -9,10 +9,21 @@ import { all, get, run, logEvent } from "./db.js";
 import { generateApiKey, requireAdmin, requireApiKey, requireUser, signToken, type AuthUser } from "./auth.js";
 import { zalo } from "./zalo.js";
 import { getConversation, listConversations, listMessages } from "./store.js";
-import { HttpError, markRead, sendToConversation, updateConversation } from "./conversations.js";
+import {
+  HttpError,
+  connectedSession,
+  markRead,
+  messageInConversation,
+  sendToConversation,
+  updateConversation,
+} from "./conversations.js";
+import { setReaction } from "./store.js";
 import { agentStats, buildConversations, toCsv, toJsonl, toTxt, type ExportFilter } from "./analytics.js";
 import { WEBHOOK_EVENTS, dispatch } from "./webhooks.js";
 import { bus } from "./bus.js";
+import { openConversationWith, searchContacts, searchMessages } from "./people.js";
+import { settingsRouter } from "./settings-routes.js";
+import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
@@ -39,6 +50,8 @@ function exportFilter(q: Request["query"]): ExportFilter {
     to: parseDate(q.to, true),
     agentId: num(q.agentId),
     conversationId: q.conversationId ? String(q.conversationId) : undefined,
+    channelId: num(q.channelId),
+    departmentId: num(q.departmentId),
     textOnly: q.textOnly === "1" || q.textOnly === "true",
   };
 }
@@ -196,9 +209,77 @@ appRouter.post(
   }),
 );
 
+// Ảnh sticker Zalo (ảnh công khai của Zalo): thẻ <img> không gửi kèm token nên không yêu cầu đăng nhập.
+appRouter.get(
+  "/sticker-image/:id",
+  h(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, "Sticker không hợp lệ");
+    let row = get<{ url: string | null; updated_at: number }>("SELECT url, updated_at FROM sticker_cache WHERE id = ?", id);
+    if (!row?.url) {
+      const session = zalo.anyConnected();
+      if (!session) throw new HttpError(503, "Chưa có kênh Zalo nào kết nối");
+      const [d] = await session.stickerDetails([id]);
+      if (!d?.url) throw new HttpError(404, "Không tìm thấy sticker");
+      run(
+        `INSERT INTO sticker_cache(id, cate_id, type, url, text, updated_at) VALUES(?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET url = excluded.url, updated_at = excluded.updated_at`,
+        d.id,
+        d.cateId,
+        d.type,
+        d.url,
+        d.text,
+        Date.now(),
+      );
+      row = { url: d.url, updated_at: Date.now() };
+    }
+    res.setHeader("Cache-Control", "public, max-age=604800");
+    res.redirect(302, row.url!);
+  }),
+);
+
 appRouter.use(requireUser);
 
-appRouter.get("/auth/me", (req, res) => res.json(req.user));
+function workingChannels(userId: number): number[] | null {
+  const row = get<{ working_channels: string | null }>("SELECT working_channels FROM users WHERE id = ?", userId);
+  if (!row?.working_channels) return null;
+  try {
+    const list = JSON.parse(row.working_channels);
+    return Array.isArray(list) ? list.map(Number).filter((n) => n > 0) : null;
+  } catch {
+    return null;
+  }
+}
+
+appRouter.get("/auth/me", (req, res) => res.json({ ...req.user, working_channel_ids: workingChannels(req.user!.id) }));
+
+/** Nhân viên tick chọn kênh đang chat (một hoặc nhiều). null / rỗng = mọi kênh được quyền. */
+appRouter.put(
+  "/me/working-channels",
+  h((req, res) => {
+    const scope = scopeOf(req.user!);
+    const raw = req.body?.channel_ids;
+    let ids: number[] | null = null;
+    if (Array.isArray(raw)) {
+      ids = [...new Set(raw.map(Number).filter((n) => n > 0))];
+      const bad = ids.filter((id) => !canUseChannel(scope, id));
+      if (bad.length) throw new HttpError(403, "Bạn không có quyền vào kênh đã chọn");
+    }
+    run("UPDATE users SET working_channels = ? WHERE id = ?", ids && ids.length ? JSON.stringify(ids) : null, req.user!.id);
+    res.json({ working_channel_ids: ids && ids.length ? ids : null });
+  }),
+);
+
+/** Phân công hàng loạt: { assignments: [{ user_id, channel_ids: [] }] } (quản lý). */
+appRouter.put(
+  "/channel-assignments",
+  requireAdmin,
+  h((req, res) => {
+    const list = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
+    for (const a of list) setUserChannels(Number(a.user_id), a.channel_ids);
+    res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users ORDER BY active DESC, display_name`)));
+  }),
+);
 
 appRouter.post(
   "/auth/password",
@@ -215,8 +296,33 @@ appRouter.post(
 
 // Nhân viên
 const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at";
+function withDepartments<T extends { id: number }>(rows: T[]) {
+  const links = all<{ user_id: number; department_id: number }>("SELECT user_id, department_id FROM user_departments");
+  const chans = all<{ user_id: number; channel_id: number }>("SELECT user_id, channel_id FROM user_channels");
+  return rows.map((u) => ({
+    ...u,
+    department_ids: links.filter((l) => l.user_id === u.id).map((l) => l.department_id),
+    channel_ids: chans.filter((l) => l.user_id === u.id).map((l) => l.channel_id),
+  }));
+}
+function setUserChannels(userId: number, channelIds: unknown) {
+  if (!Array.isArray(channelIds)) return;
+  run("DELETE FROM user_channels WHERE user_id = ?", userId);
+  for (const c of new Set(channelIds.map(Number).filter((n) => n > 0))) {
+    run("INSERT OR IGNORE INTO user_channels(user_id, channel_id) VALUES(?, ?)", userId, c);
+  }
+  bus.emit("settings.changed", "users");
+}
+function setUserDepartments(userId: number, deptIds: unknown) {
+  if (!Array.isArray(deptIds)) return;
+  run("DELETE FROM user_departments WHERE user_id = ?", userId);
+  for (const d of new Set(deptIds.map(Number).filter((n) => n > 0))) {
+    run("INSERT OR IGNORE INTO user_departments(user_id, department_id) VALUES(?, ?)", userId, d);
+  }
+  bus.emit("settings.changed", "users");
+}
 appRouter.get("/users", (_req, res) =>
-  res.json(all(`SELECT ${USER_LIST_FIELDS} FROM users ORDER BY active DESC, display_name`)),
+  res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users ORDER BY active DESC, display_name`))),
 );
 appRouter.post(
   "/users",
@@ -238,7 +344,9 @@ appRouter.post(
       source,
       Date.now(),
     );
-    res.json(get(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, Number(r.lastInsertRowid)));
+    setUserDepartments(Number(r.lastInsertRowid), req.body?.department_ids);
+    setUserChannels(Number(r.lastInsertRowid), req.body?.channel_ids);
+    res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, Number(r.lastInsertRowid))!])[0]);
   }),
 );
 appRouter.patch(
@@ -259,7 +367,9 @@ appRouter.patch(
       if (String(password).length < 6) throw new HttpError(400, "Mật khẩu tối thiểu 6 ký tự");
       run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(password), 10), id);
     }
-    res.json(get(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, id));
+    setUserDepartments(id, req.body?.department_ids);
+    setUserChannels(id, req.body?.channel_ids);
+    res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, id)!])[0]);
   }),
 );
 
@@ -276,31 +386,40 @@ appRouter.get("/system/public-url", (_req, res) => {
   res.json({ url: fixed ?? url, fixed: !!fixed });
 });
 
-// Kết nối Zalo
-appRouter.get("/zalo/status", (_req, res) => res.json(zalo.getStatus()));
-appRouter.post("/zalo/login-qr", requireAdmin, (_req, res) => {
-  void zalo.startQRLogin();
-  res.json({ ok: true });
-});
-appRouter.post("/zalo/cancel", requireAdmin, (_req, res) => {
-  zalo.cancelQR();
-  res.json({ ok: true });
-});
-appRouter.post(
-  "/zalo/reconnect",
-  requireAdmin,
-  h(async (_req, res) => {
-    await zalo.logout(false);
-    await zalo.init();
-    res.json(zalo.getStatus());
-  }),
+// Kênh Zalo, bộ phận, tag, tin nhắn mẫu
+appRouter.use(settingsRouter);
+
+/** Lấy hội thoại và kiểm tra người đang đăng nhập có được xem không (không được xem → 404 như không tồn tại). */
+function visibleConversation(req: Request, id: string) {
+  const conv = getConversation(id);
+  if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) throw new HttpError(404, "Không tìm thấy hội thoại");
+  return conv;
+}
+
+// Tìm kiếm gộp: liên hệ + tin nhắn
+appRouter.get(
+  "/search/contacts",
+  h(async (req, res) =>
+    res.json(await searchContacts(String(req.query.q ?? ""), { access: scopeOf(req.user!), channelId: num(req.query.channelId) })),
+  ),
+);
+appRouter.get("/search/messages", (req, res) =>
+  res.json(
+    searchMessages(String(req.query.q ?? ""), {
+      access: scopeOf(req.user!),
+      before: num(req.query.before),
+      limit: num(req.query.limit),
+      channelId: num(req.query.channelId),
+      conversationId: req.query.conversationId ? String(req.query.conversationId) : undefined,
+    }),
+  ),
 );
 appRouter.post(
-  "/zalo/logout",
-  requireAdmin,
-  h(async (_req, res) => {
-    await zalo.logout(true);
-    res.json({ ok: true });
+  "/zalo/people/open",
+  h((req, res) => {
+    const conv = openConversationWith(req.body ?? {}, scopeOf(req.user!), req.user!.id);
+    if (!conv.assigned_to) updateConversation(conv.id, { assigned_to: req.user!.id }, req.user!.id);
+    res.json(getConversation(conv.id));
   }),
 );
 
@@ -308,9 +427,14 @@ appRouter.post(
 appRouter.get("/conversations", (req, res) =>
   res.json(
     listConversations({
+      access: scopeOf(req.user!),
       userId: req.user!.id,
       scope: (req.query.scope as any) ?? "all",
       status: req.query.status as string | undefined,
+      channelId: num(req.query.channelId),
+      channelIds: req.query.channelIds ? String(req.query.channelIds).split(",").map(Number) : undefined,
+      departmentId: req.query.departmentId === "none" ? null : num(req.query.departmentId),
+      tag: req.query.tag ? String(req.query.tag) : undefined,
       q: req.query.q as string | undefined,
       type: num(req.query.type),
       before: num(req.query.before),
@@ -318,37 +442,75 @@ appRouter.get("/conversations", (req, res) =>
     }),
   ),
 );
-appRouter.get("/conversations/:id", (req, res) => {
-  const c = getConversation(req.params.id);
-  if (!c) return res.status(404).json({ error: "Không tìm thấy hội thoại" });
-  res.json(c);
-});
+appRouter.get(
+  "/conversations/:id",
+  h((req, res) => {
+    // Link cũ /?c=<threadId> (trước khi có nhiều kênh): tìm theo threadId trong các kênh được xem.
+    const conv = getConversation(req.params.id)
+      ? visibleConversation(req, req.params.id)
+      : (() => {
+          const scope = scopeOf(req.user!);
+          const row = all<{ id: string; channel_id: number; department_id: number | null }>(
+            "SELECT id, channel_id, department_id FROM conversations WHERE thread_id = ? ORDER BY channel_id",
+            req.params.id,
+          ).find((c) => canSeeConversation(scope, c));
+          if (!row) throw new HttpError(404, "Không tìm thấy hội thoại");
+          return getConversation(row.id)!;
+        })();
+    res.json(conv);
+  }),
+);
 appRouter.patch(
   "/conversations/:id",
   h((req, res) => {
+    const current = visibleConversation(req, req.params.id);
     const patch = { ...(req.body ?? {}) };
-    // Nhân viên thường: nhận hội thoại chưa ai phụ trách, hoặc nhả/chuyển hội thoại của chính mình.
-    // Giành hội thoại của người khác cần quyền admin.
-    if (req.user!.role !== "admin" && patch.assigned_to !== undefined) {
-      const current = getConversation(req.params.id);
-      const ok =
-        current?.assigned_to === req.user!.id || (current?.assigned_to == null && patch.assigned_to === req.user!.id);
-      if (!ok) throw new HttpError(403, "Hội thoại đang do người khác phụ trách");
+    if (req.user!.role !== "admin") {
+      // Nhân viên thường: nhận hội thoại chưa ai phụ trách, hoặc nhả/chuyển hội thoại của chính mình.
+      if (patch.assigned_to !== undefined) {
+        const ok = current.assigned_to === req.user!.id || (current.assigned_to == null && patch.assigned_to === req.user!.id);
+        if (!ok) throw new HttpError(403, "Hội thoại đang do người khác phụ trách");
+      }
+      // Chuyển bộ phận: chỉ người phụ trách hoặc khi chưa ai nhận.
+      if (patch.department_id !== undefined && current.assigned_to && current.assigned_to !== req.user!.id) {
+        throw new HttpError(403, "Chỉ người phụ trách mới chuyển được bộ phận");
+      }
+    }
+    if (patch.tags) {
+      // Chỉ gắn được tag đã tạo trong Cài đặt và thuộc bộ phận của mình (giữ nguyên tag cũ đã có).
+      const allowed = new Set(
+        all<{ name: string }>(`SELECT t.name FROM tags t WHERE ${departmentItemFilter(scopeOf(req.user!), "tag_departments", "tag_id", "t")}`).map(
+          (t) => t.name,
+        ),
+      );
+      const bad = (patch.tags as string[]).filter((t) => !allowed.has(t) && !current.tags.includes(t));
+      if (bad.length) throw new HttpError(400, `Tag không có trong danh sách: ${bad.join(", ")}`);
     }
     res.json(updateConversation(req.params.id, patch, req.user!.id));
   }),
 );
-appRouter.post("/conversations/:id/read", (req, res) => {
-  markRead(req.params.id);
-  res.json({ ok: true });
-});
-appRouter.get("/conversations/:id/messages", (req, res) =>
-  res.json(listMessages(req.params.id, { before: num(req.query.before), limit: num(req.query.limit) })),
+appRouter.post(
+  "/conversations/:id/read",
+  h((req, res) => {
+    visibleConversation(req, req.params.id);
+    markRead(req.params.id);
+    res.json({ ok: true });
+  }),
+);
+appRouter.get(
+  "/conversations/:id/messages",
+  h((req, res) => {
+    visibleConversation(req, req.params.id);
+    res.json(
+      listMessages(req.params.id, { before: num(req.query.before), limit: num(req.query.limit), around: num(req.query.around) }),
+    );
+  }),
 );
 appRouter.post(
   "/conversations/:id/messages",
   upload.array("files", 10),
   h(async (req, res) => {
+    visibleConversation(req, req.params.id);
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
     const messages = await sendToConversation({
       conversationId: req.params.id,
@@ -356,25 +518,126 @@ appRouter.post(
       files,
       agentId: req.user!.id,
       source: "web",
+      quoteMessageId: num(req.body?.quote_message_id),
     });
     res.json(messages);
   }),
 );
-appRouter.get("/conversations/:id/notes", (req, res) =>
-  res.json(
-    all(
-      `SELECT n.*, u.display_name AS author FROM notes n LEFT JOIN users u ON u.id = n.user_id
-       WHERE n.conversation_id = ? ORDER BY n.created_at DESC`,
-      req.params.id,
-    ),
-  ),
+
+// Sticker
+appRouter.get(
+  "/stickers/search",
+  h(async (req, res) => {
+    const q = String(req.query.q ?? "").trim();
+    if (!q) return res.json([]);
+    const scope = scopeOf(req.user!);
+    const channelId = num(req.query.channelId);
+    const session =
+      channelId && canUseChannel(scope, channelId) && zalo.session(channelId).connected ? zalo.session(channelId) : zalo.anyConnected();
+    if (!session) throw new HttpError(503, "Chưa có kênh Zalo nào kết nối");
+    const list = await session.searchStickers(q);
+    for (const st of list) {
+      if (st.url)
+        run(
+          `INSERT INTO sticker_cache(id, cate_id, type, url, text, updated_at) VALUES(?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET url = excluded.url, updated_at = excluded.updated_at`,
+          st.id,
+          st.cateId,
+          st.type,
+          st.url,
+          st.text,
+          Date.now(),
+        );
+    }
+    res.json(list);
+  }),
+);
+appRouter.post(
+  "/conversations/:id/sticker",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    const sticker = { id: Number(req.body?.id), cateId: Number(req.body?.cateId), type: Number(req.body?.type) };
+    if (!sticker.id || !sticker.cateId) throw new HttpError(400, "Sticker không hợp lệ");
+    const message = await connectedSession(conv).sendSticker({
+      threadId: conv.thread_id,
+      isGroup: conv.type === 1,
+      sticker,
+      agentId: req.user!.id,
+      source: "web",
+    });
+    if (!conv.assigned_to) updateConversation(conv.id, { assigned_to: req.user!.id }, req.user!.id);
+    res.json(message);
+  }),
+);
+
+// Thao tác trên tin nhắn: thả cảm xúc, thu hồi, chuyển tiếp (như menu tin nhắn của Zalo PC)
+appRouter.post(
+  "/conversations/:id/messages/:mid/reaction",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    const msg = messageInConversation(conv.id, Number(req.params.mid));
+    const icon = String(req.body?.icon ?? "");
+    await connectedSession(conv).react({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg, icon });
+    res.json(setReaction(msg.id, { uid: `shop:${conv.channel_id}`, name: req.user!.display_name, agentId: req.user!.id }, icon));
+  }),
+);
+appRouter.post(
+  "/conversations/:id/messages/:mid/undo",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    const msg = messageInConversation(conv.id, Number(req.params.mid));
+    if (msg.direction !== "out") throw new HttpError(400, "Chỉ thu hồi được tin của shop");
+    if (msg.undone) throw new HttpError(400, "Tin đã được thu hồi");
+    if (req.user!.role !== "admin" && msg.agent_id !== req.user!.id) {
+      throw new HttpError(403, "Chỉ người gửi hoặc quản trị viên mới thu hồi được tin này");
+    }
+    await connectedSession(conv).undo({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg });
+    logEvent(conv.id, req.user!.id, "message.undo", { message_id: msg.id });
+    res.json({ ok: true });
+  }),
+);
+appRouter.post(
+  "/conversations/:id/messages/:mid/forward",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    const msg = messageInConversation(conv.id, Number(req.params.mid));
+    const text = (msg.text ?? "").trim();
+    if (!text || (msg.msg_type && msg.msg_type !== "webchat")) throw new HttpError(400, "Hiện chỉ chuyển tiếp được tin nhắn chữ");
+    const ids: string[] = Array.isArray(req.body?.conversation_ids) ? req.body.conversation_ids.map(String) : [];
+    if (!ids.length) throw new HttpError(400, "Chọn hội thoại để chuyển tiếp");
+    if (ids.length > 20) throw new HttpError(400, "Mỗi lần chuyển tiếp tối đa 20 hội thoại");
+    const targets = ids.map((id) => visibleConversation(req, id));
+    if (targets.some((t) => t.channel_id !== conv.channel_id)) {
+      throw new HttpError(400, "Chỉ chuyển tiếp được trong cùng một kênh Zalo");
+    }
+    const results = await connectedSession(conv).forward({
+      text,
+      targets: targets.map((t) => ({ threadId: t.thread_id, isGroup: t.type === 1 })),
+      agentId: req.user!.id,
+      source: "web",
+    });
+    res.json(results.map((r) => ({ ...r, conversation_id: targets.find((t) => t.thread_id === r.threadId)?.id })));
+  }),
+);
+appRouter.get(
+  "/conversations/:id/notes",
+  h((req, res) => {
+    visibleConversation(req, req.params.id);
+    res.json(
+      all(
+        `SELECT n.*, u.display_name AS author FROM notes n LEFT JOIN users u ON u.id = n.user_id
+         WHERE n.conversation_id = ? ORDER BY n.created_at DESC`,
+        req.params.id,
+      ),
+    );
+  }),
 );
 appRouter.post(
   "/conversations/:id/notes",
   h((req, res) => {
     const content = String(req.body?.content ?? "").trim();
     if (!content) throw new HttpError(400, "Ghi chú trống");
-    if (!getConversation(req.params.id)) throw new HttpError(404, "Không tìm thấy hội thoại");
+    visibleConversation(req, req.params.id);
     const r = run(
       "INSERT INTO notes(conversation_id, user_id, content, created_at) VALUES(?, ?, ?, ?)",
       req.params.id,
@@ -390,15 +653,19 @@ appRouter.post(
     );
   }),
 );
-appRouter.get("/conversations/:id/reviews", (req, res) =>
-  res.json(
-    all(
-      `SELECT r.*, rv.display_name AS reviewer, a.display_name AS agent FROM reviews r
-       LEFT JOIN users rv ON rv.id = r.reviewer_id LEFT JOIN users a ON a.id = r.agent_id
-       WHERE r.conversation_id = ? ORDER BY r.created_at DESC`,
-      req.params.id,
-    ),
-  ),
+appRouter.get(
+  "/conversations/:id/reviews",
+  h((req, res) => {
+    visibleConversation(req, req.params.id);
+    res.json(
+      all(
+        `SELECT r.*, rv.display_name AS reviewer, a.display_name AS agent FROM reviews r
+         LEFT JOIN users rv ON rv.id = r.reviewer_id LEFT JOIN users a ON a.id = r.agent_id
+         WHERE r.conversation_id = ? ORDER BY r.created_at DESC`,
+        req.params.id,
+      ),
+    );
+  }),
 );
 appRouter.post(
   "/conversations/:id/reviews",
@@ -406,8 +673,7 @@ appRouter.post(
   h((req, res) => {
     const score = Number(req.body?.score);
     if (!(score >= 1 && score <= 5)) throw new HttpError(400, "Điểm từ 1 đến 5");
-    const conv = getConversation(req.params.id);
-    if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
+    const conv = visibleConversation(req, req.params.id);
     const agentId = num(req.body?.agent_id) ?? conv.assigned_to ?? null;
     run(
       "INSERT INTO reviews(conversation_id, reviewer_id, agent_id, score, comment, created_at) VALUES(?, ?, ?, ?, ?, ?)",
@@ -422,41 +688,9 @@ appRouter.post(
   }),
 );
 
-// Mẫu câu trả lời nhanh
-appRouter.get("/templates", (_req, res) => res.json(all("SELECT * FROM templates ORDER BY shortcut")));
-appRouter.post(
-  "/templates",
-  h((req, res) => {
-    const shortcut = String(req.body?.shortcut ?? "").trim().replace(/^\//, "");
-    const content = String(req.body?.content ?? "").trim();
-    if (!shortcut || !content) throw new HttpError(400, "Thiếu phím tắt hoặc nội dung");
-    const r = run(
-      "INSERT INTO templates(shortcut, content, created_by, created_at) VALUES(?, ?, ?, ?)",
-      shortcut,
-      content,
-      req.user!.id,
-      Date.now(),
-    );
-    res.json(get("SELECT * FROM templates WHERE id = ?", Number(r.lastInsertRowid)));
-  }),
-);
-appRouter.delete("/templates/:id", (req, res) => {
-  const t = get<{ created_by: number }>("SELECT created_by FROM templates WHERE id = ?", Number(req.params.id));
-  if (t && (req.user!.role === "admin" || t.created_by === req.user!.id)) {
-    run("DELETE FROM templates WHERE id = ?", Number(req.params.id));
-  }
-  res.json({ ok: true });
-});
-
-// Báo cáo & xuất dữ liệu (nhân viên chỉ xem/xuất được dữ liệu của chính mình)
-function scopeForAgent(req: Request) {
-  if (req.user!.role !== "admin") req.query.agentId = String(req.user!.id);
-}
+// Dữ liệu: báo cáo & xuất hội thoại — chỉ quản lý
 appRouter.get("/stats", requireAdmin, (req, res) => res.json(agentStats(exportFilter(req.query))));
-appRouter.get("/export", (req, res) => {
-  scopeForAgent(req);
-  sendExport(req, res);
-});
+appRouter.get("/export", requireAdmin, (req, res) => sendExport(req, res));
 
 // Tích hợp: API key + webhook (chỉ admin)
 appRouter.get("/api-keys", requireAdmin, (_req, res) =>
@@ -515,22 +749,49 @@ appRouter.post("/webhooks/test", requireAdmin, (_req, res) => {
   res.json({ ok: true });
 });
 
-// ───────────────────────── API công khai cho web app khác (X-API-Key) ─────────────────────────
+// ───────────────────────── API công khai cho web app khác (X-API-Key, thấy toàn bộ) ─────────────────────────
 export const publicRouter = Router();
 publicRouter.use(requireApiKey);
+const FULL: Scope = { all: true };
 
 publicRouter.get("/status", (_req, res) => {
-  const s = zalo.getStatus();
-  res.json({ state: s.state, account: s.account ?? null });
+  res.json({
+    channels: zalo.statuses().map((s) => ({ channel_id: s.channelId, name: s.channelName, state: s.state, account: s.account ?? null })),
+  });
 });
+publicRouter.get("/channels", (_req, res) => res.json(all("SELECT id, name, zalo_uid, zalo_name, default_department_id FROM channels WHERE active = 1")));
+publicRouter.get("/departments", (_req, res) => res.json(all("SELECT id, name, color FROM departments ORDER BY name")));
 publicRouter.get("/users", (_req, res) =>
   res.json(all("SELECT id, username, display_name, role FROM users WHERE active = 1 ORDER BY display_name")),
+);
+publicRouter.get(
+  "/search/contacts",
+  h(async (req, res) => res.json(await searchContacts(String(req.query.q ?? ""), { access: FULL, channelId: num(req.query.channelId) }))),
+);
+publicRouter.get("/search/messages", (req, res) =>
+  res.json(
+    searchMessages(String(req.query.q ?? ""), {
+      access: FULL,
+      before: num(req.query.before),
+      limit: num(req.query.limit),
+      channelId: num(req.query.channelId),
+      conversationId: req.query.conversationId ? String(req.query.conversationId) : undefined,
+    }),
+  ),
+);
+publicRouter.post(
+  "/zalo/people/open",
+  h((req, res) => res.json(openConversationWith(req.body ?? {}, FULL, null))),
 );
 publicRouter.get("/conversations", (req, res) =>
   res.json(
     listConversations({
+      access: FULL,
       scope: req.query.unassigned === "1" ? "unassigned" : "all",
       status: req.query.status as string | undefined,
+      channelId: num(req.query.channelId),
+      departmentId: num(req.query.departmentId),
+      tag: req.query.tag ? String(req.query.tag) : undefined,
       q: req.query.q as string | undefined,
       type: num(req.query.type),
       before: num(req.query.before),

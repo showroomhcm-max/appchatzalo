@@ -17,7 +17,7 @@ app.disable("x-powered-by");
 app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/healthz", (_req, res) => res.json({ ok: true, zalo: zalo.getStatus().state }));
+app.get("/healthz", (_req, res) => res.json({ ok: true, zalo: zalo.summary() }));
 app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false }));
 app.use("/api/v1", publicRouter);
 app.use("/api", appRouter);
@@ -35,5 +35,5 @@ setupWebhooks();
 
 server.listen(config.port, () => {
   console.log(`[server] Zalo CSKH chạy tại http://localhost:${config.port}`);
-  void zalo.init();
+  void zalo.initAll();
 });

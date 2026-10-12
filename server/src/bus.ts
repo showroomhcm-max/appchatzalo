@@ -9,6 +9,8 @@ export type BusEvents = {
   "message.updated": [message: any, conversation: any];
   "conversation.updated": [conversation: any, change?: { type: string; by?: number | null; data?: unknown }];
   "zalo.status": [status: any];
+  /** Cài đặt (tag, bộ phận…) thay đổi → giao diện tải lại danh sách. */
+  "settings.changed": [what: string];
 };
 
 export const bus = new EventEmitter<BusEvents>();

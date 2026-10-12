@@ -11,7 +11,7 @@ function copy(text: string) {
   void navigator.clipboard?.writeText(text)
 }
 
-export default function Integrations() {
+export default function Integrations({ embedded = false }: { embedded?: boolean }) {
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [hooks, setHooks] = useState<Hook[]>([])
   const [events, setEvents] = useState<string[]>([])
@@ -66,10 +66,10 @@ export default function Integrations() {
   const origin = window.location.origin
 
   return (
-    <div className="page">
+    <div className={embedded ? 'embedded' : 'page'}>
       <div className="page-head">
         <div>
-          <h1>Tích hợp với web app khác</h1>
+          {!embedded && <h1>Tích hợp với web app khác</h1>}
           <p className="muted">
             Cho các hệ thống bạn đang xây dựng (CRM, đơn hàng, bảo hành…) đọc hội thoại, gửi tin và nhận sự kiện realtime.
           </p>
@@ -199,6 +199,9 @@ export default function Integrations() {
             {[
               ['GET', '/status', 'Trạng thái kết nối Zalo'],
               ['GET', '/users', 'Danh sách nhân viên'],
+              ['GET', '/search/contacts?q=0909123456', 'Tìm liên hệ: hội thoại đã có, bạn bè Zalo, tra số điện thoại'],
+              ['GET', '/search/messages?q=tra gop&before=', 'Tìm trong nội dung tin nhắn (không phân biệt dấu)'],
+              ['POST', '/zalo/people/open', 'Mở hội thoại với người dùng: { uid, name?, avatar? } (sau đó gửi tin như bình thường)'],
               ['GET', '/conversations?status=open&q=&limit=50', 'Danh sách hội thoại (mới nhất trước)'],
               ['GET', '/conversations/by-ref/{maKH}', 'Tìm hội thoại theo mã khách hàng đã gắn'],
               ['GET', '/conversations/{id}', 'Chi tiết hội thoại'],

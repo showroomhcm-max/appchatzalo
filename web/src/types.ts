@@ -6,6 +6,11 @@ export type User = {
   display_name: string
   role: Role
   auth_source: 'local' | 'odoo'
+  department_ids?: number[]
+  /** Kênh được vào thẳng (thấy toàn bộ hội thoại của kênh) */
+  channel_ids?: number[]
+  /** Kênh đang tick chọn để chat (null = mọi kênh được quyền) */
+  working_channel_ids?: number[] | null
   active?: number
   last_login_at?: number | null
   created_at?: number
@@ -15,6 +20,13 @@ export type ConvStatus = 'open' | 'pending' | 'closed'
 
 export type Conversation = {
   id: string
+  channel_id: number
+  channel_name: string | null
+  thread_id: string
+  department_id: number | null
+  department_name: string | null
+  department_color: string | null
+  phone: string | null
   type: number
   name: string | null
   avatar: string | null
@@ -45,9 +57,13 @@ export type Message = {
   raw: Record<string, any> | null
   ts: number
   undone: number
+  quote: { msg: string; fromD: string; globalMsgId: string; ownerId: string } | null
+  reactions?: { icon: string; count: number; names: string[]; mine: boolean }[]
 }
 
 export type ZaloStatus = {
+  channelId: number
+  channelName: string
   state: 'disconnected' | 'qr' | 'scanned' | 'connecting' | 'connected' | 'error'
   qrImage?: string
   scannedBy?: { name: string; avatar: string }
@@ -70,4 +86,25 @@ export type Review = {
   agent: string | null
   created_at: number
 }
-export type Template = { id: number; shortcut: string; content: string; created_by: number | null }
+export type Template = { id: number; shortcut: string; content: string; created_by: number | null; department_ids: number[] }
+
+export type Channel = {
+  id: number
+  name: string
+  zalo_uid: string | null
+  zalo_name: string | null
+  avatar: string | null
+  default_department_id: number | null
+  active: number
+  department_ids: number[]
+  /** Nhân viên được vào thẳng kênh (chỉ quản trị viên thấy) */
+  user_ids?: number[]
+  conversations?: number
+  status: ZaloStatus | null
+}
+
+export type Sticker = { id: number; cateId: number; type: number; url: string | null; text: string }
+
+export type Department = { id: number; name: string; color: string; channel_ids: number[]; user_ids: number[] }
+
+export type Tag = { id: number; name: string; color: string; department_ids: number[] }

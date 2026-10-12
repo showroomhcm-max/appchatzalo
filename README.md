@@ -10,13 +10,27 @@ Web app chăm sóc khách hàng: kết nối **một tài khoản Zalo cá nhân
 - Các login trong `ODOO_ADMINS` (file `.env`) tự động là quản trị viên.
 - Tài khoản nội bộ `admin` vẫn giữ để dự phòng khi Odoo gặp sự cố.
 
+**Menu**
+- Nhân viên: **Hội thoại**, **Kênh Chat** (tick chọn kênh đang trực, một hay nhiều kênh).
+- Quản lý: thêm **Dữ liệu** (báo cáo, chấm điểm, xuất hội thoại để training) và **Cài đặt** (Nhân viên, Bộ phận, Tag, Tin nhắn mẫu, Tích hợp). Trang Kênh Chat của quản lý có thêm kết nối QR và bảng phân công nhân viên × kênh.
+
+**Nhiều kênh Zalo, phân quyền theo bộ phận**
+- Kết nối nhiều tài khoản Zalo, mỗi tài khoản là một **kênh** (trang Kênh Zalo, mỗi kênh quét QR riêng).
+- **Bộ phận**: quản trị viên chọn bộ phận được xem kênh nào, nhân viên thuộc bộ phận nào (một người có thể thuộc nhiều bộ phận).
+- **Vào thẳng kênh**: cấp riêng cho từng nhân viên quyền thấy toàn bộ hội thoại của một kênh, không phụ thuộc bộ phận.
+- Tin mới vào bộ phận mặc định của kênh. Người phụ trách chuyển được hội thoại sang bộ phận khác.
+- Nhân viên chỉ thấy hội thoại, tag và tin nhắn mẫu của bộ phận mình. Quản trị viên thấy tất cả.
+- **Tag** có màu, tạo sẵn trong cài đặt và gắn theo bộ phận. Lọc danh sách hội thoại theo kênh, bộ phận, tag.
+- Tag và tin nhắn mẫu **xuất/nhập bằng file Excel** (.xlsx).
+
 **Chat nhiều người**
 - Đăng nhập Zalo bằng mã QR ngay trên web. Phiên được lưu lại, khởi động lại máy chủ không phải quét lại.
 - Hộp thư realtime: tin mới hiện ngay cho tất cả nhân viên.
 - Chống trả lời trùng: thấy ai **đang xem** và ai **đang soạn tin** ở từng hội thoại.
 - Nhận / chuyển / bỏ nhận hội thoại. Hội thoại chưa ai nhận sẽ tự giao cho người trả lời đầu tiên.
 - Trạng thái (Đang xử lý / Chờ phản hồi / Đã xong), nhãn, mã khách hàng, ghi chú nội bộ.
-- Gửi ảnh và file (kéo, dán hoặc chọn file). Mẫu câu trả lời nhanh: gõ `/` trong ô chat.
+- Gửi **sticker** (tìm theo từ khóa, có mục dùng gần đây), ảnh và file (kéo, dán hoặc chọn file).
+- Rê chuột vào tin nhắn để thao tác như Zalo PC: **trả lời trích dẫn, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú**. Cảm xúc khách thả cũng hiện trên tin. Mẫu câu trả lời nhanh: gõ `/` trong ô chat.
 
 **Training và báo cáo**
 - Thống kê theo nhân viên: số hội thoại, số tin gửi, thời gian phản hồi trung bình và trung vị, tỉ lệ trả lời trong 5 phút, điểm đánh giá.

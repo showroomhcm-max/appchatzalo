@@ -4,7 +4,7 @@
  */
 import bcrypt from "bcryptjs";
 import { ensureAdmin, get, run } from "./db.js";
-import { saveMessage } from "./store.js";
+import { conversationKey, saveMessage } from "./store.js";
 
 ensureAdmin();
 
@@ -21,14 +21,40 @@ function user(username: string, name: string) {
   return Number(r.lastInsertRowid);
 }
 
+function upsert(table: string, keyCol: string, key: string, insertSql: string, ...params: any[]) {
+  const row = get<{ id: number }>(`SELECT id FROM ${table} WHERE ${keyCol} = ?`, key);
+  return row ? row.id : Number(run(insertSql, ...params).lastInsertRowid);
+}
+
+const ban = upsert("departments", "name", "Bán hàng", "INSERT INTO departments(name, color, created_at) VALUES(?, ?, ?)", "Bán hàng", "#0a804a", Date.now());
+const bh = upsert("departments", "name", "Bảo hành", "INSERT INTO departments(name, color, created_at) VALUES(?, ?, ?)", "Bảo hành", "#2563c9", Date.now());
+const ch1 = upsert("channels", "name", "Zalo Bán hàng (demo)", "INSERT INTO channels(name, default_department_id, created_at) VALUES(?, ?, ?)", "Zalo Bán hàng (demo)", ban, Date.now());
+const ch2 = upsert("channels", "name", "Zalo Kỹ thuật (demo)", "INSERT INTO channels(name, default_department_id, created_at) VALUES(?, ?, ?)", "Zalo Kỹ thuật (demo)", bh, Date.now());
+run("INSERT OR IGNORE INTO department_channels(department_id, channel_id) VALUES(?, ?)", ban, ch1);
+run("INSERT OR IGNORE INTO department_channels(department_id, channel_id) VALUES(?, ?)", bh, ch1);
+run("INSERT OR IGNORE INTO department_channels(department_id, channel_id) VALUES(?, ?)", bh, ch2);
+
 const lan = user("lan", "Ngọc Lan");
 const minh = user("minh", "Quang Minh");
+run("INSERT OR IGNORE INTO user_departments(user_id, department_id) VALUES(?, ?)", lan, ban);
+run("INSERT OR IGNORE INTO user_departments(user_id, department_id) VALUES(?, ?)", minh, bh);
+
+for (const [name, color, dept] of [
+  ["laptop", "#0a804a", ban],
+  ["trả góp", "#97c354", ban],
+  ["bảo hành", "#2563c9", bh],
+  ["VIP", "#e0900a", null],
+] as [string, string, number | null][]) {
+  const id = upsert("tags", "name", name, "INSERT INTO tags(name, color, created_at) VALUES(?, ?, ?)", name, color, Date.now());
+  if (dept) run("INSERT OR IGNORE INTO tag_departments(tag_id, department_id) VALUES(?, ?)", id, dept);
+}
 
 type Line = [who: "c" | "lan" | "minh" | "phone", text: string, minutesAfter: number];
 
-const scripts: { id: string; name: string; lines: Line[]; status?: string; assign?: number; tags?: string[] }[] = [
+const scripts: { channel: number; thread: string; name: string; lines: Line[]; status?: string; assign?: number; tags?: string[] }[] = [
   {
-    id: "demo-1001",
+    channel: ch1,
+    thread: "1001",
     name: "Trần Thu Hà",
     assign: lan,
     tags: ["laptop", "trả góp"],
@@ -41,7 +67,8 @@ const scripts: { id: string; name: string; lines: Line[]; status?: string; assig
     ],
   },
   {
-    id: "demo-1002",
+    channel: ch2,
+    thread: "1002",
     name: "Lê Hoàng Phúc",
     assign: minh,
     status: "closed",
@@ -55,7 +82,8 @@ const scripts: { id: string; name: string; lines: Line[]; status?: string; assig
     ],
   },
   {
-    id: "demo-1003",
+    channel: ch1,
+    thread: "1003",
     name: "Nguyễn Văn Tài",
     lines: [
       ["c", "Bàn phím cơ Akko còn màu hồng không?", 0],
@@ -67,21 +95,21 @@ const scripts: { id: string; name: string; lines: Line[]; status?: string; assig
 
 const now = Date.now();
 scripts.forEach((s, idx) => {
-  let t = now - (idx + 1) * 3 * 3600_000;
+  const t = now - (idx + 1) * 3 * 3600_000;
   s.lines.forEach(([who, text, after], i) => {
-    const ts = t + after * 60_000;
     saveMessage({
-      conversationId: s.id,
+      channelId: s.channel,
+      threadId: s.thread,
       conversationType: 0,
-      zaloMsgId: `${s.id}-${i}`,
+      zaloMsgId: `${s.thread}-${i}`,
       direction: who === "c" ? "in" : "out",
-      senderUid: who === "c" ? s.id : "shop",
+      senderUid: who === "c" ? s.thread : "shop",
       senderName: who === "c" ? s.name : "MemoryZone",
       agentId: who === "lan" ? lan : who === "minh" ? minh : null,
       source: who === "c" ? "customer" : who === "phone" ? "phone" : "web",
       msgType: "webchat",
       content: text,
-      ts,
+      ts: t + after * 60_000,
     });
   });
   run(
@@ -90,17 +118,17 @@ scripts.forEach((s, idx) => {
     s.assign ?? null,
     s.status ?? "open",
     JSON.stringify(s.tags ?? []),
-    s.id,
+    conversationKey(s.channel, s.thread),
   );
 });
 
-run(
-  "INSERT INTO templates(shortcut, content, created_at) SELECT 'chao', 'Dạ MemoryZone xin chào bạn, bạn cần tư vấn sản phẩm nào ạ?', ? WHERE NOT EXISTS (SELECT 1 FROM templates WHERE shortcut = 'chao')",
-  Date.now(),
-);
-run(
-  "INSERT INTO templates(shortcut, content, created_at) SELECT 'tragop', 'Dạ bên mình hỗ trợ trả góp 0% qua thẻ tín dụng 6–12 tháng, không phí chuyển đổi ạ.', ? WHERE NOT EXISTS (SELECT 1 FROM templates WHERE shortcut = 'tragop')",
-  Date.now(),
-);
+for (const [shortcut, content, dept] of [
+  ["chao", "Dạ MemoryZone xin chào bạn, bạn cần tư vấn sản phẩm nào ạ?", null],
+  ["tragop", "Dạ bên mình hỗ trợ trả góp 0% qua thẻ tín dụng 6–12 tháng, không phí chuyển đổi ạ.", ban],
+  ["baohanh", "Dạ bạn cho mình xin số điện thoại đặt hàng để kiểm tra thời hạn bảo hành nhé.", bh],
+] as [string, string, number | null][]) {
+  const id = upsert("templates", "shortcut", shortcut, "INSERT INTO templates(shortcut, content, created_at) VALUES(?, ?, ?)", shortcut, content, Date.now());
+  if (dept) run("INSERT OR IGNORE INTO template_departments(template_id, department_id) VALUES(?, ?)", id, dept);
+}
 
-console.log("Đã tạo dữ liệu mẫu: 3 hội thoại, nhân viên lan/minh (mật khẩu demo1234).");
+console.log("Đã tạo dữ liệu mẫu: 2 kênh, 2 bộ phận, 3 hội thoại, nhân viên lan (Bán hàng) / minh (Bảo hành), mật khẩu demo1234.");

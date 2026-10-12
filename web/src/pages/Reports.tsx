@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Download, FileJson, FileSpreadsheet, FileText, MessageCircleReply, Trash2 } from 'lucide-react'
+import { Download, FileJson, FileSpreadsheet, FileText, MessageCircleReply } from 'lucide-react'
 import { api, exportUrl } from '../api'
 import { useApp } from '../store'
-import type { Template } from '../types'
 import { Empty } from '../components'
 import { duration, isoDate } from '../util'
 
@@ -21,7 +20,9 @@ type AgentStat = {
 type Stats = { customer_messages: number; conversations_active: number; waiting_reply: number; agents: AgentStat[] }
 
 export default function Reports() {
-  const { user, users } = useApp()
+  const { user, users, channels, departments } = useApp()
+  const [channelId, setChannelId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
   const isAdmin = user.role === 'admin'
   const today = new Date()
   const weekAgo = new Date(today.getTime() - 6 * 86400000)
@@ -34,11 +35,20 @@ export default function Reports() {
   useEffect(() => {
     if (!isAdmin) return
     setStats(null)
-    api<Stats>(`/stats?from=${from}&to=${to}`).then(setStats)
-  }, [from, to, isAdmin])
+    const extra = `${channelId ? `&channelId=${channelId}` : ''}${departmentId ? `&departmentId=${departmentId}` : ''}`
+    api<Stats>(`/stats?from=${from}&to=${to}${extra}`).then(setStats)
+  }, [from, to, isAdmin, channelId, departmentId])
 
   const link = (format: string) =>
-    exportUrl({ format, from, to, agentId: agentId || undefined, textOnly: textOnly ? '1' : undefined })
+    exportUrl({
+      format,
+      from,
+      to,
+      agentId: agentId || undefined,
+      channelId: channelId || undefined,
+      departmentId: departmentId || undefined,
+      textOnly: textOnly ? '1' : undefined,
+    })
 
   const presets: [string, number][] = [
     ['Hôm nay', 0],
@@ -51,7 +61,7 @@ export default function Reports() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Báo cáo & Training</h1>
+          <h1>Dữ liệu</h1>
           <p className="muted">
             Theo dõi hiệu suất từng nhân viên và xuất dữ liệu hội thoại để đào tạo kỹ năng tư vấn.
           </p>
@@ -72,6 +82,26 @@ export default function Reports() {
           <input type="date" className="input sm" value={from} max={to} onChange={(e) => setFrom(e.target.value)} aria-label="Từ ngày" />
           <span className="muted">→</span>
           <input type="date" className="input sm" value={to} min={from} onChange={(e) => setTo(e.target.value)} aria-label="Đến ngày" />
+          {channels.length > 1 && (
+            <select className="select sm" value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Kênh">
+              <option value="">Mọi kênh</option>
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          {isAdmin && departments.length > 0 && (
+            <select className="select sm" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} aria-label="Bộ phận">
+              <option value="">Mọi bộ phận</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -193,7 +223,6 @@ export default function Reports() {
         </div>
       </div>
 
-      <Templates />
     </div>
   )
 }
@@ -228,72 +257,5 @@ function ExportCard({ href, icon, title, desc }: { href: string; icon: React.Rea
       </span>
       <Download size={18} className="export-dl" />
     </a>
-  )
-}
-
-function Templates() {
-  const { user } = useApp()
-  const [list, setList] = useState<Template[]>([])
-  const [shortcut, setShortcut] = useState('')
-  const [content, setContent] = useState('')
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    api<Template[]>('/templates').then(setList)
-  }, [])
-
-  async function add() {
-    setError('')
-    try {
-      const t = await api<Template>('/templates', { body: { shortcut, content } })
-      setList([...list, t].sort((a, b) => a.shortcut.localeCompare(b.shortcut)))
-      setShortcut('')
-      setContent('')
-    } catch (e: any) {
-      setError(e.message)
-    }
-  }
-
-  return (
-    <div className="card">
-      <h3>Mẫu câu trả lời chuẩn</h3>
-      <p className="muted small">
-        Gõ <code>/phím-tắt</code> trong ô chat để chèn nhanh. Giúp nhân viên mới trả lời đúng giọng điệu và thông tin chuẩn.
-      </p>
-      <div className="template-form">
-        <input className="input" placeholder="Phím tắt, VD: chao" value={shortcut} onChange={(e) => setShortcut(e.target.value)} />
-        <textarea
-          className="input"
-          rows={2}
-          placeholder="Nội dung, VD: Dạ MemoryZone xin chào bạn, bạn cần tư vấn sản phẩm nào ạ?"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-        />
-        <button className="btn primary" onClick={add} disabled={!shortcut.trim() || !content.trim()}>
-          Thêm mẫu
-        </button>
-      </div>
-      {error && <div className="form-error">{error}</div>}
-      <ul className="template-list">
-        {list.map((t) => (
-          <li key={t.id}>
-            <code>/{t.shortcut}</code>
-            <span>{t.content}</span>
-            {(user.role === 'admin' || t.created_by === user.id) && (
-              <button
-                className="icon-btn sm"
-                aria-label={`Xóa mẫu ${t.shortcut}`}
-                onClick={async () => {
-                  await api(`/templates/${t.id}`, { method: 'DELETE' })
-                  setList(list.filter((x) => x.id !== t.id))
-                }}
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }

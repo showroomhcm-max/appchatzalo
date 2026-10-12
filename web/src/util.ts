@@ -54,3 +54,14 @@ export const STATUS_LABEL: Record<string, string> = {
   pending: 'Chờ phản hồi',
   closed: 'Đã xong',
 }
+
+/** Bỏ dấu + chữ thường, giữ nguyên độ dài chuỗi (giống hàm fold ở máy chủ) để tìm và tô đậm không phân biệt dấu. */
+export function fold(s: string | null | undefined) {
+  if (!s) return ''
+  let out = ''
+  for (const ch of s.normalize('NFC')) {
+    const base = ch.normalize('NFD').replace(/\p{Mn}/gu, '')
+    out += (base === 'đ' || base === 'Đ' ? 'd' : base.length === 1 ? base : ch).toLowerCase()
+  }
+  return out
+}

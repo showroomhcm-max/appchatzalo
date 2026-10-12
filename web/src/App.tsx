@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { BarChart3, LogOut, MessagesSquare, PlugZap, QrCode, Users as UsersIcon, KeyRound } from 'lucide-react'
+import { Database, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
 import Inbox from './pages/Inbox'
 import Reports from './pages/Reports'
-import UsersPage from './pages/Users'
-import ZaloConnect from './pages/ZaloConnect'
-import Integrations from './pages/Integrations'
+import type { SettingsTab } from './pages/Settings'
+import Channels from './pages/Channels'
+import SettingsPage from './pages/Settings'
 import { Avatar, Modal } from './components'
 
 export default function App() {
@@ -125,22 +125,37 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
   )
 }
 
-type Page = 'inbox' | 'reports' | 'users' | 'zalo' | 'integrations'
+type Page = 'inbox' | 'channels' | 'data' | 'settings'
 
-function parseHash(): { page: Page; convId: string | null } {
-  const [, page, id] = window.location.hash.split('/')
-  const valid: Page[] = ['inbox', 'reports', 'users', 'zalo', 'integrations']
+type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab }
+
+function parseHash(): Route {
+  const [, rawPage, id, msg] = window.location.hash.split('/')
+  // Link cũ trước khi gộp trang
+  const legacy: Record<string, Partial<Route>> = {
+    reports: { page: 'data' },
+    users: { page: 'settings', tab: 'users' },
+    integrations: { page: 'settings', tab: 'integrations' },
+    zalo: { page: 'channels' },
+  }
+  if (legacy[rawPage]) return { page: 'inbox', convId: null, msgId: null, ...legacy[rawPage] }
+  const page = rawPage
+  const valid: Page[] = ['inbox', 'channels', 'data', 'settings']
   // Hỗ trợ link từ web app khác: /?c=<threadId>
   const c = new URLSearchParams(window.location.search).get('c')
-  if (c) return { page: 'inbox', convId: c }
+  if (c) return { page: 'inbox', convId: c, msgId: null }
   return {
+    tab: page === 'settings' && id ? (id as SettingsTab) : undefined,
     page: valid.includes(page as Page) ? (page as Page) : 'inbox',
     convId: page === 'inbox' && id ? decodeURIComponent(id) : null,
+    // #/inbox/<hội thoại>/<id tin nhắn>: mở hội thoại và nhảy tới tin đó (từ kết quả tìm kiếm)
+    msgId: page === 'inbox' && msg && /^\d+$/.test(msg) ? Number(msg) : null,
   }
 }
 
 function Shell() {
-  const { user, zalo, logout, socketConnected } = useApp()
+  const { user, zaloStatuses: allStatuses, workingChannelIds, logout, socketConnected } = useApp()
+  const zaloStatuses = workingChannelIds ? allStatuses.filter((s) => workingChannelIds.includes(s.channelId)) : allStatuses
   const [route, setRoute] = useState(parseHash)
   const [pwOpen, setPwOpen] = useState(false)
   const isAdmin = user.role === 'admin'
@@ -158,13 +173,13 @@ function Shell() {
 
   const nav: { id: Page; label: string; icon: React.ReactNode; admin?: boolean }[] = [
     { id: 'inbox', label: 'Hội thoại', icon: <MessagesSquare size={20} /> },
-    { id: 'reports', label: 'Báo cáo & Training', icon: <BarChart3 size={20} /> },
-    { id: 'users', label: 'Nhân viên', icon: <UsersIcon size={20} />, admin: true },
-    { id: 'zalo', label: 'Kết nối Zalo', icon: <QrCode size={20} />, admin: true },
-    { id: 'integrations', label: 'Tích hợp', icon: <PlugZap size={20} />, admin: true },
+    { id: 'channels', label: 'Kênh Chat', icon: <Radio size={20} /> },
+    { id: 'data', label: 'Dữ liệu', icon: <Database size={20} />, admin: true },
+    { id: 'settings', label: 'Cài đặt', icon: <SettingsIcon size={20} />, admin: true },
   ]
 
-  const zaloOk = zalo.state === 'connected'
+  const offline = zaloStatuses.filter((s) => s.state !== 'connected')
+  const zaloOk = zaloStatuses.length > 0 && offline.length === 0
 
   return (
     <div className="shell">
@@ -190,9 +205,15 @@ function Shell() {
         </nav>
         <div className="sidenav-foot">
           <a
-            href={isAdmin ? '#/zalo' : undefined}
+            href="#/channels"
             className={`zalo-dot ${zaloOk ? 'ok' : 'bad'}`}
-            title={zaloOk ? `Zalo đã kết nối: ${zalo.account?.name}` : 'Zalo chưa kết nối'}
+            title={
+              zaloOk
+                ? `Đã kết nối ${zaloStatuses.length} kênh Zalo`
+                : offline.length
+                  ? `Chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}`
+                  : 'Chưa có kênh Zalo nào'
+            }
             aria-label="Trạng thái Zalo"
           />
           {user.auth_source === 'local' && (
@@ -209,20 +230,26 @@ function Shell() {
         </div>
       </aside>
       <main className="main">
-        {!zaloOk && route.page !== 'zalo' && (
+        {route.page !== 'channels' && (offline.length > 0 || (isAdmin && zaloStatuses.length === 0)) && (
           <div className="banner warn">
-            {zalo.state === 'connecting'
-              ? 'Đang kết nối Zalo…'
-              : zalo.error ?? 'Zalo chưa được kết nối — chưa nhận/gửi được tin nhắn.'}
-            {isAdmin && zalo.state !== 'connecting' && <a href="#/zalo">Kết nối ngay</a>}
+            {zaloStatuses.length === 0
+              ? 'Chưa có kênh Zalo nào — chưa nhận/gửi được tin nhắn.'
+              : offline.every((s) => s.state === 'connecting')
+                ? `Đang kết nối Zalo: ${offline.map((s) => s.channelName).join(', ')}…`
+                : `Kênh chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}. Tin nhắn của kênh này chưa nhận/gửi được.`}
+            <a href="#/channels">Mở trang Kênh Chat</a>
           </div>
         )}
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}
-        {route.page === 'inbox' && <Inbox convId={route.convId} />}
-        {route.page === 'reports' && <Reports />}
-        {route.page === 'users' && isAdmin && <UsersPage />}
-        {route.page === 'zalo' && isAdmin && <ZaloConnect />}
-        {route.page === 'integrations' && isAdmin && <Integrations />}
+        {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} />}
+        {route.page === 'channels' && <Channels />}
+        {route.page === 'data' && isAdmin && <Reports />}
+        {route.page === 'settings' && isAdmin && <SettingsPage tab={route.tab} />}
+        {!isAdmin && (route.page === 'data' || route.page === 'settings') && (
+          <div className="page">
+            <div className="card center pad">Trang này chỉ dành cho quản lý.</div>
+          </div>
+        )}
       </main>
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
     </div>

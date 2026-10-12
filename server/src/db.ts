@@ -4,9 +4,54 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { fold } from "./text.js";
 
 export const db = new DatabaseSync(config.dbFile);
-db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
+db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+// fold(): so khớp không dấu trong SQL (tìm kiếm tin nhắn, tên khách)
+db.function("fold", { deterministic: true }, (v) => (v === null || v === undefined ? null : fold(String(v))));
+
+// Hội thoại thuộc 1 kênh (1 tài khoản Zalo) + 1 bộ phận. id = "<kênh>_<threadId Zalo>".
+const CONVERSATIONS_SQL = (table: string) => `
+CREATE TABLE IF NOT EXISTS ${table} (
+  id TEXT PRIMARY KEY,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  thread_id TEXT NOT NULL,               -- threadId của Zalo (uid khách hoặc id nhóm)
+  type INTEGER NOT NULL DEFAULT 0,       -- 0 = cá nhân, 1 = nhóm
+  department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+  name TEXT,
+  avatar TEXT,
+  phone TEXT,
+  assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','pending','closed')),
+  tags TEXT NOT NULL DEFAULT '[]',
+  external_ref TEXT,                     -- mã khách hàng bên hệ thống khác (CRM...)
+  unread_count INTEGER NOT NULL DEFAULT 0,
+  last_message_at INTEGER,
+  last_message_preview TEXT,
+  last_direction TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE (channel_id, thread_id)
+)`;
+
+const MESSAGES_SQL = (table: string) => `
+CREATE TABLE IF NOT EXISTS ${table} (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  zalo_msg_id TEXT,
+  cli_msg_id TEXT,
+  direction TEXT NOT NULL CHECK (direction IN ('in','out')),
+  sender_uid TEXT,
+  sender_name TEXT,
+  agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'phone', -- web | api | phone | history | customer
+  msg_type TEXT,
+  text TEXT,
+  raw TEXT,
+  ts INTEGER NOT NULL,
+  undone INTEGER NOT NULL DEFAULT 0,
+  quote TEXT                              -- tin được trả lời (trích dẫn): {msg, fromD, globalMsgId, ownerId}
+)`;
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -24,41 +69,83 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS conversations (
-  id TEXT PRIMARY KEY,                 -- threadId của Zalo
-  type INTEGER NOT NULL DEFAULT 0,     -- 0 = cá nhân, 1 = nhóm
-  name TEXT,
-  avatar TEXT,
-  assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','pending','closed')),
-  tags TEXT NOT NULL DEFAULT '[]',
-  external_ref TEXT,                   -- mã khách hàng bên hệ thống khác (CRM...)
-  unread_count INTEGER NOT NULL DEFAULT 0,
-  last_message_at INTEGER,
-  last_message_preview TEXT,
-  last_direction TEXT,
+CREATE TABLE IF NOT EXISTS departments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#0a804a',
   created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_conv_last ON conversations(last_message_at DESC);
 
-CREATE TABLE IF NOT EXISTS messages (
+-- Kênh chat = 1 tài khoản Zalo đã kết nối
+CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  zalo_msg_id TEXT UNIQUE,
-  cli_msg_id TEXT,
-  direction TEXT NOT NULL CHECK (direction IN ('in','out')),
-  sender_uid TEXT,
-  sender_name TEXT,
-  agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  source TEXT NOT NULL DEFAULT 'phone', -- web | api | phone | history | customer
-  msg_type TEXT,
-  text TEXT,
-  raw TEXT,
-  ts INTEGER NOT NULL,
-  undone INTEGER NOT NULL DEFAULT 0
+  name TEXT NOT NULL,
+  zalo_uid TEXT,
+  zalo_name TEXT,
+  avatar TEXT,
+  credentials TEXT,                       -- cookie đăng nhập Zalo (bí mật)
+  default_department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_msg_conv_ts ON messages(conversation_id, ts);
-CREATE INDEX IF NOT EXISTS idx_msg_agent_ts ON messages(agent_id, ts);
+
+-- Bộ phận được xem kênh nào
+CREATE TABLE IF NOT EXISTS department_channels (
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  PRIMARY KEY (department_id, channel_id)
+);
+
+-- Nhân viên được vào thẳng kênh nào (thấy toàn bộ hội thoại của kênh, không phụ thuộc bộ phận)
+CREATE TABLE IF NOT EXISTS user_channels (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, channel_id)
+);
+
+-- Nhân viên thuộc bộ phận nào (có thể nhiều)
+CREATE TABLE IF NOT EXISTS user_departments (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, department_id)
+);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#97c354',
+  created_at INTEGER NOT NULL
+);
+-- Tag dùng cho bộ phận nào (không gắn bộ phận nào = dùng chung)
+CREATE TABLE IF NOT EXISTS tag_departments (
+  tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  PRIMARY KEY (tag_id, department_id)
+);
+
+${CONVERSATIONS_SQL("conversations")};
+${MESSAGES_SQL("messages")};
+
+-- Cảm xúc thả vào tin nhắn (của khách hoặc của shop)
+CREATE TABLE IF NOT EXISTS message_reactions (
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  reactor_uid TEXT NOT NULL,
+  reactor_name TEXT,
+  agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  icon TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  PRIMARY KEY (message_id, reactor_uid)
+);
+
+-- Ảnh sticker Zalo (tra một lần rồi lưu lại)
+CREATE TABLE IF NOT EXISTS sticker_cache (
+  id INTEGER PRIMARY KEY,
+  cate_id INTEGER,
+  type INTEGER,
+  url TEXT,
+  text TEXT,
+  updated_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +181,12 @@ CREATE TABLE IF NOT EXISTS templates (
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at INTEGER NOT NULL
 );
+-- Tin nhắn mẫu dùng cho bộ phận nào (không gắn bộ phận nào = dùng chung)
+CREATE TABLE IF NOT EXISTS template_departments (
+  template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  PRIMARY KEY (template_id, department_id)
+);
 
 CREATE TABLE IF NOT EXISTS api_keys (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,11 +208,83 @@ CREATE TABLE IF NOT EXISTS webhooks (
 );
 `);
 
-// Nâng cấp schema cho bản cũ: thêm cột đăng nhập Odoo.
-const userCols = new Set((db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name));
+function columns(table: string) {
+  return new Set((db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name));
+}
+
+// ── Nâng cấp từ bản cũ ──
+const userCols = columns("users");
 if (!userCols.has("auth_source")) db.exec("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'");
 if (!userCols.has("odoo_uid")) db.exec("ALTER TABLE users ADD COLUMN odoo_uid INTEGER");
 if (!userCols.has("last_login_at")) db.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER");
+// Kênh nhân viên đang tick chọn để chat (JSON mảng id kênh; NULL = mọi kênh được quyền)
+if (!userCols.has("working_channels")) db.exec("ALTER TABLE users ADD COLUMN working_channels TEXT");
+
+/**
+ * Bản cũ chỉ có 1 tài khoản Zalo: hội thoại có id = threadId, cookie lưu trong settings.
+ * Chuyển sang nhiều kênh: tạo kênh số 1 từ cookie cũ, đổi id hội thoại thành "1_<threadId>".
+ * Làm theo quy trình đổi bảng chuẩn của SQLite (tạo bảng mới → chép → xóa bảng cũ → đổi tên).
+ */
+function migrateToChannels() {
+  if (columns("conversations").has("channel_id")) return;
+  console.log("[db] Nâng cấp dữ liệu sang nhiều kênh Zalo…");
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN");
+  try {
+    const credRow = db.prepare("SELECT value FROM settings WHERE key = 'zalo.credentials'").get() as
+      | { value: string }
+      | undefined;
+    const convCount = (db.prepare("SELECT COUNT(*) AS n FROM conversations").get() as { n: number }).n;
+    if (credRow || convCount > 0) {
+      db.prepare("INSERT INTO channels(id, name, credentials, created_at) VALUES(1, 'Zalo chính', ?, ?)").run(
+        credRow?.value ?? null,
+        Date.now(),
+      );
+    }
+    db.exec("DELETE FROM settings WHERE key = 'zalo.credentials'");
+
+    const oldConv = columns("conversations");
+    db.exec(CONVERSATIONS_SQL("conversations_new"));
+    db.exec(`INSERT INTO conversations_new(id, channel_id, thread_id, type, name, avatar, phone, assigned_to, status, tags,
+               external_ref, unread_count, last_message_at, last_message_preview, last_direction, created_at)
+             SELECT '1_' || id, 1, id, type, name, avatar, ${oldConv.has("phone") ? "phone" : "NULL"}, assigned_to, status, tags,
+               external_ref, unread_count, last_message_at, last_message_preview, last_direction, created_at
+             FROM conversations`);
+    db.exec(MESSAGES_SQL("messages_new"));
+    db.exec(`INSERT INTO messages_new(id, conversation_id, zalo_msg_id, cli_msg_id, direction, sender_uid, sender_name,
+               agent_id, source, msg_type, text, raw, ts, undone)
+             SELECT id, '1_' || conversation_id, zalo_msg_id, cli_msg_id, direction, sender_uid,
+               sender_name, agent_id, source, msg_type, text, raw, ts, undone FROM messages`);
+    db.exec("DROP TABLE messages");
+    db.exec("DROP TABLE conversations");
+    db.exec("ALTER TABLE conversations_new RENAME TO conversations");
+    db.exec("ALTER TABLE messages_new RENAME TO messages");
+    for (const t of ["notes", "reviews", "events"]) {
+      db.exec(`UPDATE ${t} SET conversation_id = '1_' || conversation_id
+               WHERE conversation_id IS NOT NULL AND conversation_id NOT LIKE '1\\_%' ESCAPE '\\'`);
+    }
+    const broken = db.prepare("PRAGMA foreign_key_check").all();
+    if (broken.length) throw new Error(`Lỗi khóa ngoại sau khi nâng cấp: ${JSON.stringify(broken.slice(0, 5))}`);
+    db.exec("COMMIT");
+    console.log("[db] Nâng cấp xong.");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+migrateToChannels();
+db.exec("PRAGMA foreign_keys = ON");
+if (!columns("messages").has("quote")) db.exec("ALTER TABLE messages ADD COLUMN quote TEXT");
+
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_conv_last ON conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conv_dept ON conversations(department_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_zalo ON messages(conversation_id, zalo_msg_id);
+CREATE INDEX IF NOT EXISTS idx_msg_conv_ts ON messages(conversation_id, ts);
+CREATE INDEX IF NOT EXISTS idx_msg_agent_ts ON messages(agent_id, ts);
+`);
 
 export type Row = Record<string, any>;
 

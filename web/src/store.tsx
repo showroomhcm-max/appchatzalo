@@ -1,14 +1,24 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import { api, connectSocket, setToken, setUnauthorizedHandler } from './api'
-import type { PresenceState, User, ZaloStatus } from './types'
+import type { Channel, Department, PresenceState, Tag, User, ZaloStatus } from './types'
 
 type Ctx = {
   user: User
   users: User[]
   reloadUsers: () => void
-  zalo: ZaloStatus
+  /** Trạng thái Zalo của các kênh người này dùng được */
+  zaloStatuses: ZaloStatus[]
+  channels: Channel[]
+  departments: Department[]
+  tags: Tag[]
+  reloadSettings: () => void
   presence: PresenceState
+  /** Kênh người này đang tick chọn để chat; null = mọi kênh được quyền */
+  workingChannelIds: number[] | null
+  setWorkingChannels: (ids: number[] | null) => Promise<void>
+  /** Kênh hiển thị trong hộp thư (đã áp lựa chọn ở trang Kênh Chat) */
+  activeChannels: Channel[]
   socket: Socket | null
   socketConnected: boolean
   logout: () => void
@@ -39,8 +49,20 @@ export function useSocketEvent<T = any>(event: string, handler: (data: T) => voi
 
 export function AppProvider({ user, onLogout, children }: { user: User; onLogout: () => void; children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([])
-  const [zalo, setZalo] = useState<ZaloStatus>({ state: 'disconnected', updatedAt: 0 })
+  const [zaloStatuses, setZaloStatuses] = useState<ZaloStatus[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [presence, setPresence] = useState<PresenceState>({ online: [], byConversation: {} })
+  const [workingChannelIds, setWorkingIds] = useState<number[] | null>(user.working_channel_ids ?? null)
+
+  const setWorkingChannels = useCallback(async (ids: number[] | null) => {
+    const r = await api<{ working_channel_ids: number[] | null }>('/me/working-channels', {
+      method: 'PUT',
+      body: { channel_ids: ids },
+    })
+    setWorkingIds(r.working_channel_ids)
+  }, [])
   const [socket, setSocket] = useState<Socket | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
 
@@ -49,21 +71,37 @@ export function AppProvider({ user, onLogout, children }: { user: User; onLogout
     onLogout()
   }
 
-  const reloadUsers = () => {
+  const reloadUsers = useCallback(() => {
     api<User[]>('/users').then(setUsers).catch(() => {})
-  }
+  }, [])
+
+  const reloadSettings = useCallback(() => {
+    api<Channel[]>('/channels').then(setChannels).catch(() => {})
+    api<Department[]>('/departments').then(setDepartments).catch(() => {})
+    api<Tag[]>('/tags').then(setTags).catch(() => {})
+    api<ZaloStatus[]>('/zalo/status').then(setZaloStatuses).catch(() => {})
+  }, [])
 
   useEffect(() => {
     setUnauthorizedHandler(logout)
     reloadUsers()
-    api<ZaloStatus>('/zalo/status').then(setZalo).catch(() => {})
+    reloadSettings()
     const s = connectSocket()
     s.on('connect', () => setSocketConnected(true))
     s.on('disconnect', () => setSocketConnected(false))
     s.on('connect_error', (e) => {
       if (e.message === 'unauthorized') logout()
     })
-    s.on('zalo:status', setZalo)
+    s.on('zalo:status', (st: ZaloStatus) =>
+      setZaloStatuses((prev) => {
+        const next = prev.filter((p) => p.channelId !== st.channelId)
+        return [...next, st].sort((a, b) => a.channelId - b.channelId)
+      }),
+    )
+    s.on('settings:changed', (what: string) => {
+      reloadSettings()
+      if (what === 'users' || what === 'departments') reloadUsers()
+    })
     s.on('presence', setPresence)
     setSocket(s)
     return () => {
@@ -73,7 +111,25 @@ export function AppProvider({ user, onLogout, children }: { user: User; onLogout
   }, [])
 
   return (
-    <AppContext.Provider value={{ user, users, reloadUsers, zalo, presence, socket, socketConnected, logout }}>
+    <AppContext.Provider
+      value={{
+        user,
+        users,
+        reloadUsers,
+        zaloStatuses,
+        channels,
+        departments,
+        tags,
+        reloadSettings,
+        presence,
+        workingChannelIds,
+        setWorkingChannels,
+        activeChannels: workingChannelIds ? channels.filter((c) => workingChannelIds.includes(c.id)) : channels,
+        socket,
+        socketConnected,
+        logout,
+      }}
+    >
       {children}
     </AppContext.Provider>
   )

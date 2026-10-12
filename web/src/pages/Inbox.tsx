@@ -4,19 +4,19 @@ import {
   Check,
   Download,
   Eye,
-  FileText,
   Hand,
   Inbox as InboxIcon,
   MessageSquareDashed,
   Paperclip,
   PanelRight,
   RotateCcw,
+  Quote,
   Search,
   Send,
+  Smile,
   Star,
   StickyNote,
   Tag,
-  Undo2,
   UserRound,
   UsersRound,
   X,
@@ -24,40 +24,63 @@ import {
 } from 'lucide-react'
 import { api, exportUrl } from '../api'
 import { useApp, useSocketEvent } from '../store'
-import type { Conversation, ConvStatus, Message, Note, Review, Template } from '../types'
+import type { Conversation, ConvStatus, Message, Note, Review, Sticker, Template } from '../types'
 import { Avatar, Badge, Empty } from '../components'
-import { dayLabel, fullTime, STATUS_LABEL, timeLabel } from '../util'
+import { TagChip } from './Settings'
+import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
+import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 
 type Scope = 'mine' | 'unassigned' | 'all'
 
-export default function Inbox({ convId }: { convId: string | null }) {
-  const { user } = useApp()
+export default function Inbox({ convId, focusMsgId }: { convId: string | null; focusMsgId: number | null }) {
+  const { user, departments, tags, activeChannels, workingChannelIds } = useApp()
+  const channels = activeChannels
   const [scope, setScope] = useState<Scope>(user.role === 'admin' ? 'all' : 'mine')
-  const [status, setStatus] = useState<string>('active')
+  // Mặc định hiện mọi trạng thái như Zalo: bấm "Xong" không làm hội thoại biến mất.
+  const [status, setStatus] = useState<string>('all')
+  const [channelFilter, setChannelFilter] = useState<string>('')
+  const [deptFilter, setDeptFilter] = useState<string>('')
+  const [tagFilter, setTagFilter] = useState<string>('')
   const [q, setQ] = useState('')
   const [list, setList] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [hasMore, setHasMore] = useState(false)
   // Màn hình hẹp: khung thông tin nổi đè lên chat nên mặc định đóng.
   const [showInfo, setShowInfo] = useState(() => window.innerWidth > 1200)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const searching = q.trim().length > 0
+  const activeRef = useRef(convId)
+  activeRef.current = convId
 
-  const statusParam = status === 'active' ? undefined : status
+  // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
+  const myDepartments = user.role === 'admin' ? departments : departments.filter((d) => d.user_ids.includes(user.id))
+  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || !!tagFilter
+
   const matches = useCallback(
     (c: Conversation) => {
       if (scope === 'mine' && c.assigned_to !== user.id) return false
       if (scope === 'unassigned' && c.assigned_to !== null) return false
       if (status === 'active' && c.status === 'closed') return false
       if (status !== 'active' && status !== 'all' && c.status !== status) return false
+      if (workingChannelIds && !workingChannelIds.includes(c.channel_id)) return false
+      if (channelFilter && c.channel_id !== Number(channelFilter)) return false
+      if (deptFilter === 'none' && c.department_id !== null) return false
+      if (deptFilter && deptFilter !== 'none' && c.department_id !== Number(deptFilter)) return false
+      if (tagFilter && !c.tags.includes(tagFilter)) return false
       return true
     },
-    [scope, status, user.id],
+    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds],
   )
 
   const load = useCallback(
     async (before?: number) => {
       const params = new URLSearchParams({ scope, limit: '50' })
-      if (statusParam && statusParam !== 'all') params.set('status', statusParam)
-      if (q.trim()) params.set('q', q.trim())
+      if (status !== 'all' && status !== 'active') params.set('status', status)
+      if (channelFilter) params.set('channelId', channelFilter)
+      // Chỉ các kênh đang tick chọn ở trang Kênh Chat
+      if (workingChannelIds) params.set('channelIds', workingChannelIds.join(','))
+      if (deptFilter) params.set('departmentId', deptFilter)
+      if (tagFilter) params.set('tag', tagFilter)
       if (before) params.set('before', String(before))
       const rows = await api<Conversation[]>(`/conversations?${params}`)
       const filtered = status === 'active' ? rows.filter((c) => c.status !== 'closed') : rows
@@ -65,30 +88,43 @@ export default function Inbox({ convId }: { convId: string | null }) {
       setList((prev) => (before ? [...prev, ...filtered.filter((r) => !prev.some((p) => p.id === r.id))] : filtered))
       setLoading(false)
     },
-    [scope, statusParam, status, q],
+    [scope, status, channelFilter, deptFilter, tagFilter, workingChannelIds],
   )
 
   useEffect(() => {
     setLoading(true)
-    const t = setTimeout(() => void load(), q ? 300 : 0)
-    return () => clearTimeout(t)
-  }, [load, q])
+    void load()
+  }, [load])
+
+  // Ctrl+F / Ctrl+K: nhảy vào ô tìm kiếm như Zalo PC.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'k')) {
+        e.preventDefault()
+        searchInput.current?.focus()
+        searchInput.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const upsert = useCallback(
     (c: Conversation) => {
       setList((prev) => {
         const without = prev.filter((p) => p.id !== c.id)
-        const existed = without.length !== prev.length
-        if (!matches(c) || (q.trim() && !existed)) return without
+        // Hội thoại đang mở luôn được giữ trong danh sách, kể cả khi đổi trạng thái/bộ lọc.
+        if (!matches(c) && c.id !== activeRef.current) return without
         const next = [c, ...without]
         return next.sort((a, b) => (b.last_message_at ?? b.created_at) - (a.last_message_at ?? a.created_at))
       })
     },
-    [matches, q],
+    [matches],
   )
 
   useSocketEvent<{ conversation: Conversation }>('message:new', ({ conversation }) => upsert(conversation))
   useSocketEvent<Conversation>('conversation:update', upsert)
+  useSocketEvent<{ id: string }>('conversation:removed', ({ id }) => setList((prev) => prev.filter((p) => p.id !== id)))
 
   const current = list.find((c) => c.id === convId) ?? null
 
@@ -96,62 +132,143 @@ export default function Inbox({ convId }: { convId: string | null }) {
     <div className={`inbox ${convId ? 'has-active' : ''}`}>
       <section className="conv-pane">
         <div className="conv-head">
-          <h2>Hội thoại</h2>
+          <div className="conv-title-row">
+            <h2>Hội thoại</h2>
+            {workingChannelIds && (
+              <a className="working-pill" href="#/channels" title="Đổi kênh đang chat">
+                {channels.length === 1 ? channels[0].name : `${channels.length} kênh`}
+              </a>
+            )}
+          </div>
           <div className="search">
             <Search size={16} />
-            <input placeholder="Tìm tên, nội dung, mã KH…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input
+              ref={searchInput}
+              placeholder="Tìm khách, số điện thoại, tin nhắn…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setQ('')}
+              aria-label="Tìm kiếm"
+            />
             {q && (
               <button className="icon-btn sm" onClick={() => setQ('')} aria-label="Xóa tìm kiếm">
                 <X size={14} />
               </button>
             )}
           </div>
-          <div className="seg">
-            {(
-              [
-                ['mine', 'Của tôi'],
-                ['unassigned', 'Chưa nhận'],
-                ['all', 'Tất cả'],
-              ] as [Scope, string][]
-            ).map(([id, label]) => (
-              <button key={id} className={scope === id ? 'on' : ''} onClick={() => setScope(id)}>
-                {label}
-              </button>
+          {!searching && (
+            <>
+              <div className="seg">
+                {(
+                  [
+                    ['mine', 'Của tôi'],
+                    ['unassigned', 'Chưa nhận'],
+                    ['all', 'Tất cả'],
+                  ] as [Scope, string][]
+                ).map(([id, label]) => (
+                  <button key={id} className={scope === id ? 'on' : ''} onClick={() => setScope(id)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="filter-row">
+                <select className="select sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Lọc trạng thái">
+                  <option value="all">Mọi trạng thái</option>
+                  <option value="active">Chưa xong</option>
+                  <option value="open">Đang xử lý</option>
+                  <option value="pending">Chờ phản hồi</option>
+                  <option value="closed">Đã xong</option>
+                </select>
+                {channels.length > 1 && (
+                  <select className="select sm" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="Lọc kênh">
+                    <option value="">Mọi kênh</option>
+                    {channels.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {myDepartments.length > 1 || (user.role === 'admin' && departments.length > 0) ? (
+                  <select className="select sm" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} aria-label="Lọc bộ phận">
+                    <option value="">Mọi bộ phận</option>
+                    {myDepartments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                    <option value="none">Chưa thuộc bộ phận</option>
+                  </select>
+                ) : null}
+                {tags.length > 0 && (
+                  <select className="select sm" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label="Lọc tag">
+                    <option value="">Mọi tag</option>
+                    {tags.map((t) => (
+                      <option key={t.id} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {filtersActive && (
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      setStatus('all')
+                      setChannelFilter('')
+                      setDeptFilter('')
+                      setTagFilter('')
+                    }}
+                  >
+                    Bỏ lọc
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        {searching ? (
+          <SearchPanel q={q.trim()} activeConv={convId} />
+        ) : (
+          <div className="conv-list">
+            {loading && <div className="muted pad">Đang tải…</div>}
+            {!loading && !list.length && (
+              <Empty icon={<InboxIcon size={28} />} title="Không có hội thoại">
+                {filtersActive
+                  ? 'Không có hội thoại khớp bộ lọc.'
+                  : scope === 'mine'
+                    ? 'Chưa có hội thoại nào giao cho bạn. Xem tab "Chưa nhận".'
+                    : user.role !== 'admin' && myDepartments.length === 0
+                      ? 'Bạn chưa thuộc bộ phận nào. Nhờ quản trị viên thêm bạn vào bộ phận để thấy hội thoại.'
+                      : 'Tin nhắn mới từ Zalo sẽ hiện ở đây.'}
+              </Empty>
+            )}
+            {list.map((c) => (
+              <ConvItem key={c.id} c={c} active={c.id === convId} showChannel={channels.length > 1} />
             ))}
+            {hasMore && !loading && (
+              <button
+                className="btn ghost block"
+                onClick={() => {
+                  const last = list[list.length - 1]
+                  void load(last.last_message_at ?? last.created_at)
+                }}
+              >
+                Tải thêm
+              </button>
+            )}
           </div>
-          <select className="select sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Lọc trạng thái">
-            <option value="active">Chưa xong</option>
-            <option value="open">Đang xử lý</option>
-            <option value="pending">Chờ phản hồi</option>
-            <option value="closed">Đã xong</option>
-            <option value="all">Tất cả trạng thái</option>
-          </select>
-        </div>
-        <div className="conv-list">
-          {loading && <div className="muted pad">Đang tải…</div>}
-          {!loading && !list.length && (
-            <Empty icon={<InboxIcon size={28} />} title="Không có hội thoại">
-              {scope === 'mine' ? 'Chưa có hội thoại nào giao cho bạn. Xem tab "Chưa nhận".' : 'Tin nhắn mới từ Zalo sẽ hiện ở đây.'}
-            </Empty>
-          )}
-          {list.map((c) => (
-            <ConvItem key={c.id} c={c} active={c.id === convId} />
-          ))}
-          {hasMore && !loading && (
-            <button
-              className="btn ghost block"
-              onClick={() => {
-                const last = list[list.length - 1]
-                void load(last.last_message_at ?? last.created_at)
-              }}
-            >
-              Tải thêm
-            </button>
-          )}
-        </div>
+        )}
       </section>
       {convId ? (
-        <ChatView key={convId} convId={convId} initial={current} showInfo={showInfo} toggleInfo={() => setShowInfo((v) => !v)} />
+        <ChatView
+          key={convId}
+          convId={convId}
+          focusMsgId={focusMsgId}
+          initial={current}
+          showInfo={showInfo}
+          toggleInfo={() => setShowInfo((v) => !v)}
+        />
       ) : (
         <section className="chat-pane">
           <Empty icon={<MessageSquareDashed size={36} />} title="Chọn một hội thoại để bắt đầu">
@@ -163,13 +280,300 @@ export default function Inbox({ convId }: { convId: string | null }) {
   )
 }
 
-function ConvItem({ c, active }: { c: Conversation; active: boolean }) {
-  const { presence, user } = useApp()
+// ───────────── Tìm kiếm gộp kiểu Zalo: Liên hệ + Tin nhắn ─────────────
+
+type ContactResult = {
+  uid: string
+  channel_id: number
+  channel_name: string | null
+  name: string
+  avatar: string | null
+  phone: string | null
+  source: 'conversation' | 'friend' | 'phone'
+  is_friend: boolean | null
+  is_group: boolean
+  conversation_id: string | null
+  last_message_preview: string | null
+  last_message_at: number | null
+}
+
+type MessageHit = {
+  id: number
+  conversation_id: string
+  direction: 'in' | 'out'
+  text: string | null
+  ts: number
+  sender_name: string | null
+  agent_name: string | null
+  conversation_name: string | null
+  conversation_avatar: string | null
+  conversation_type: number
+  channel_name: string | null
+}
+
+type SearchTab = 'all' | 'contacts' | 'messages'
+
+function SearchPanel({ q, activeConv }: { q: string; activeConv: string | null }) {
+  const { channels, zaloStatuses } = useApp()
+  const [tab, setTab] = useState<SearchTab>('all')
+  // Kênh dùng để tìm bạn bè / tra số điện thoại (mặc định: kênh đầu tiên đang kết nối)
+  const [lookupChannel, setLookupChannel] = useState<number | ''>('')
+  const [contacts, setContacts] = useState<ContactResult[] | null>(null)
+  const [phoneLookup, setPhoneLookup] = useState(false)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [messages, setMessages] = useState<MessageHit[] | null>(null)
+  const [moreMessages, setMoreMessages] = useState(false)
+  const [opening, setOpening] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    setContacts(null)
+    setMessages(null)
+    setError('')
+    const t = setTimeout(() => {
+      api<{ contacts: ContactResult[]; phone_lookup: boolean; phone_error: string | null }>(
+        `/search/contacts?q=${encodeURIComponent(q)}${lookupChannel ? `&channelId=${lookupChannel}` : ''}`,
+      )
+        .then((r) => {
+          if (!alive) return
+          setContacts(r.contacts)
+          setPhoneLookup(r.phone_lookup)
+          setPhoneError(r.phone_error)
+        })
+        .catch((e) => alive && setError(e.message))
+      if (q.length >= 2) {
+        api<MessageHit[]>(`/search/messages?q=${encodeURIComponent(q)}&limit=30`)
+          .then((rows) => {
+            if (!alive) return
+            setMessages(rows)
+            setMoreMessages(rows.length === 30)
+          })
+          .catch((e) => alive && setError(e.message))
+      } else setMessages([])
+    }, 300)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [q, lookupChannel])
+
+  async function loadMoreMessages() {
+    if (!messages?.length) return
+    const rows = await api<MessageHit[]>(
+      `/search/messages?q=${encodeURIComponent(q)}&limit=30&before=${messages[messages.length - 1].ts}`,
+    )
+    setMessages([...messages, ...rows])
+    setMoreMessages(rows.length === 30)
+  }
+
+  async function openContact(c: ContactResult) {
+    if (c.conversation_id) {
+      window.location.hash = `#/inbox/${encodeURIComponent(c.conversation_id)}`
+      return
+    }
+    setOpening(`${c.channel_id}_${c.uid}`)
+    try {
+      const conv = await api<Conversation>('/zalo/people/open', {
+        body: { uid: c.uid, channel_id: c.channel_id, name: c.name, avatar: c.avatar, phone: c.phone },
+      })
+      window.location.hash = `#/inbox/${encodeURIComponent(conv.id)}`
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setOpening(null)
+    }
+  }
+
+  const showContacts = tab !== 'messages'
+  const showMessages = tab !== 'contacts'
+  const contactList = tab === 'all' ? contacts?.slice(0, 5) : contacts
+  const messageList = tab === 'all' ? messages?.slice(0, 8) : messages
+
+  return (
+    <div className="search-panel">
+      <div className="search-tabs" role="tablist">
+        {(
+          [
+            ['all', 'Tất cả'],
+            ['contacts', `Liên hệ${contacts ? ` (${contacts.length})` : ''}`],
+            ['messages', `Tin nhắn${messages ? ` (${messages.length}${moreMessages ? '+' : ''})` : ''}`],
+          ] as [SearchTab, string][]
+        ).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {channels.length > 1 && tab !== 'messages' && (
+        <div className="lookup-channel">
+          <span className="muted small">Tìm bạn bè / số điện thoại qua kênh</span>
+          <select className="select sm" value={lookupChannel} onChange={(e) => setLookupChannel(e.target.value ? Number(e.target.value) : '')}>
+            <option value="">Tự chọn kênh đang kết nối</option>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id} disabled={zaloStatuses.find((s) => s.channelId === c.id)?.state !== 'connected'}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="conv-list">
+        {error && <div className="form-error pad">{error}</div>}
+
+        {showContacts && (
+          <div className="search-section">
+            <div className="search-section-head">
+              <span>Liên hệ</span>
+              {tab === 'all' && contacts && contacts.length > 5 && (
+                <button className="link-btn" onClick={() => setTab('contacts')}>
+                  Xem tất cả
+                </button>
+              )}
+            </div>
+            {contacts === null && <div className="muted pad small">Đang tìm…</div>}
+            {phoneError && <div className="form-error pad small">{phoneError}</div>}
+            {contacts?.length === 0 && (
+              <div className="muted pad small">
+                {phoneLookup
+                  ? 'Số này chưa dùng Zalo, hoặc người dùng đã tắt cho tìm qua số điện thoại.'
+                  : /^[\d\s+.-]+$/.test(q)
+                    ? 'Gõ đủ 10 số điện thoại để tìm trên Zalo.'
+                    : 'Không có liên hệ nào trùng.'}
+              </div>
+            )}
+            {contactList?.map((c) => (
+              <button
+                key={`${c.channel_id}_${c.uid}`}
+                className={`search-row ${c.conversation_id && c.conversation_id === activeConv ? 'active' : ''}`}
+                onClick={() => openContact(c)}
+                disabled={opening === `${c.channel_id}_${c.uid}`}
+              >
+                <Avatar name={c.name} src={c.avatar} size={40} />
+                <span className="search-row-main">
+                  <span className="search-row-title">
+                    {c.is_group && <UsersRound size={14} className="inline-icon" />}
+                    <Highlight text={c.name} q={q} />
+                  </span>
+                  <span className="search-row-sub">
+                    {c.phone && (
+                      <>
+                        <Highlight text={c.phone} q={q} />
+                        {' · '}
+                      </>
+                    )}
+                    {c.source === 'conversation'
+                      ? c.last_message_preview ?? 'Đã có hội thoại'
+                      : c.source === 'phone'
+                        ? c.is_friend
+                          ? 'Bạn bè · tìm qua số điện thoại'
+                          : 'Chưa kết bạn · tìm qua số điện thoại'
+                        : 'Bạn bè Zalo'}
+                    {channels.length > 1 && c.channel_name ? ` · ${c.channel_name}` : ''}
+                  </span>
+                </span>
+                <span className="search-row-side">
+                  {c.conversation_id ? (
+                    timeLabel(c.last_message_at)
+                  ) : (
+                    <span className="badge green">{opening === `${c.channel_id}_${c.uid}` ? 'Đang mở…' : 'Nhắn tin'}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showMessages && (
+          <div className="search-section">
+            <div className="search-section-head">
+              <span>Tin nhắn</span>
+              {tab === 'all' && messages && messages.length > 8 && (
+                <button className="link-btn" onClick={() => setTab('messages')}>
+                  Xem tất cả
+                </button>
+              )}
+            </div>
+            {messages === null && <div className="muted pad small">Đang tìm…</div>}
+            {messages?.length === 0 && (
+              <div className="muted pad small">{q.length < 2 ? 'Gõ ít nhất 2 ký tự để tìm tin nhắn.' : 'Không có tin nhắn nào chứa từ này.'}</div>
+            )}
+            {messageList?.map((m) => (
+              <a
+                key={m.id}
+                className="search-row"
+                href={`#/inbox/${encodeURIComponent(m.conversation_id)}/${m.id}`}
+              >
+                <Avatar name={m.conversation_name ?? m.conversation_id} src={m.conversation_avatar} size={40} />
+                <span className="search-row-main">
+                  <span className="search-row-title">
+                    {m.conversation_name ?? m.conversation_id}
+                    {channels.length > 1 && m.channel_name && <span className="channel-label">{m.channel_name}</span>}
+                  </span>
+                  <span className="search-row-sub">
+                    <span className="muted">
+                      {m.direction === 'in'
+                        ? m.conversation_type === 1
+                          ? `${m.sender_name ?? 'Thành viên'}: `
+                          : ''
+                        : `${m.agent_name ?? 'Shop'}: `}
+                    </span>
+                    <Highlight text={snippet(m.text ?? '', q)} q={q} />
+                  </span>
+                </span>
+                <span className="search-row-side">{timeLabel(m.ts)}</span>
+              </a>
+            ))}
+            {tab === 'messages' && moreMessages && (
+              <button className="btn ghost block" onClick={loadMoreMessages}>
+                Tải thêm tin nhắn
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Cắt đoạn quanh từ khóa để kết quả tin nhắn dài vẫn thấy chỗ trùng. */
+function snippet(raw: string, q: string) {
+  const text = raw.normalize('NFC')
+  const i = fold(text).indexOf(fold(q))
+  if (i < 0 || text.length <= 90) return text
+  const start = Math.max(0, i - 30)
+  return (start > 0 ? '…' : '') + text.slice(start, start + 90) + (start + 90 < text.length ? '…' : '')
+}
+
+/** Tô đậm phần trùng từ khóa, không phân biệt dấu (gõ "gop" sáng "góp"). */
+function Highlight({ text: raw, q }: { text: string; q: string }) {
+  const text = raw.normalize('NFC')
+  const needle = fold(q)
+  if (!needle) return <>{text}</>
+  const hay = fold(text)
+  const parts: React.ReactNode[] = []
+  let from = 0
+  let i = hay.indexOf(needle)
+  while (i >= 0 && parts.length < 20) {
+    if (i > from) parts.push(text.slice(from, i))
+    parts.push(<mark key={i}>{text.slice(i, i + needle.length)}</mark>)
+    from = i + needle.length
+    i = hay.indexOf(needle, from)
+  }
+  parts.push(text.slice(from))
+  return <>{parts}</>
+}
+
+function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean; showChannel: boolean }) {
+  const { presence, user, tags } = useApp()
   const viewers = (presence.byConversation[c.id] ?? []).filter((p) => p.userId !== user.id)
   const typing = viewers.find((v) => v.typing)
   const waiting = c.last_direction === 'in' && c.status !== 'closed'
   return (
-    <a href={`#/inbox/${encodeURIComponent(c.id)}`} className={`conv-item ${active ? 'active' : ''} ${c.unread_count ? 'unread' : ''}`}>
+    <a
+      href={`#/inbox/${encodeURIComponent(c.id)}`}
+      className={`conv-item ${active ? 'active' : ''} ${c.unread_count ? 'unread' : ''} ${c.status === 'closed' ? 'closed' : ''}`}
+    >
       <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
       <div className="conv-main">
         <div className="conv-top">
@@ -208,31 +612,39 @@ function ConvItem({ c, active }: { c: Conversation; active: boolean }) {
             </span>
           )}
         </div>
+        {(showChannel || c.department_name || c.tags.length > 0) && (
+          <div className="conv-meta">
+            {showChannel && c.channel_name && <span className="channel-label">{c.channel_name}</span>}
+            {c.department_name && (
+              <span className="dept-chip sm" style={{ '--chip': c.department_color ?? '#55655c' } as React.CSSProperties}>
+                {c.department_name}
+              </span>
+            )}
+            {c.tags.map((t) => (
+              <TagChip key={t} tag={{ name: t, color: tags.find((x) => x.name === t)?.color ?? '#9aa6a0' }} />
+            ))}
+          </div>
+        )}
       </div>
     </a>
   )
 }
 
-function senderLabel(m: Message) {
-  if (m.direction === 'in') return null
-  if (m.agent_name) return m.agent_name
-  if (m.source === 'api') return 'Hệ thống (API)'
-  if (m.source === 'history') return 'Shop'
-  return 'Gửi từ điện thoại'
-}
 
 function ChatView({
   convId,
+  focusMsgId,
   initial,
   showInfo,
   toggleInfo,
 }: {
   convId: string
+  focusMsgId: number | null
   initial: Conversation | null
   showInfo: boolean
   toggleInfo: () => void
 }) {
-  const { user, users, presence, socket } = useApp()
+  const { user, users, presence, socket, departments } = useApp()
   const [conv, setConv] = useState<Conversation | null>(initial)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
@@ -241,16 +653,77 @@ function ChatView({
   const scroller = useRef<HTMLDivElement>(null)
   const stickBottom = useRef(true)
   const prevHeight = useRef<number | null>(null)
+  const [flashId, setFlashId] = useState<number | null>(null)
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null)
+  const [notesVersion, setNotesVersion] = useState(0)
+  const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2500)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  async function onMessageAction(action: MessageAction, m: Message) {
+    const base = `/conversations/${encodeURIComponent(convId)}/messages/${m.id}`
+    try {
+      if (action === 'reply') {
+        setReplyTo(m)
+        document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
+      } else if (action === 'copy') {
+        await navigator.clipboard.writeText(m.text ?? '')
+        setToast('Đã sao chép')
+      } else if (action === 'forward') {
+        setForwardMsg(m)
+      } else if (action === 'undo') {
+        if (!confirm('Thu hồi tin nhắn này? Khách sẽ thấy "Tin nhắn đã thu hồi".')) return
+        await api(`${base}/undo`, { method: 'POST' })
+        setToast('Đã thu hồi')
+      } else if (action === 'note') {
+        const who = m.direction === 'in' ? m.sender_name ?? 'Khách' : m.agent_name ?? 'Shop'
+        const time = new Date(m.ts).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+        await api(`/conversations/${encodeURIComponent(convId)}/notes`, {
+          body: { content: `Tin nhắn của ${who} lúc ${time}: "${messageSummary(m)}"` },
+        })
+        setNotesVersion((v) => v + 1)
+        setToast('Đã thêm vào ghi chú nội bộ')
+      }
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  async function onReact(m: Message, code: string) {
+    try {
+      const updated = await api<Message>(`/conversations/${encodeURIComponent(convId)}/messages/${m.id}/reaction`, {
+        body: { icon: code },
+      })
+      setMessages((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
 
   useEffect(() => {
     let alive = true
+    setLoading(true)
     api<Conversation>(`/conversations/${encodeURIComponent(convId)}`)
-      .then((c) => alive && setConv(c))
+      .then((c) => {
+        if (!alive) return
+        // Link cũ dạng /?c=<threadId>: chuyển sang id hội thoại theo kênh.
+        if (c.id !== convId) window.location.replace(`#/inbox/${encodeURIComponent(c.id)}`)
+        else setConv(c)
+      })
       .catch((e) => alive && setError(e.message))
-    api<Message[]>(`/conversations/${encodeURIComponent(convId)}/messages?limit=60`).then((rows) => {
+    const base = `/conversations/${encodeURIComponent(convId)}/messages`
+    api<Message[]>(focusMsgId ? `${base}?around=${focusMsgId}` : `${base}?limit=60`).then((rows) => {
       if (!alive) return
+      const idx = focusMsgId ? rows.findIndex((m) => m.id === focusMsgId) : -1
+      stickBottom.current = idx < 0
       setMessages(rows)
-      setHasOlder(rows.length === 60)
+      setHasOlder(idx >= 0 ? idx >= 40 : rows.length === 60)
+      setFlashId(idx >= 0 ? focusMsgId : null)
       setLoading(false)
     })
     void api(`/conversations/${encodeURIComponent(convId)}/read`, { method: 'POST' })
@@ -259,7 +732,16 @@ function ChatView({
       alive = false
       socket?.emit('view', null)
     }
-  }, [convId, socket])
+  }, [convId, focusMsgId, socket])
+
+  // Nhảy tới tin nhắn tìm được và nháy sáng 2 giây.
+  useEffect(() => {
+    if (!flashId) return
+    const el = scroller.current?.querySelector(`[data-mid="${flashId}"]`)
+    el?.scrollIntoView({ block: 'center' })
+    const t = setTimeout(() => setFlashId(null), 2500)
+    return () => clearTimeout(t)
+  }, [flashId])
 
   useSocketEvent<{ message: Message; conversation: Conversation }>('message:new', ({ message, conversation }) => {
     if (message.conversation_id !== convId) return
@@ -274,6 +756,9 @@ function ChatView({
     setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)))
   })
   useSocketEvent<Conversation>('conversation:update', (c) => c.id === convId && setConv(c))
+  useSocketEvent<{ id: string }>('conversation:removed', ({ id }) => {
+    if (id === convId) setError('Hội thoại đã được chuyển sang bộ phận khác, bạn không còn quyền xem.')
+  })
 
   useLayoutEffect(() => {
     const el = scroller.current
@@ -308,6 +793,24 @@ function ChatView({
   const typingOthers = others.filter((p) => p.typing)
   const assignedToOther = conv?.assigned_to && conv.assigned_to !== user.id
   const canReassign = user.role === 'admin' || conv?.assigned_to === user.id
+  const canTransfer = user.role === 'admin' || !conv?.assigned_to || conv.assigned_to === user.id
+  // Chuyển được sang bộ phận được xem kênh của hội thoại (quản trị viên: mọi bộ phận).
+  const transferTargets = departments.filter(
+    (d) => user.role === 'admin' || d.channel_ids.includes(conv?.channel_id ?? -1) || d.id === conv?.department_id,
+  )
+  // Người phụ trách: thành viên bộ phận của hội thoại + quản trị viên (chưa có bộ phận → mọi người).
+  const dept = departments.find((d) => d.id === conv?.department_id)
+  const assignable = users.filter(
+    (u) => u.active && (!dept || u.role === 'admin' || dept.user_ids.includes(u.id) || u.id === conv?.assigned_to),
+  )
+
+  async function transfer(value: string) {
+    const target = value ? Number(value) : null
+    const name = departments.find((d) => d.id === target)?.name ?? 'chưa thuộc bộ phận'
+    const leaving = user.role !== 'admin' && target !== null && !departments.find((d) => d.id === target)?.user_ids.includes(user.id)
+    if (leaving && !confirm(`Chuyển hội thoại sang "${name}"? Bạn không thuộc bộ phận này nên sẽ không thấy hội thoại nữa.`)) return
+    await patch({ department_id: target })
+  }
 
   if (error) {
     return (
@@ -328,6 +831,7 @@ function ChatView({
           <div className="chat-title">
             <div className="chat-name">{conv?.name ?? convId}</div>
             <div className="chat-sub">
+              {conv?.channel_name && <span className="channel-label">{conv.channel_name}</span>}
               {others.length ? (
                 <span className="presence-line">
                   <Eye size={13} /> {others.map((o) => o.name).join(', ')} đang xem
@@ -354,13 +858,29 @@ function ChatView({
                 title={canReassign ? 'Chuyển người phụ trách' : 'Chỉ người phụ trách hoặc quản trị viên mới chuyển được'}
               >
                 <option value="">— Bỏ nhận —</option>
-                {users
-                  .filter((u) => u.active)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.id === user.id ? `${u.display_name} (bạn)` : u.display_name}
-                    </option>
-                  ))}
+                {assignable.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.id === user.id ? `${u.display_name} (bạn)` : u.display_name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {departments.length > 0 && (
+              <select
+                className="select sm dept-select"
+                value={conv?.department_id ?? ''}
+                disabled={!canTransfer}
+                onChange={(e) => void transfer(e.target.value)}
+                aria-label="Bộ phận"
+                title={canTransfer ? 'Chuyển hội thoại sang bộ phận khác' : 'Chỉ người phụ trách mới chuyển được bộ phận'}
+                style={{ '--chip': conv?.department_color ?? '#9aa6a0' } as React.CSSProperties}
+              >
+                <option value="">Chưa thuộc bộ phận</option>
+                {transferTargets.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
               </select>
             )}
             <select
@@ -412,7 +932,15 @@ function ChatView({
             return (
               <Fragment key={m.id}>
                 {newDay && <div className="day-sep">{dayLabel(m.ts)}</div>}
-                <Bubble m={m} grouped={!!grouped} isGroup={conv?.type === 1} />
+                <Bubble
+                  m={m}
+                  grouped={!!grouped}
+                  isGroup={conv?.type === 1}
+                  flash={m.id === flashId}
+                  canUndo={user.role === 'admin' || m.agent_id === user.id}
+                  onAction={onMessageAction}
+                  onReact={onReact}
+                />
               </Fragment>
             )
           })}
@@ -433,71 +961,34 @@ function ChatView({
             Hội thoại do <b>{conv?.assigned_name}</b> phụ trách. Tin bạn gửi vẫn được ghi nhận dưới tên bạn.
           </div>
         )}
-        <Composer convId={convId} />
+        {toast && <div className="toast">{toast}</div>}
+        <Composer
+          convId={convId}
+          channelId={conv?.channel_id ?? null}
+          replyTo={replyTo}
+          onClearReply={() => setReplyTo(null)}
+        />
       </section>
-      {showInfo && conv && <InfoPanel conv={conv} onPatch={patch} onClose={toggleInfo} />}
+      {showInfo && conv && <InfoPanel key={notesVersion} conv={conv} onPatch={patch} onClose={toggleInfo} />}
+      {forwardMsg && conv && <ForwardModal message={forwardMsg} from={conv} onClose={() => setForwardMsg(null)} />}
     </>
   )
 }
 
-function Bubble({ m, grouped, isGroup }: { m: Message; grouped: boolean; isGroup: boolean }) {
-  const out = m.direction === 'out'
-  const raw = m.raw ?? {}
-  const label = senderLabel(m)
-  const isImage = m.msg_type === 'chat.photo' && (raw.href || raw.thumb)
-  const isSticker = m.msg_type === 'chat.sticker'
-  const isFile = m.msg_type === 'share.file'
-  const isLink = (m.msg_type === 'chat.recommended' || m.msg_type === 'chat.link') && raw.href
-
-  let body: React.ReactNode = <span className="msg-text">{m.text}</span>
-  if (isImage) {
-    body = (
-      <a href={raw.href || raw.thumb} target="_blank" rel="noreferrer" className="msg-image">
-        <img src={raw.thumb || raw.href} alt={raw.title || 'Hình ảnh'} referrerPolicy="no-referrer" loading="lazy" />
-      </a>
-    )
-  } else if (isSticker) {
-    body = <span className="msg-text muted">[Sticker]</span>
-  } else if (isFile) {
-    body = (
-      <a href={raw.href} target="_blank" rel="noreferrer" className="msg-file">
-        <FileText size={18} /> {raw.title || 'Tệp đính kèm'}
-      </a>
-    )
-  } else if (isLink) {
-    body = (
-      <a href={raw.href} target="_blank" rel="noreferrer" className="msg-link">
-        {raw.thumb && <img src={raw.thumb} alt="" referrerPolicy="no-referrer" />}
-        <span>
-          <b>{raw.title || raw.href}</b>
-          {raw.description && <small>{raw.description}</small>}
-        </span>
-      </a>
-    )
-  }
-
-  return (
-    <div className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''}`}>
-      {!grouped && (out ? label : isGroup ? m.sender_name : null) && (
-        <div className={`msg-sender ${out && !m.agent_id ? 'muted' : ''}`}>{out ? label : m.sender_name}</div>
-      )}
-      <div className={`bubble ${m.undone ? 'undone' : ''} ${isImage ? 'media' : ''}`} title={fullTime(m.ts)}>
-        {m.undone ? (
-          <span className="msg-text muted">
-            <Undo2 size={14} className="inline-icon" /> Tin nhắn đã thu hồi
-            {m.text ? ` — "${m.text}"` : ''}
-          </span>
-        ) : (
-          body
-        )}
-        <span className="msg-time">{new Date(m.ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-      </div>
-    </div>
-  )
-}
-
-function Composer({ convId }: { convId: string }) {
-  const { socket, zalo } = useApp()
+function Composer({
+  convId,
+  channelId,
+  replyTo,
+  onClearReply,
+}: {
+  convId: string
+  channelId: number | null
+  replyTo: Message | null
+  onClearReply: () => void
+}) {
+  const [stickerOpen, setStickerOpen] = useState(false)
+  const { socket, zaloStatuses } = useApp()
+  const channelStatus = zaloStatuses.find((s) => s.channelId === channelId)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
@@ -575,10 +1066,12 @@ function Composer({ convId }: { convId: string }) {
     try {
       const fd = new FormData()
       fd.append('text', text)
+      if (replyTo) fd.append('quote_message_id', String(replyTo.id))
       files.forEach((f) => fd.append('files', f))
       await api(`/conversations/${encodeURIComponent(convId)}/messages`, { body: fd })
       setText('')
       setFiles([])
+      onClearReply()
       typingOn.current = false
       socket?.emit('typing', false)
     } catch (e: any) {
@@ -589,7 +1082,21 @@ function Composer({ convId }: { convId: string }) {
     }
   }
 
+  async function sendSticker(st: Sticker) {
+    setStickerOpen(false)
+    setError('')
+    try {
+      await api(`/conversations/${encodeURIComponent(convId)}/sticker`, { body: { id: st.id, cateId: st.cateId, type: st.type } })
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Escape' && replyTo) {
+      onClearReply()
+      return
+    }
     if (suggestions.length) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -613,7 +1120,7 @@ function Composer({ convId }: { convId: string }) {
     }
   }
 
-  const disabled = zalo.state !== 'connected'
+  const disabled = channelStatus?.state !== 'connected'
 
   return (
     <div className="composer">
@@ -645,9 +1152,32 @@ function Composer({ convId }: { convId: string }) {
           ))}
         </div>
       )}
+      {replyTo && (
+        <div className="reply-bar">
+          <Quote size={16} />
+          <div className="grow">
+            <b>Trả lời {replyTo.direction === 'in' ? replyTo.sender_name ?? 'khách' : replyTo.agent_name ?? 'shop'}</b>
+            <span>{messageSummary(replyTo)}</span>
+          </div>
+          <button className="icon-btn sm" onClick={onClearReply} aria-label="Bỏ trả lời">
+            <X size={14} />
+          </button>
+        </div>
+      )}
       {error && <div className="form-error">{error}</div>}
+      {stickerOpen && <StickerPicker channelId={channelId} onPick={sendSticker} onClose={() => setStickerOpen(false)} />}
       <div className="composer-row">
-        <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Đính kèm ảnh/tệp" disabled={disabled}>
+        <button
+          className={`icon-btn ${stickerOpen ? 'on' : ''}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setStickerOpen((v) => !v)}
+          aria-label="Gửi sticker"
+          title="Sticker"
+          disabled={disabled}
+        >
+          <Smile size={20} />
+        </button>
+        <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Đính kèm ảnh/tệp" title="Gửi ảnh, tệp" disabled={disabled}>
           <Paperclip size={20} />
         </button>
         <input
@@ -698,11 +1228,10 @@ function InfoPanel({
   onPatch: (b: Partial<Conversation>) => Promise<void>
   onClose: () => void
 }) {
-  const { user } = useApp()
+  const { user, tags } = useApp()
   const [notes, setNotes] = useState<Note[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [note, setNote] = useState('')
-  const [tagInput, setTagInput] = useState('')
   const [ref, setRef] = useState(conv.external_ref ?? '')
   const [score, setScore] = useState(0)
   const [comment, setComment] = useState('')
@@ -730,11 +1259,12 @@ function InfoPanel({
     setComment('')
   }
 
-  function addTag() {
-    const t = tagInput.trim()
-    if (!t || conv.tags.includes(t)) return setTagInput('')
-    void onPatch({ tags: [...conv.tags, t] })
-    setTagInput('')
+  // Tag chọn từ danh sách đã tạo trong Cài đặt (theo bộ phận của nhân viên).
+  const addable = tags.filter((t) => !conv.tags.includes(t.name))
+  const colorOf = (name: string) => tags.find((t) => t.name === name)?.color ?? '#9aa6a0'
+  function addTag(name: string) {
+    if (!name || conv.tags.includes(name)) return
+    void onPatch({ tags: [...conv.tags, name] })
   }
 
   return (
@@ -748,7 +1278,11 @@ function InfoPanel({
       <div className="info-profile">
         <Avatar name={conv.name ?? conv.id} src={conv.avatar} size={64} />
         <div className="info-name">{conv.name ?? 'Chưa rõ tên'}</div>
-        <code className="muted small">ID Zalo: {conv.id}</code>
+        <code className="muted small">ID Zalo: {conv.thread_id}</code>
+        <span className="muted small">
+          {conv.channel_name}
+          {conv.department_name ? ` · ${conv.department_name}` : ''}
+        </span>
       </div>
 
       <div className="info-section">
@@ -767,25 +1301,28 @@ function InfoPanel({
 
       <div className="info-section">
         <div className="section-title">
-          <Tag size={14} /> Nhãn
+          <Tag size={14} /> Tag
         </div>
         <div className="tags">
           {conv.tags.map((t) => (
-            <span key={t} className="chip">
-              {t}
-              <button onClick={() => onPatch({ tags: conv.tags.filter((x) => x !== t) })} aria-label={`Xóa nhãn ${t}`}>
-                <X size={12} />
-              </button>
-            </span>
+            <TagChip key={t} tag={{ name: t, color: colorOf(t) }} onRemove={() => onPatch({ tags: conv.tags.filter((x) => x !== t) })} />
           ))}
-          <input
-            className="tag-input"
-            value={tagInput}
-            placeholder="+ Thêm nhãn"
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addTag()}
-            onBlur={addTag}
-          />
+          {addable.length > 0 ? (
+            <select className="tag-select" value="" onChange={(e) => addTag(e.target.value)} aria-label="Thêm tag">
+              <option value="">+ Thêm tag</option>
+              {addable.map((t) => (
+                <option key={t.id} value={t.name}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            !conv.tags.length && (
+              <span className="muted small">
+                {user.role === 'admin' ? 'Chưa có tag. Tạo ở trang Bộ phận, tag & tin nhắn mẫu.' : 'Chưa có tag cho bộ phận của bạn.'}
+              </span>
+            )
+          )}
         </div>
       </div>
 
@@ -815,6 +1352,7 @@ function InfoPanel({
         </ul>
       </div>
 
+      {user.role === 'admin' && (
       <div className="info-section">
         <div className="section-title">
           <Star size={14} /> Đánh giá chất lượng tư vấn
@@ -846,11 +1384,14 @@ function InfoPanel({
           !reviews.length && <div className="muted small">Chưa có đánh giá.</div>
         )}
       </div>
+      )}
 
       <div className="info-section">
-        <div className="section-title">
-          <Download size={14} /> Xuất hội thoại này
-        </div>
+        {user.role === 'admin' && (
+          <>
+            <div className="section-title">
+              <Download size={14} /> Xuất hội thoại này
+            </div>
         <div className="row wrap">
           {(['txt', 'csv', 'json'] as const).map((f) => (
             <a key={f} className="btn ghost sm" href={exportUrl({ format: f, conversationId: conv.id })}>
@@ -858,13 +1399,15 @@ function InfoPanel({
             </a>
           ))}
         </div>
+          </>
+        )}
         {conv.status === 'closed' && (
           <button className="btn ghost sm" onClick={() => onPatch({ status: 'open' })}>
             <RotateCcw size={14} /> Mở lại hội thoại
           </button>
         )}
         <div className="muted small">
-          <Zap size={12} className="inline-icon" /> Link mở nhanh từ app khác: <code>/?c={conv.id}</code>
+          <Zap size={12} className="inline-icon" /> Link mở nhanh từ app khác: <code>/?c={conv.thread_id}</code>
         </div>
       </div>
     </aside>
