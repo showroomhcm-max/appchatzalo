@@ -1,0 +1,39 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import express from "express";
+import cors from "cors";
+import { config } from "./config.js";
+import { ensureAdmin } from "./db.js";
+import { appRouter, publicRouter, errorHandler } from "./routes.js";
+import { setupRealtime } from "./realtime.js";
+import { setupWebhooks } from "./webhooks.js";
+import { zalo } from "./zalo.js";
+
+ensureAdmin();
+
+const app = express();
+app.disable("x-powered-by");
+app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
+app.use(express.json({ limit: "2mb" }));
+
+app.get("/healthz", (_req, res) => res.json({ ok: true, zalo: zalo.getStatus().state }));
+app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false }));
+app.use("/api/v1", publicRouter);
+app.use("/api", appRouter);
+app.use("/api", errorHandler);
+
+// Phục vụ giao diện đã build (web/dist) ở cùng cổng.
+if (fs.existsSync(config.webDist)) {
+  app.use(express.static(config.webDist, { index: false }));
+  app.get(/^(?!\/api|\/socket\.io|\/uploads).*/, (_req, res) => res.sendFile(path.join(config.webDist, "index.html")));
+}
+
+const server = http.createServer(app);
+setupRealtime(server);
+setupWebhooks();
+
+server.listen(config.port, () => {
+  console.log(`[server] Zalo CSKH chạy tại http://localhost:${config.port}`);
+  void zalo.init();
+});
