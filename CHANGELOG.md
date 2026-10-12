@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.7.1 — 13/10/2026
+
+- Bộ lọc loại hội thoại đổi tên thành **Nhóm / Chat / Tất cả**.
+
 ## v3.7.0 — 13/10/2026
 
 **Tìm nhóm Zalo khi có nhiều nhóm**

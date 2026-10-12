@@ -293,9 +293,9 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   {can(user, 'conversations.delete') && <option value="deleted">Đã xóa</option>}
                 </select>
                 <select className="select sm" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label="Loại hội thoại">
-                  <option value="">Khách và nhóm</option>
-                  <option value="0">Chỉ khách (1-1)</option>
-                  <option value="1">Chỉ nhóm</option>
+                  <option value="1">Nhóm</option>
+                  <option value="0">Chat</option>
+                  <option value="">Tất cả</option>
                 </select>
                 {channels.length > 1 && (
                   <select className="select sm" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="Lọc kênh">
