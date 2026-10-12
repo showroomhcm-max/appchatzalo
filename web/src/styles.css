@@ -3032,3 +3032,4 @@ details.notice[open] > summary { margin-bottom: 12px; }
 .group-row:hover { background: var(--mz-green-50); }
 .group-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .group-row .grow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.me { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; }

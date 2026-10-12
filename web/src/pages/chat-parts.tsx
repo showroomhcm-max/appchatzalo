@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Copy, FileText, Forward, MoreHorizontal, Quote, Search, SmilePlus, StickyNote, Undo2, X } from 'lucide-react'
-import { api } from '../api'
+import { api, safeUrl } from '../api'
 import { useApp } from '../store'
 import type { Conversation, Message, Sticker, Capabilities } from '../types'
 import { Avatar, Modal } from '../components'
@@ -105,7 +105,7 @@ export function Bubble({
   let body: React.ReactNode = <span className="msg-text">{m.text}</span>
   if (isImage) {
     body = (
-      <a href={raw.href || raw.thumb} target="_blank" rel="noreferrer" className="msg-image">
+      <a href={safeUrl(raw.href || raw.thumb)} target="_blank" rel="noreferrer" className="msg-image">
         <img src={raw.thumb || raw.href} alt={raw.title || 'Hình ảnh'} referrerPolicy="no-referrer" loading="lazy" />
       </a>
     )
@@ -128,13 +128,13 @@ export function Bubble({
     )
   } else if (isFile) {
     body = (
-      <a href={raw.href} target="_blank" rel="noreferrer" className="msg-file">
+      <a href={safeUrl(raw.href)} target="_blank" rel="noreferrer" className="msg-file">
         <FileText size={18} /> {raw.title || 'Tệp đính kèm'}
       </a>
     )
   } else if (isLink) {
     body = (
-      <a href={raw.href} target="_blank" rel="noreferrer" className="msg-link">
+      <a href={safeUrl(raw.href)} target="_blank" rel="noreferrer" className="msg-link">
         {raw.thumb && <img src={raw.thumb} alt="" referrerPolicy="no-referrer" />}
         <span>
           <b>{raw.title || raw.href}</b>

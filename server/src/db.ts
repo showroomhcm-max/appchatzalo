@@ -451,3 +451,8 @@ if (!(db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]
   // Xóa = ẩn khỏi hộp thư (giữ dữ liệu cho training / kiểm tra); có tin mới thì hiện lại
   db.exec("ALTER TABLE conversations ADD COLUMN deleted_at INTEGER");
 }
+
+// ───────────── Thu hồi phiên đăng nhập (đổi mật khẩu, khóa tài khoản, "đăng xuất mọi thiết bị") ─────────────
+if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "token_after")) {
+  db.exec("ALTER TABLE users ADD COLUMN token_after INTEGER NOT NULL DEFAULT 0");
+}

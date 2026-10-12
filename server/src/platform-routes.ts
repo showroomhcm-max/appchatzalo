@@ -186,7 +186,7 @@ function readState(state: unknown) {
 
 /** Trang bắt đầu kết nối mở bằng link (không gửi được header) → nhận token qua ?token= */
 function managerFromQuery(req: Request) {
-  const user = userFromToken(typeof req.query.token === "string" ? req.query.token : undefined);
+  const user = userFromToken(typeof req.query.token === "string" ? req.query.token : undefined, "link");
   if (!user || !can(user, "channels.manage")) throw new HttpError(403, "Bạn chưa được cấp quyền kết nối kênh");
   return user;
 }

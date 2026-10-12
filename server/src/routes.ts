@@ -6,7 +6,7 @@ import multer from "multer";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { all, get, run, logEvent } from "./db.js";
-import { generateApiKey, requireApiKey, requireUser, signToken, type AuthUser } from "./auth.js";
+import { generateApiKey, requireApiKey, requireUser, revokeSessions, signLinkToken, signToken, type AuthUser } from "./auth.js";
 import {
   PERMISSIONS,
   can,
@@ -315,9 +315,21 @@ appRouter.post(
     if (!bcrypt.compareSync(String(current ?? ""), row.password_hash)) throw new HttpError(400, "Mật khẩu hiện tại không đúng");
     if (String(next ?? "").length < 6) throw new HttpError(400, "Mật khẩu mới tối thiểu 6 ký tự");
     run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(next), 10), req.user!.id);
-    res.json({ ok: true });
+    // Đổi mật khẩu: đăng xuất mọi thiết bị khác, thiết bị này nhận phiên mới
+    revokeSessions(req.user!.id);
+    logEvent(null, req.user!.id, "auth.password_changed");
+    res.json({ ok: true, token: signToken(req.user!) });
   }),
 );
+
+/** Mã dùng một lần cho đường link tải file / bắt đầu kết nối (sống 2 phút) */
+appRouter.post("/auth/link-token", (req, res) => res.json({ token: signLinkToken(req.user!.id) }));
+/** Đăng xuất mọi thiết bị (kể cả thiết bị này) */
+appRouter.post("/auth/logout-all", (req, res) => {
+  revokeSessions(req.user!.id);
+  logEvent(null, req.user!.id, "auth.logout_all");
+  res.json({ ok: true });
+});
 
 // Nhân viên
 const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at, super_admin";
@@ -454,10 +466,14 @@ appRouter.patch(
     if (role) run("UPDATE users SET role = ? WHERE id = ?", role === "admin" ? "admin" : "agent", id);
     if (active !== undefined) run("UPDATE users SET active = ? WHERE id = ?", active ? 1 : 0, id);
     // Khóa nhân viên còn giữ Zalo / SĐT công ty → đánh dấu cần thu hồi
-    if (active === false) onUserDeactivated(id, req.user!.id);
+    if (active === false) {
+      onUserDeactivated(id, req.user!.id);
+      revokeSessions(id);
+    }
     if (password && target.auth_source === "local") {
       if (String(password).length < 6) throw new HttpError(400, "Mật khẩu tối thiểu 6 ký tự");
       run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(password), 10), id);
+      revokeSessions(id);
     }
     setUserDepartments(id, req.body?.department_ids);
     setUserChannels(id, req.body?.channel_ids);

@@ -2,7 +2,19 @@ import { Component, StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles.css'
 import App from './App'
-import { getToken } from './api'
+import { getToken, openAuthedLink } from './api'
+
+// Link tải file / kết nối (/api/...) cần đăng nhập: xin mã dùng một lần rồi mới mở
+document.addEventListener(
+  'click',
+  (e) => {
+    const a = (e.target as HTMLElement | null)?.closest?.('a[href^="/api/"]') as HTMLAnchorElement | null
+    if (!a) return
+    e.preventDefault()
+    openAuthedLink(a.getAttribute('href')!).catch((err) => alert(err?.message ?? 'Không mở được link'))
+  },
+  true,
+)
 
 // Gửi lỗi trên trình duyệt về nhật ký máy chủ (Cài đặt › Nhật ký), tối đa 10 lỗi mỗi phút.
 let sent: number[] = []

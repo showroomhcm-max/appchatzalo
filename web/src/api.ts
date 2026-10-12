@@ -52,13 +52,28 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 export function exportUrl(params: Record<string, string | number | undefined>) {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v))
-  q.set('token', getToken() ?? '')
   return `/api/export?${q}`
 }
 
 /** Link tải file cần đăng nhập (Excel, xuất dữ liệu): gắn token vào query. */
+/**
+ * Link cần đăng nhập (tải file, bắt đầu kết nối Facebook/TikTok…). Link KHÔNG chứa mã đăng nhập;
+ * khi bấm, main.tsx xin một mã dùng một lần (sống 2 phút) rồi mới mở link.
+ */
 export function authUrl(path: string) {
-  return `/api${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(getToken() ?? '')}`
+  return `/api${path}`
+}
+
+/** Mở link /api/... bằng mã dùng một lần (không để mã phiên 7 ngày lọt vào URL). */
+export async function openAuthedLink(href: string) {
+  const r = await api<{ token: string }>('/auth/link-token', { method: 'POST' })
+  window.location.href = `${href}${href.includes('?') ? '&' : '?'}token=${encodeURIComponent(r.token)}`
+}
+
+/** Chỉ cho link http(s) hoặc file trong app (chặn javascript:, data: … trong tin nhắn khách gửi). */
+export function safeUrl(v: unknown) {
+  const s = String(v ?? '').trim()
+  return /^https?:\/\//i.test(s) || /^\/(uploads|api)\//.test(s) ? s : undefined
 }
 
 export function connectSocket(): Socket {

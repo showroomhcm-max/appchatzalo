@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import cors from "cors";
+import { localOnly, securityHeaders, uploadHeaders } from "./security.js";
 import { config } from "./config.js";
 import { ensureAdmin, applySuperAdmins } from "./db.js";
 import { appRouter, publicRouter, errorHandler } from "./routes.js";
@@ -22,7 +23,13 @@ applySuperAdmins();
 
 const app = express();
 app.disable("x-powered-by");
-app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
+// Chỉ nhận kết nối qua Cloudflare Tunnel (localhost); máy khác trong mạng LAN bị chặn (ALLOW_LAN=1 để mở)
+app.use(localOnly);
+app.use(securityHeaders);
+// CORS: API tích hợp (/api/v1, xác thực bằng API key) cho mọi nguồn hoặc theo CORS_ORIGINS;
+// API nội bộ chỉ dùng từ chính giao diện app (cùng tên miền), trừ khi khai báo CORS_ORIGINS.
+app.use("/api/v1", cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
+if (config.corsOrigins.length) app.use(cors({ origin: config.corsOrigins }));
 // Webhook các nền tảng cần body thô để kiểm tra chữ ký → gắn trước express.json
 app.use("/webhooks", webhookRouter);
 app.use(zaloVerifierHandler);
@@ -34,7 +41,7 @@ app.get("/api/version", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json(appVersion());
 });
-app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false }));
+app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false, dotfiles: "deny", setHeaders: uploadHeaders }));
 app.use("/api/oauth", oauthRouter);
 app.use("/api/v1", publicRouter);
 app.use("/api", appRouter);

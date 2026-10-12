@@ -1,6 +1,8 @@
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { userFromToken, type AuthUser } from "./auth.js";
+import { allowLan, isLoopback } from "./security.js";
+import { getConversation } from "./store.js";
 import { bus } from "./bus.js";
 import { zalo } from "./zalo.js";
 import { config } from "./config.js";
@@ -10,7 +12,9 @@ type Presence = { userId: number; name: string; viewing: string | null; typing: 
 
 export function setupRealtime(server: HttpServer) {
   const io = new Server(server, {
-    cors: { origin: config.corsOrigins.length ? config.corsOrigins : true },
+    // Chỉ giao diện cùng tên miền (hoặc CORS_ORIGINS) được mở kết nối realtime
+    cors: config.corsOrigins.length ? { origin: config.corsOrigins } : undefined,
+    allowRequest: (req, cb) => cb(null, allowLan() || isLoopback(req.socket.remoteAddress)),
   });
   const presence = new Map<string, Presence>(); // socket.id → trạng thái
 
@@ -42,7 +46,20 @@ export function setupRealtime(server: HttpServer) {
       if (existing) existing.typing ||= p.typing;
       else list.push({ userId: p.userId, name: p.name, typing: p.typing });
     }
-    io.to("agents").emit("presence", { online: [...online.values()], byConversation });
+    const convCache = new Map<string, ReturnType<typeof getConversation>>();
+    const convOf = (id: string) => {
+      if (!convCache.has(id)) convCache.set(id, getConversation(id));
+      return convCache.get(id);
+    };
+    for (const socket of io.of("/").sockets.values()) {
+      const scope = scopeFor(socket);
+      const visible: typeof byConversation = {};
+      for (const [id, viewers] of Object.entries(byConversation)) {
+        const conv = convOf(id);
+        if (conv && canSeeConversation(scope, conv)) visible[id] = viewers;
+      }
+      socket.emit("presence", { online: [...online.values()], byConversation: visible });
+    }
   }
 
   io.use((socket, next) => {
@@ -63,7 +80,10 @@ export function setupRealtime(server: HttpServer) {
     socket.on("view", (conversationId: string | null) => {
       const p = presence.get(socket.id);
       if (!p) return;
-      p.viewing = conversationId || null;
+      // Chỉ ghi nhận hội thoại người này được xem
+      const id = typeof conversationId === "string" && conversationId.length <= 120 ? conversationId : null;
+      const conv = id ? getConversation(id) : null;
+      p.viewing = conv && canSeeConversation(scopeFor(socket), conv) ? id : null;
       p.typing = false;
       broadcastPresence();
     });

@@ -7,6 +7,20 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.8.0 — 13/10/2026
+
+**Rà soát và tăng cường bảo mật**
+- **Chặn truy cập trực tiếp từ mạng LAN**: app chỉ nhận kết nối đi qua Cloudflare (tên miền). Máy khác trong mạng nội bộ gõ IP:3000 bị chặn. Cần mở để thử nghiệm thì thêm `ALLOW_LAN=1` vào `.env`.
+- **Mã đăng nhập không còn nằm trong đường link**: link tải Excel, xuất dữ liệu, tải nhật ký, bắt đầu kết nối Facebook/TikTok/Zalo OA giờ dùng mã dùng một lần sống 2 phút, không lộ phiên 7 ngày qua lịch sử trình duyệt hay nhật ký máy chủ.
+- **Thu hồi phiên đăng nhập**: đổi mật khẩu → các thiết bị khác bị đăng xuất; khóa nhân viên → phiên của họ hết hiệu lực ngay; bấm vào ảnh đại diện (góc trái dưới) để **đăng xuất mọi thiết bị** khi nghi lộ tài khoản.
+- **Chặn link độc trong tin nhắn khách gửi** (dạng `javascript:`): chỉ link http(s) mới bấm được.
+- **File tải lên**: chỉ ảnh / video / âm thanh mở trực tiếp; file khác (html, svg, pdf…) luôn tải về và chạy trong sandbox, không thể chạy mã trên tên miền app.
+- **Header bảo mật trình duyệt**: Content-Security-Policy, chống nhúng app vào trang khác (clickjacking), chống đoán kiểu file, HSTS.
+- **CORS**: API nội bộ chỉ dùng được từ chính giao diện app; API tích hợp `/api/v1` (API key) vẫn gọi được từ hệ thống khác.
+- **Realtime**: "ai đang xem hội thoại nào" chỉ gửi cho người có quyền xem hội thoại đó (trước đây mọi nhân viên đều nhận, lộ tên khách / hội thoại giám sát).
+- **Thư viện**: nâng `image-size` (lỗ hổng mức cao: ảnh giả làm treo máy chủ) và `uuid` trong thư viện Excel. `npm audit`: 0 lỗ hổng.
+- Đã quét lịch sử GitHub: không có khóa bí mật nào bị đẩy lên.
+
 ## v3.7.1 — 13/10/2026
 
 - Bộ lọc loại hội thoại đổi tên thành **Nhóm / Chat / Tất cả**.

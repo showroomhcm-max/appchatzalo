@@ -31,29 +31,46 @@ export function signToken(user: AuthUser) {
   return jwt.sign({ sub: user.id }, config.jwtSecret, { expiresIn: "7d" });
 }
 
-export function userFromToken(token: string | undefined): AuthUser | null {
+/**
+ * Mã dùng trong đường link (tải file, bắt đầu kết nối Facebook/TikTok…): sống 2 phút,
+ * để mã phiên 7 ngày không bao giờ nằm trong URL (lịch sử trình duyệt, nhật ký máy chủ / Cloudflare).
+ */
+export function signLinkToken(userId: number) {
+  return jwt.sign({ sub: userId, scope: "link" }, config.jwtSecret, { expiresIn: "2m" });
+}
+
+/** kind = "session": mã đăng nhập thường (header). kind = "link": mã ngắn hạn trong URL. */
+export function userFromToken(token: string | undefined, kind: "session" | "link" = "session"): AuthUser | null {
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as unknown as { sub: number };
-    const user = get<AuthUser>(
-      "SELECT id, username, display_name, role, auth_source, super_admin FROM users WHERE id = ? AND active = 1",
+    const payload = jwt.verify(token, config.jwtSecret) as unknown as { sub: number; iat: number; scope?: string };
+    if (kind === "link" ? payload.scope !== "link" : payload.scope === "link") return null;
+    const user = get<AuthUser & { token_after: number }>(
+      "SELECT id, username, display_name, role, auth_source, super_admin, token_after FROM users WHERE id = ? AND active = 1",
       payload.sub,
     );
-    return user ? { ...user, permissions: permissionsOf(user.id) } : null;
+    // Phiên tạo trước lúc đổi mật khẩu / "đăng xuất mọi thiết bị" → hết hiệu lực
+    if (!user || payload.iat * 1000 < user.token_after) return null;
+    const { token_after: _ignored, ...rest } = user;
+    return { ...rest, permissions: permissionsOf(user.id) };
   } catch {
     return null;
   }
 }
 
-function bearer(req: Request) {
-  const h = req.headers.authorization;
-  if (h?.startsWith("Bearer ")) return h.slice(7);
-  // Cho phép ?token= để tải file xuất dữ liệu trực tiếp bằng link.
-  return typeof req.query.token === "string" ? req.query.token : undefined;
+/** Hủy mọi phiên đăng nhập cũ của một người (lùi 1 giây để phiên mới cấp ngay sau vẫn dùng được). */
+export function revokeSessions(userId: number) {
+  run("UPDATE users SET token_after = ? WHERE id = ?", Math.floor(Date.now() / 1000) * 1000, userId);
 }
 
 export function requireUser(req: Request, res: Response, next: NextFunction) {
-  const user = userFromToken(bearer(req));
+  const h = req.headers.authorization;
+  // Header: mã phiên. ?token=: chỉ nhận mã link ngắn hạn.
+  const user = h?.startsWith("Bearer ")
+    ? userFromToken(h.slice(7), "session")
+    : typeof req.query.token === "string"
+      ? userFromToken(req.query.token, "link")
+      : null;
   if (!user) return res.status(401).json({ error: "Chưa đăng nhập hoặc phiên đã hết hạn" });
   req.user = user;
   next();

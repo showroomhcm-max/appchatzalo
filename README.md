@@ -112,6 +112,13 @@ npm run prod:logs      # xem log
 - Lịch sử thay đổi: [CHANGELOG.md](CHANGELOG.md). Trên GitHub xem ở mục **Tags** của repo.
 - Phát hành bản mới: ghi mục mới vào CHANGELOG.md, chạy `npm run release -- 2.1.0`, rồi `npm run prod:restart` trên máy chủ.
 
+## Bảo mật
+
+- App chỉ nhận kết nối từ chính máy chủ (Cloudflare Tunnel đi qua localhost). Muốn mở cho mạng LAN để thử: `ALLOW_LAN=1` trong `.env`.
+- Mã đăng nhập: phiên 7 ngày chỉ gửi qua header; link tải file dùng mã dùng một lần (2 phút). Đổi mật khẩu / khóa nhân viên / "đăng xuất mọi thiết bị" làm phiên cũ hết hiệu lực.
+- Khóa bí mật các nền tảng (cookie Zalo, token Facebook/TikTok, API key Odoo/Sapo) lưu trong `server/data/app.db`; thư mục `server/data` (kể cả `backups/`) phải giữ kín, không chia sẻ, không đẩy lên GitHub.
+- Không commit `.env`, `server/data/`, `tools/` (token Cloudflare). Kiểm tra lỗ hổng thư viện: `npm --prefix server audit --omit=dev`.
+
 ## Lưu ý quan trọng về Zalo cá nhân
 
 - Zalo không có API chính thức cho tài khoản cá nhân. App dùng thư viện cộng đồng [zca-js](https://github.com/RFS-ADRENO/zca-js), mô phỏng Zalo Web. Zalo có thể khóa tài khoản nếu thấy dấu hiệu spam hoặc gửi hàng loạt. Chỉ dùng để trả lời khách.

@@ -239,9 +239,21 @@ function Shell() {
               <KeyRound size={18} />
             </button>
           )}
-          <div className="me" title={`${user.display_name} (${user.super_admin ? 'Super Admin' : user.role === 'admin' ? 'Quản lý' : 'Nhân viên'})`}>
+          <button
+            className="me"
+            title={`${user.display_name} (${user.super_admin ? 'Super Admin' : user.role === 'admin' ? 'Quản lý' : 'Nhân viên'}) · bấm để đăng xuất mọi thiết bị`}
+            aria-label="Đăng xuất mọi thiết bị"
+            onClick={async () => {
+              if (!confirm('Đăng xuất tài khoản này khỏi MỌI thiết bị (máy tính, điện thoại…)? Dùng khi nghi lộ tài khoản.')) return
+              try {
+                await api('/auth/logout-all', { method: 'POST' })
+              } finally {
+                logout()
+              }
+            }}
+          >
             <Avatar name={user.display_name} size={32} />
-          </div>
+          </button>
           <button className="icon-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
             <LogOut size={18} />
           </button>
@@ -288,7 +300,9 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault()
     try {
-      await api('/auth/password', { body: { current, next } })
+      const r = await api<{ token?: string }>('/auth/password', { body: { current, next } })
+      // Đổi mật khẩu: các thiết bị khác bị đăng xuất, thiết bị này nhận phiên mới
+      if (r.token) setToken(r.token)
       onClose()
     } catch (err: any) {
       setMsg(err.message)
