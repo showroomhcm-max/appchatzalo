@@ -4,6 +4,7 @@ import { api, exportUrl } from '../api'
 import { useApp } from '../store'
 import { Empty } from '../components'
 import { duration, isoDate } from '../util'
+import { can } from '../perm'
 
 type AgentStat = {
   agent_id: number | null
@@ -23,7 +24,8 @@ export default function Reports() {
   const { user, users, channels, departments } = useApp()
   const [channelId, setChannelId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const isAdmin = user.role === 'admin'
+  const isAdmin = can(user, 'data.view')
+  const canExport = can(user, 'data.export')
   const today = new Date()
   const weekAgo = new Date(today.getTime() - 6 * 86400000)
   const [from, setFrom] = useState(isoDate(weekAgo))
@@ -174,6 +176,7 @@ export default function Reports() {
         </>
       )}
 
+      {canExport && (
       <div className="card">
         <h3>Xuất dữ liệu hội thoại</h3>
         <div className="export-form">
@@ -222,6 +225,7 @@ export default function Reports() {
           />
         </div>
       </div>
+      )}
 
     </div>
   )

@@ -8,6 +8,12 @@ export type User = {
   auth_source: 'local' | 'odoo'
   /** 1 = Super Admin (quyền cao nhất) */
   super_admin?: number
+  /** Quyền thực tế (nhóm quyền + quyền riêng) */
+  permissions?: string[]
+  /** Nhóm quyền đang thuộc */
+  group_ids?: number[]
+  /** Quyền riêng cấp thêm cho người này */
+  own_permissions?: string[]
   department_ids?: number[]
   /** Kênh được vào thẳng (thấy toàn bộ hội thoại của kênh) */
   channel_ids?: number[]

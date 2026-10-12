@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { get, run } from "./db.js";
+import { permissionsOf } from "./permissions.js";
 
 export type AuthUser = {
   id: number;
@@ -12,6 +13,8 @@ export type AuthUser = {
   auth_source: "local" | "odoo";
   /** Super Admin: quyền cao nhất */
   super_admin: number;
+  /** Quyền thực tế (nhóm quyền + quyền riêng) */
+  permissions?: string[];
 };
 
 declare global {
@@ -36,7 +39,7 @@ export function userFromToken(token: string | undefined): AuthUser | null {
       "SELECT id, username, display_name, role, auth_source, super_admin FROM users WHERE id = ? AND active = 1",
       payload.sub,
     );
-    return user ?? null;
+    return user ? { ...user, permissions: permissionsOf(user.id) } : null;
   } catch {
     return null;
   }

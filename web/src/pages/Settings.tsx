@@ -8,37 +8,47 @@ import UsersPage from './Users'
 import { BUILD, buildTimeLabel } from '../version'
 import Integrations from './Integrations'
 import LogsTab from './Logs'
-import { ScrollText } from 'lucide-react'
+import PermissionsTab from './Permissions'
+import { canAny, type Permission } from '../perm'
+import { ScrollText, ShieldCheck } from 'lucide-react'
 
-export type SettingsTab = 'users' | 'departments' | 'tags' | 'templates' | 'integrations' | 'logs'
+export type SettingsTab = 'users' | 'permissions' | 'departments' | 'tags' | 'templates' | 'integrations' | 'logs'
 type Tab = SettingsTab
-const TABS: Tab[] = ['users', 'departments', 'tags', 'templates', 'integrations', 'logs']
-const SUPER_TABS: Tab[] = ['integrations', 'logs']
+const TABS: Tab[] = ['users', 'permissions', 'departments', 'tags', 'templates', 'integrations', 'logs']
+const TAB_PERMS: Record<Tab, Permission[]> = {
+  users: ['users.manage', 'permissions.manage'],
+  permissions: ['permissions.manage'],
+  departments: ['departments.manage'],
+  tags: ['tags.manage'],
+  templates: ['templates.manage'],
+  integrations: ['integrations.manage'],
+  logs: ['logs.view'],
+}
 
 const TAB_KEY = 'zcskh.settingsTab'
 
 export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
   const { user } = useApp()
-  const isSuper = !!user.super_admin
-  const allowed = (t: Tab) => isSuper || !SUPER_TABS.includes(t)
+  const allowed = (t: Tab) => canAny(user, TAB_PERMS[t])
+  const firstAllowed = TABS.find(allowed) ?? 'users'
   const [tab, setTabRaw] = useState<Tab>(() => {
     if (fromLink && TABS.includes(fromLink)) return fromLink
     try {
       const saved = localStorage.getItem(TAB_KEY) as Tab
-      return TABS.includes(saved) ? saved : 'users'
+      return TABS.includes(saved) && allowed(saved) ? saved : firstAllowed
     } catch {
-      return 'users'
+      return firstAllowed
     }
   })
-  const setTab = (t: Tab) => setTabRaw(allowed(t) ? t : 'users')
+  const setTab = (t: Tab) => setTabRaw(allowed(t) ? t : firstAllowed)
   useEffect(() => {
     if (fromLink && TABS.includes(fromLink)) setTab(fromLink)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromLink])
   useEffect(() => {
-    if (!allowed(tab)) setTabRaw('users')
+    if (!allowed(tab)) setTabRaw(firstAllowed)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, isSuper])
+  }, [tab, user.permissions, user.super_admin])
   useEffect(() => {
     try {
       localStorage.setItem(TAB_KEY, tab)
@@ -66,6 +76,7 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
         {(
           [
             ['users', 'Nhân viên', <UsersIcon size={16} key="u" />],
+            ['permissions', 'Phân quyền', <ShieldCheck size={16} key="p" />],
             ['departments', 'Bộ phận', <Building2 size={16} key="d" />],
             ['tags', 'Tag', <TagIcon size={16} key="t" />],
             ['templates', 'Tin nhắn mẫu', <MessageSquareText size={16} key="m" />],
@@ -80,12 +91,13 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
           </button>
         ))}
       </div>
-      {tab === 'users' && <UsersPage embedded />}
-      {tab === 'departments' && <DepartmentsTab />}
-      {tab === 'tags' && <TagsTab />}
-      {tab === 'templates' && <TemplatesTab />}
-      {tab === 'integrations' && isSuper && <Integrations embedded />}
-      {tab === 'logs' && isSuper && <LogsTab />}
+      {tab === 'users' && allowed('users') && <UsersPage embedded />}
+      {tab === 'permissions' && allowed('permissions') && <PermissionsTab />}
+      {tab === 'departments' && allowed('departments') && <DepartmentsTab />}
+      {tab === 'tags' && allowed('tags') && <TagsTab />}
+      {tab === 'templates' && allowed('templates') && <TemplatesTab />}
+      {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
+      {tab === 'logs' && allowed('logs') && <LogsTab />}
     </div>
   )
 }

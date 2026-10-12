@@ -159,7 +159,9 @@ function Shell() {
   const zaloStatuses = workingChannelIds ? allStatuses.filter((s) => workingChannelIds.includes(s.channelId)) : allStatuses
   const [route, setRoute] = useState(parseHash)
   const [pwOpen, setPwOpen] = useState(false)
-  const isAdmin = user.role === 'admin'
+  const { can: allowed } = useApp()
+  const canData = allowed('data.view') || allowed('data.export')
+  const canSettings = (['users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash())
@@ -172,11 +174,11 @@ function Shell() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
-  const nav: { id: Page; label: string; icon: React.ReactNode; admin?: boolean }[] = [
+  const nav: { id: Page; label: string; icon: React.ReactNode; show?: boolean }[] = [
     { id: 'inbox', label: 'Hội thoại', icon: <MessagesSquare size={20} /> },
     { id: 'channels', label: 'Kênh Chat', icon: <Radio size={20} /> },
-    { id: 'data', label: 'Dữ liệu', icon: <Database size={20} />, admin: true },
-    { id: 'settings', label: 'Cài đặt', icon: <SettingsIcon size={20} />, admin: true },
+    { id: 'data', label: 'Dữ liệu', icon: <Database size={20} />, show: canData },
+    { id: 'settings', label: 'Cài đặt', icon: <SettingsIcon size={20} />, show: canSettings },
   ]
 
   const offline = zaloStatuses.filter((s) => s.state !== 'connected')
@@ -190,7 +192,7 @@ function Shell() {
         </div>
         <nav>
           {nav
-            .filter((n) => !n.admin || isAdmin)
+            .filter((n) => n.show !== false)
             .map((n) => (
               <a
                 key={n.id}
@@ -222,7 +224,7 @@ function Shell() {
               <KeyRound size={18} />
             </button>
           )}
-          <div className="me" title={`${user.display_name} (${user.role === 'admin' ? 'Quản trị' : 'Nhân viên'})`}>
+          <div className="me" title={`${user.display_name} (${user.super_admin ? 'Super Admin' : user.role === 'admin' ? 'Quản lý' : 'Nhân viên'})`}>
             <Avatar name={user.display_name} size={32} />
           </div>
           <button className="icon-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
@@ -233,7 +235,7 @@ function Shell() {
       </aside>
       <main className="main">
         <UpdateBanner />
-        {route.page !== 'channels' && (offline.length > 0 || (isAdmin && zaloStatuses.length === 0)) && (
+        {route.page !== 'channels' && (offline.length > 0 || (allowed('channels.manage') && zaloStatuses.length === 0)) && (
           <div className="banner warn">
             {zaloStatuses.length === 0
               ? 'Chưa có kênh Zalo nào — chưa nhận/gửi được tin nhắn.'
@@ -246,11 +248,11 @@ function Shell() {
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}
         {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} />}
         {route.page === 'channels' && <Channels />}
-        {route.page === 'data' && isAdmin && <Reports />}
-        {route.page === 'settings' && isAdmin && <SettingsPage tab={route.tab} />}
-        {!isAdmin && (route.page === 'data' || route.page === 'settings') && (
+        {route.page === 'data' && canData && <Reports />}
+        {route.page === 'settings' && canSettings && <SettingsPage tab={route.tab} />}
+        {((route.page === 'data' && !canData) || (route.page === 'settings' && !canSettings)) && (
           <div className="page">
-            <div className="card center pad">Trang này chỉ dành cho quản lý.</div>
+            <div className="card center pad">Bạn chưa được cấp quyền vào trang này. Nhờ quản lý cấp quyền trong Cài đặt › Phân quyền.</div>
           </div>
         )}
       </main>

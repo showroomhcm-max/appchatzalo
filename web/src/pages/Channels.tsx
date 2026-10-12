@@ -6,9 +6,9 @@ import type { Channel, User, ZaloStatus } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
 
 export default function Channels() {
-  const { user, channels, zaloStatuses, departments, users, reloadSettings, reloadUsers } = useApp()
+  const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed } = useApp()
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
-  const isAdmin = user.role === 'admin'
+  const isAdmin = allowed('channels.manage')
 
   const statusOf = (c: Channel) => zaloStatuses.find((s) => s.channelId === c.id) ?? c.status
   const visible = isAdmin ? channels : channels.filter((c) => c.active)
@@ -182,7 +182,7 @@ function AgentChannelCard({ channel: c, status }: { channel: Channel; status: Za
 /** Bảng phân công: tick nhân viên × kênh để phân công nhiều người, nhiều kênh cùng lúc. */
 function AssignmentMatrix() {
   const { users, channels, departments, reloadUsers } = useApp()
-  const agents = users.filter((u) => u.active && u.role !== 'admin')
+  const agents = users.filter((u) => u.active && !u.super_admin && !u.permissions?.includes('conversations.all'))
   const initial = () => Object.fromEntries(agents.map((u) => [u.id, u.channel_ids ?? []])) as Record<number, number[]>
   const [grid, setGrid] = useState<Record<number, number[]>>(initial)
   const [saving, setSaving] = useState(false)
@@ -516,7 +516,7 @@ function ChannelForm({
           </span>
           <div className="check-grid">
             {users
-              .filter((u) => u.active && u.role !== 'admin')
+              .filter((u) => u.active && !u.super_admin && !u.permissions?.includes('conversations.all'))
               .map((u) => (
                 <label key={u.id} className="check">
                   <input

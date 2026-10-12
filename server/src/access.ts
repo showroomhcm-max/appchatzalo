@@ -19,8 +19,8 @@ export type Scope =
       fullChannelIds: number[];
     };
 
-export function scopeOf(user: Pick<AuthUser, "id" | "role">): Scope {
-  if (user.role === "admin") return { all: true };
+export function scopeOf(user: Pick<AuthUser, "id" | "role" | "super_admin" | "permissions">): Scope {
+  if (user.super_admin || user.permissions?.includes("conversations.all")) return { all: true };
   const departmentIds = all<{ department_id: number }>(
     "SELECT department_id FROM user_departments WHERE user_id = ?",
     user.id,

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import type { Socket } from 'socket.io-client'
 import { api, connectSocket, setToken, setUnauthorizedHandler } from './api'
 import type { Channel, Department, PresenceState, Tag, User, ZaloStatus } from './types'
+import { can, type Permission } from './perm'
 
 type Ctx = {
   user: User
@@ -14,6 +15,8 @@ type Ctx = {
   tags: Tag[]
   reloadSettings: () => void
   presence: PresenceState
+  /** Người này có quyền không */
+  can: (perm: Permission) => boolean
   /** Kênh người này đang tick chọn để chat; null = mọi kênh được quyền */
   workingChannelIds: number[] | null
   setWorkingChannels: (ids: number[] | null) => Promise<void>
@@ -47,7 +50,9 @@ export function useSocketEvent<T = any>(event: string, handler: (data: T) => voi
   }, [socket, event])
 }
 
-export function AppProvider({ user, onLogout, children }: { user: User; onLogout: () => void; children: ReactNode }) {
+export function AppProvider({ user: initialUser, onLogout, children }: { user: User; onLogout: () => void; children: ReactNode }) {
+  // Quyền có thể đổi khi quản lý chỉnh nhóm quyền → tải lại thông tin của chính mình
+  const [user, setUser] = useState<User>(initialUser)
   const [users, setUsers] = useState<User[]>([])
   const [zaloStatuses, setZaloStatuses] = useState<ZaloStatus[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
@@ -100,7 +105,10 @@ export function AppProvider({ user, onLogout, children }: { user: User; onLogout
     )
     s.on('settings:changed', (what: string) => {
       reloadSettings()
-      if (what === 'users' || what === 'departments') reloadUsers()
+      if (what === 'users' || what === 'departments') {
+        reloadUsers()
+        api<User>('/auth/me').then(setUser).catch(() => {})
+      }
     })
     s.on('presence', setPresence)
     setSocket(s)
@@ -124,6 +132,7 @@ export function AppProvider({ user, onLogout, children }: { user: User; onLogout
         presence,
         workingChannelIds,
         setWorkingChannels,
+        can: (perm: Permission) => can(user, perm),
         activeChannels: workingChannelIds ? channels.filter((c) => workingChannelIds.includes(c.id)) : channels,
         socket,
         socketConnected,

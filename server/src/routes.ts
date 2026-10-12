@@ -6,7 +6,15 @@ import multer from "multer";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { all, get, run, logEvent } from "./db.js";
-import { generateApiKey, requireAdmin, requireApiKey, requireSuperAdmin, requireUser, signToken, type AuthUser } from "./auth.js";
+import { generateApiKey, requireApiKey, requireUser, signToken, type AuthUser } from "./auth.js";
+import {
+  PERMISSIONS,
+  can,
+  cleanPermissions,
+  permissionsOf,
+  requirePerm,
+  syncLegacyRole,
+} from "./permissions.js";
 import { logFilesText, recentLogs, redact } from "./logger.js";
 import os from "node:os";
 import { appVersion } from "./version.js";
@@ -116,7 +124,7 @@ function recordFail(key: string) {
 const USER_FIELDS = "id, username, display_name, role, auth_source, super_admin";
 
 function issueLogin(res: Response, userId: number) {
-  const user = get<AuthUser>(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`, userId)!;
+  const user = { ...get<AuthUser>(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`, userId)!, permissions: permissionsOf(userId) };
   run("UPDATE users SET last_login_at = ? WHERE id = ?", Date.now(), userId);
   logEvent(null, userId, "user.login", { source: user.auth_source });
   res.json({ token: signToken(user), user });
@@ -145,6 +153,10 @@ function finishOdooLogin(res: Response, odoo: OdooIdentity) {
       Date.now(),
     );
     row = { id: Number(r.lastInsertRowid), active: isAdmin ? 1 : 0 };
+    if (isAdmin && !isSuper) {
+      const g = get<{ id: number }>("SELECT id FROM permission_groups WHERE name = 'Quản trị'");
+      if (g) run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", row.id, g.id);
+    }
     logEvent(null, row.id, "user.odoo_registered", { login });
   } else {
     run("UPDATE users SET odoo_uid = ? WHERE id = ?", odoo.uid, row.id);
@@ -277,7 +289,7 @@ appRouter.put(
 /** Phân công hàng loạt: { assignments: [{ user_id, channel_ids: [] }] } (quản lý). */
 appRouter.put(
   "/channel-assignments",
-  requireAdmin,
+  requirePerm("channels.manage"),
   h((req, res) => {
     const list = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
     for (const a of list) setUserChannels(Number(a.user_id), a.channel_ids);
@@ -301,21 +313,60 @@ appRouter.post(
 // Nhân viên
 const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at, super_admin";
 
-/** Quản trị viên chỉ quản lý được nhân viên; quản trị viên khác và Super Admin do Super Admin quản lý. */
-function guardRoleChange(req: Request, target: { role: string; super_admin: number } | null, body: any) {
-  if (req.user!.super_admin) return;
-  if (target && (target.role === "admin" || target.super_admin)) {
-    throw new HttpError(403, "Chỉ Super Admin mới sửa được tài khoản quản trị");
+/**
+ * Ai sửa được ai:
+ * - Super Admin sửa được mọi người, cấp / bỏ Super Admin.
+ * - Người có quyền "permissions.manage" cấp nhóm quyền / quyền riêng (không vượt quá quyền của chính mình).
+ * - Người có "users.manage" chỉ sửa được người có ít quyền hơn hoặc bằng mình.
+ */
+function guardUserEdit(req: Request, targetId: number | null, body: any) {
+  const me = req.user!;
+  if (me.super_admin) return;
+  if (body?.super_admin) throw new HttpError(403, "Chỉ Super Admin mới cấp được quyền Super Admin");
+  if (targetId !== null) {
+    const t = get<{ super_admin: number }>("SELECT super_admin FROM users WHERE id = ?", targetId);
+    if (t?.super_admin) throw new HttpError(403, "Chỉ Super Admin mới sửa được tài khoản Super Admin");
+    const extra = permissionsOf(targetId).filter((p) => !me.permissions?.includes(p));
+    if (extra.length && targetId !== me.id) throw new HttpError(403, "Không sửa được người có nhiều quyền hơn bạn");
   }
-  if (body?.role === "admin" || body?.super_admin) throw new HttpError(403, "Chỉ Super Admin mới cấp được quyền quản trị");
+  const wantsPerms = body?.group_ids !== undefined || body?.own_permissions !== undefined;
+  if (wantsPerms && !can(me, "permissions.manage")) throw new HttpError(403, "Bạn chưa được cấp quyền phân quyền cho người khác");
+  if (wantsPerms) {
+    const granted = new Set([
+      ...cleanPermissions(body?.own_permissions),
+      ...all<{ permissions: string }>(
+        `SELECT permissions FROM permission_groups WHERE id IN (${(Array.isArray(body?.group_ids) ? body.group_ids : []).map(Number).filter((n: number) => n > 0).join(",") || "NULL"})`,
+      ).flatMap((g) => cleanPermissions(JSON.parse(g.permissions))),
+    ]);
+    const over = [...granted].filter((p) => !me.permissions?.includes(p));
+    if (over.length) throw new HttpError(403, "Không cấp được quyền mà chính bạn không có");
+  }
+}
+
+function setUserPermissions(userId: number, body: any) {
+  if (Array.isArray(body?.group_ids)) {
+    run("DELETE FROM user_permission_groups WHERE user_id = ?", userId);
+    for (const g of new Set(body.group_ids.map(Number).filter((n: number) => n > 0))) {
+      run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", userId, g as number);
+    }
+  }
+  if (body?.own_permissions !== undefined) {
+    run("UPDATE users SET permissions = ? WHERE id = ?", JSON.stringify(cleanPermissions(body.own_permissions)), userId);
+  }
+  syncLegacyRole(userId);
 }
 function withDepartments<T extends { id: number }>(rows: T[]) {
   const links = all<{ user_id: number; department_id: number }>("SELECT user_id, department_id FROM user_departments");
   const chans = all<{ user_id: number; channel_id: number }>("SELECT user_id, channel_id FROM user_channels");
+  const groups = all<{ user_id: number; group_id: number }>("SELECT user_id, group_id FROM user_permission_groups");
+  const own = new Map(all<{ id: number; permissions: string }>("SELECT id, permissions FROM users").map((u) => [u.id, u.permissions]));
   return rows.map((u) => ({
     ...u,
     department_ids: links.filter((l) => l.user_id === u.id).map((l) => l.department_id),
     channel_ids: chans.filter((l) => l.user_id === u.id).map((l) => l.channel_id),
+    group_ids: groups.filter((l) => l.user_id === u.id).map((l) => l.group_id),
+    own_permissions: cleanPermissions(JSON.parse(own.get(u.id) ?? "[]")),
+    permissions: permissionsOf(u.id),
   }));
 }
 function setUserChannels(userId: number, channelIds: unknown) {
@@ -339,10 +390,10 @@ appRouter.get("/users", (_req, res) =>
 );
 appRouter.post(
   "/users",
-  requireAdmin,
+  requirePerm("users.manage"),
   h((req, res) => {
     const { password, display_name, role } = req.body ?? {};
-    guardRoleChange(req, null, req.body);
+    guardUserEdit(req, null, req.body);
     const source = req.body?.auth_source === "local" ? "local" : "odoo";
     let username = String(req.body?.username ?? "").trim();
     if (source === "odoo") username = username.toLowerCase();
@@ -363,12 +414,13 @@ appRouter.post(
     }
     setUserDepartments(Number(r.lastInsertRowid), req.body?.department_ids);
     setUserChannels(Number(r.lastInsertRowid), req.body?.channel_ids);
+    setUserPermissions(Number(r.lastInsertRowid), req.body);
     res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, Number(r.lastInsertRowid))!])[0]);
   }),
 );
 appRouter.patch(
   "/users/:id",
-  requireAdmin,
+  requirePerm("users.manage"),
   h((req, res) => {
     const id = Number(req.params.id);
     const { display_name, role, active, password } = req.body ?? {};
@@ -380,7 +432,7 @@ appRouter.patch(
       id,
     );
     if (!target) throw new HttpError(404, "Không tìm thấy nhân viên");
-    guardRoleChange(req, target, req.body);
+    guardUserEdit(req, id, req.body);
     if (req.body?.super_admin !== undefined && req.user!.super_admin) {
       if (id === req.user!.id && !req.body.super_admin) throw new HttpError(400, "Không thể tự bỏ quyền Super Admin của mình");
       run("UPDATE users SET super_admin = ? WHERE id = ?", req.body.super_admin ? 1 : 0, id);
@@ -398,6 +450,7 @@ appRouter.patch(
     }
     setUserDepartments(id, req.body?.department_ids);
     setUserChannels(id, req.body?.channel_ids);
+    setUserPermissions(id, req.body);
     res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, id)!])[0]);
   }),
 );
@@ -494,7 +547,7 @@ appRouter.patch(
   h((req, res) => {
     const current = visibleConversation(req, req.params.id);
     const patch = { ...(req.body ?? {}) };
-    if (req.user!.role !== "admin") {
+    if (!can(req.user, "conversations.assign")) {
       // Nhân viên thường: nhận hội thoại chưa ai phụ trách, hoặc nhả/chuyển hội thoại của chính mình.
       if (patch.assigned_to !== undefined) {
         const ok = current.assigned_to === req.user!.id || (current.assigned_to == null && patch.assigned_to === req.user!.id);
@@ -617,7 +670,7 @@ appRouter.post(
     const msg = messageInConversation(conv.id, Number(req.params.mid));
     if (msg.direction !== "out") throw new HttpError(400, "Chỉ thu hồi được tin của shop");
     if (msg.undone) throw new HttpError(400, "Tin đã được thu hồi");
-    if (req.user!.role !== "admin" && msg.agent_id !== req.user!.id) {
+    if (!can(req.user, "messages.undo_any") && msg.agent_id !== req.user!.id) {
       throw new HttpError(403, "Chỉ người gửi hoặc quản trị viên mới thu hồi được tin này");
     }
     await connectedSession(conv).undo({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg });
@@ -698,7 +751,7 @@ appRouter.get(
 );
 appRouter.post(
   "/conversations/:id/reviews",
-  requireAdmin,
+  requirePerm("reviews.manage"),
   h((req, res) => {
     const score = Number(req.body?.score);
     if (!(score >= 1 && score <= 5)) throw new HttpError(400, "Điểm từ 1 đến 5");
@@ -718,16 +771,16 @@ appRouter.post(
 );
 
 // Dữ liệu: báo cáo & xuất hội thoại — chỉ quản lý
-appRouter.get("/stats", requireAdmin, (req, res) => res.json(agentStats(exportFilter(req.query))));
-appRouter.get("/export", requireAdmin, (req, res) => sendExport(req, res));
+appRouter.get("/stats", requirePerm("data.view"), (req, res) => res.json(agentStats(exportFilter(req.query))));
+appRouter.get("/export", requirePerm("data.export"), (req, res) => sendExport(req, res));
 
 // Tích hợp: API key + webhook (chỉ admin)
-appRouter.get("/api-keys", requireSuperAdmin, (_req, res) =>
+appRouter.get("/api-keys", requirePerm("integrations.manage"), (_req, res) =>
   res.json(all("SELECT id, name, prefix, created_at, last_used_at FROM api_keys ORDER BY id DESC")),
 );
 appRouter.post(
   "/api-keys",
-  requireSuperAdmin,
+  requirePerm("integrations.manage"),
   h((req, res) => {
     const name = String(req.body?.name ?? "").trim();
     if (!name) throw new HttpError(400, "Đặt tên cho API key (vd: tên web app)");
@@ -737,17 +790,17 @@ appRouter.post(
     res.json({ name, key: k.key, prefix: k.prefix });
   }),
 );
-appRouter.delete("/api-keys/:id", requireSuperAdmin, (req, res) => {
+appRouter.delete("/api-keys/:id", requirePerm("integrations.manage"), (req, res) => {
   run("DELETE FROM api_keys WHERE id = ?", Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.get("/webhooks", requireSuperAdmin, (_req, res) =>
+appRouter.get("/webhooks", requirePerm("integrations.manage"), (_req, res) =>
   res.json(all("SELECT * FROM webhooks ORDER BY id DESC").map((w) => ({ ...w, events: JSON.parse(w.events) }))),
 );
-appRouter.get("/webhook-events", requireSuperAdmin, (_req, res) => res.json(WEBHOOK_EVENTS));
+appRouter.get("/webhook-events", requirePerm("integrations.manage"), (_req, res) => res.json(WEBHOOK_EVENTS));
 appRouter.post(
   "/webhooks",
-  requireSuperAdmin,
+  requirePerm("integrations.manage"),
   h((req, res) => {
     const url = String(req.body?.url ?? "").trim();
     if (!/^https?:\/\//.test(url)) throw new HttpError(400, "URL phải bắt đầu bằng http:// hoặc https://");
@@ -763,23 +816,88 @@ appRouter.post(
     res.json({ id: Number(r.lastInsertRowid), url, secret, events });
   }),
 );
-appRouter.patch("/webhooks/:id", requireSuperAdmin, (req, res) => {
+appRouter.patch("/webhooks/:id", requirePerm("integrations.manage"), (req, res) => {
   const { active, events } = req.body ?? {};
   if (active !== undefined) run("UPDATE webhooks SET active = ? WHERE id = ?", active ? 1 : 0, Number(req.params.id));
   if (Array.isArray(events)) run("UPDATE webhooks SET events = ? WHERE id = ?", JSON.stringify(events), Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.delete("/webhooks/:id", requireSuperAdmin, (req, res) => {
+appRouter.delete("/webhooks/:id", requirePerm("integrations.manage"), (req, res) => {
   run("DELETE FROM webhooks WHERE id = ?", Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.post("/webhooks/test", requireSuperAdmin, (_req, res) => {
+appRouter.post("/webhooks/test", requirePerm("integrations.manage"), (_req, res) => {
   dispatch("ping", { message: "Kết nối webhook thành công", at: new Date().toISOString() });
   res.json({ ok: true });
 });
 
+// Nhóm quyền
+appRouter.get("/permissions", (_req, res) => res.json(PERMISSIONS));
+appRouter.get("/permission-groups", (_req, res) => {
+  const members = all<{ group_id: number; user_id: number }>("SELECT group_id, user_id FROM user_permission_groups");
+  res.json(
+    all<{ id: number; name: string; description: string | null; permissions: string }>(
+      "SELECT id, name, description, permissions FROM permission_groups ORDER BY name",
+    ).map((g) => ({
+      ...g,
+      permissions: cleanPermissions(JSON.parse(g.permissions)),
+      user_ids: members.filter((m) => m.group_id === g.id).map((m) => m.user_id),
+    })),
+  );
+});
+function saveGroup(req: Request, id: number | null) {
+  const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
+  const perms = req.body?.permissions !== undefined ? cleanPermissions(req.body.permissions) : undefined;
+  if (perms && !req.user!.super_admin) {
+    const over = perms.filter((p) => !req.user!.permissions?.includes(p));
+    if (over.length) throw new HttpError(403, "Không đưa vào nhóm quyền mà chính bạn không có");
+  }
+  if (id === null) {
+    if (!name) throw new HttpError(400, "Đặt tên nhóm quyền");
+    if (get("SELECT 1 FROM permission_groups WHERE lower(name) = lower(?)", name)) throw new HttpError(400, "Nhóm quyền đã tồn tại");
+    id = Number(
+      run(
+        "INSERT INTO permission_groups(name, description, permissions, created_at) VALUES(?, ?, ?, ?)",
+        name,
+        String(req.body?.description ?? "").trim() || null,
+        JSON.stringify(perms ?? []),
+        Date.now(),
+      ).lastInsertRowid,
+    );
+  } else {
+    if (!get("SELECT 1 FROM permission_groups WHERE id = ?", id)) throw new HttpError(404, "Không tìm thấy nhóm quyền");
+    if (name !== undefined) {
+      if (!name) throw new HttpError(400, "Tên nhóm không được trống");
+      run("UPDATE permission_groups SET name = ? WHERE id = ?", name, id);
+    }
+    if (req.body?.description !== undefined) run("UPDATE permission_groups SET description = ? WHERE id = ?", String(req.body.description).trim() || null, id);
+    if (perms) run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify(perms), id);
+  }
+  if (Array.isArray(req.body?.user_ids)) {
+    run("DELETE FROM user_permission_groups WHERE group_id = ?", id);
+    for (const u of new Set(req.body.user_ids.map(Number).filter((n: number) => n > 0))) {
+      run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", u as number, id);
+    }
+  }
+  for (const u of all<{ id: number }>("SELECT id FROM users")) syncLegacyRole(u.id);
+  bus.emit("settings.changed", "users");
+  return id;
+}
+appRouter.post("/permission-groups", requirePerm("permissions.manage"), h((req, res) => res.json({ id: saveGroup(req, null) })));
+appRouter.patch(
+  "/permission-groups/:id",
+  requirePerm("permissions.manage"),
+  h((req, res) => res.json({ id: saveGroup(req, Number(req.params.id)) })),
+);
+appRouter.delete("/permission-groups/:id", requirePerm("permissions.manage"), (req, res) => {
+  run("DELETE FROM permission_groups WHERE id = ?", Number(req.params.id));
+  for (const u of all<{ id: number }>("SELECT id FROM users")) syncLegacyRole(u.id);
+  bus.emit("settings.changed", "users");
+  res.json({ ok: true });
+});
+
 // Nhật ký hệ thống (Super Admin): xem nhanh, tải file để gửi kiểm tra lỗi
-appRouter.get("/logs", requireSuperAdmin, (req, res) =>
+appRouter.get("/logs", requirePerm("logs.view"), (req, res) =>
   res.json(
     recentLogs({
       level: req.query.level ? String(req.query.level) : undefined,
@@ -788,7 +906,7 @@ appRouter.get("/logs", requireSuperAdmin, (req, res) =>
     }),
   ),
 );
-appRouter.get("/logs/download", requireSuperAdmin, (req, res) => {
+appRouter.get("/logs/download", requirePerm("logs.view"), (req, res) => {
   const days = num(req.query.days) ?? 3;
   const v = appVersion();
   const header = [

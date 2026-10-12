@@ -7,6 +7,19 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v2.2.0 — 12/10/2026
+
+**Phân quyền theo từng người và theo nhóm**
+- Tab mới **Cài đặt › Phân quyền**: tạo nhóm quyền (ví dụ Trưởng ca, Kế toán), tick quyền cho nhóm, chọn thành viên.
+- 14 quyền chi tiết: xem tất cả hội thoại, giao/chuyển hội thoại, thu hồi tin của người khác, chấm điểm, xem dữ liệu, xuất dữ liệu, quản lý kênh, nhân viên, bộ phận, tag, tin nhắn mẫu, tích hợp, nhật ký, phân quyền.
+- Mỗi nhân viên có quyền = quyền của các nhóm họ thuộc về + **quyền riêng** cấp thêm (sửa ở tab Nhân viên).
+- Có sẵn 3 nhóm mẫu: Quản trị, Trưởng nhóm, Nhân viên CSKH. Quản trị viên cũ tự vào nhóm "Quản trị".
+- Không ai cấp được quyền mà chính mình không có; chỉ Super Admin cấp được Super Admin.
+- Menu và các tab Cài đặt chỉ hiện theo quyền của từng người.
+
+**Tag**
+- Ô **Tìm tag** luôn hiện (trước đây chỉ hiện khi có trên 6 tag).
+
 ## v2.1.1 — 12/10/2026
 
 **Sửa lỗi**

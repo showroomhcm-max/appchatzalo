@@ -6,7 +6,8 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { all, get, run, tx, logEvent } from "./db.js";
-import { requireAdmin, requireSuperAdmin } from "./auth.js";
+import { requireSuperAdmin } from "./auth.js";
+import { can, requirePerm } from "./permissions.js";
 import { HttpError } from "./conversations.js";
 import { canUseChannel, departmentItemFilter, scopeOf } from "./access.js";
 import { zalo } from "./zalo.js";
@@ -61,12 +62,13 @@ function channelPayload(isAdmin: boolean) {
 
 settingsRouter.get("/channels", (req, res) => {
   const scope = scopeOf(req.user!);
-  res.json(channelPayload(scope.all).filter((c) => scope.all || (c.active && canUseChannel(scope, c.id))));
+  const manager = can(req.user, "channels.manage");
+  res.json(channelPayload(manager).filter((c) => manager || ((scope.all || canUseChannel(scope, c.id)) && c.active)));
 });
 
 settingsRouter.post(
   "/channels",
-  requireAdmin,
+  requirePerm("channels.manage"),
   h((req, res) => {
     const name = String(req.body?.name ?? "").trim();
     if (!name) throw new HttpError(400, "Đặt tên cho kênh, ví dụ: Zalo Bán hàng");
@@ -87,7 +89,7 @@ settingsRouter.post(
 
 settingsRouter.patch(
   "/channels/:id",
-  requireAdmin,
+  requirePerm("channels.manage"),
   h(async (req, res) => {
     const id = Number(req.params.id);
     if (!get("SELECT 1 FROM channels WHERE id = ?", id)) throw new HttpError(404, "Không tìm thấy kênh");
@@ -134,17 +136,17 @@ const channelAction = (fn: (id: number) => unknown) =>
     await fn(id);
     res.json(zalo.session(id).getStatus());
   });
-settingsRouter.post("/channels/:id/login-qr", requireAdmin, channelAction((id) => void zalo.session(id).startQRLogin()));
-settingsRouter.post("/channels/:id/cancel", requireAdmin, channelAction((id) => zalo.session(id).cancelQR()));
+settingsRouter.post("/channels/:id/login-qr", requirePerm("channels.manage"), channelAction((id) => void zalo.session(id).startQRLogin()));
+settingsRouter.post("/channels/:id/cancel", requirePerm("channels.manage"), channelAction((id) => zalo.session(id).cancelQR()));
 settingsRouter.post(
   "/channels/:id/reconnect",
-  requireAdmin,
+  requirePerm("channels.manage"),
   channelAction(async (id) => {
     await zalo.session(id).logout(false);
     await zalo.session(id).init();
   }),
 );
-settingsRouter.post("/channels/:id/logout", requireAdmin, channelAction((id) => zalo.session(id).logout(true)));
+settingsRouter.post("/channels/:id/logout", requirePerm("channels.manage"), channelAction((id) => zalo.session(id).logout(true)));
 
 // Trạng thái các kênh người này dùng được (banner "Zalo chưa kết nối")
 settingsRouter.get("/zalo/status", (req, res) => {
@@ -191,11 +193,11 @@ function saveDepartment(id: number | null, b: any) {
   });
 }
 
-settingsRouter.post("/departments", requireAdmin, h((req, res) => res.json(saveDepartment(null, req.body))));
-settingsRouter.patch("/departments/:id", requireAdmin, h((req, res) => res.json(saveDepartment(Number(req.params.id), req.body))));
+settingsRouter.post("/departments", requirePerm("departments.manage"), h((req, res) => res.json(saveDepartment(null, req.body))));
+settingsRouter.patch("/departments/:id", requirePerm("departments.manage"), h((req, res) => res.json(saveDepartment(Number(req.params.id), req.body))));
 settingsRouter.delete(
   "/departments/:id",
-  requireAdmin,
+  requirePerm("departments.manage"),
   h((req, res) => {
     const id = Number(req.params.id);
     const n = get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE department_id = ?", id)!.n;
@@ -255,7 +257,7 @@ function saveTag(id: number | null, b: any) {
 settingsRouter.get("/tags", (req, res) => res.json(tagPayload(req)));
 settingsRouter.post(
   "/tags",
-  requireAdmin,
+  requirePerm("tags.manage"),
   h((req, res) => {
     const id = saveTag(null, req.body);
     res.json(tagPayload(req).find((t) => t.id === id));
@@ -263,7 +265,7 @@ settingsRouter.post(
 );
 settingsRouter.patch(
   "/tags/:id",
-  requireAdmin,
+  requirePerm("tags.manage"),
   h((req, res) => {
     const id = saveTag(Number(req.params.id), req.body);
     bus.emit("settings.changed", "tags");
@@ -272,7 +274,7 @@ settingsRouter.patch(
 );
 settingsRouter.delete(
   "/tags/:id",
-  requireAdmin,
+  requirePerm("tags.manage"),
   h((req, res) => {
     const t = get<{ name: string }>("SELECT name FROM tags WHERE id = ?", Number(req.params.id));
     if (t) {
@@ -325,7 +327,7 @@ function saveTemplate(id: number | null, b: any, userId: number) {
 settingsRouter.get("/templates", (req, res) => res.json(templatePayload(req)));
 settingsRouter.post(
   "/templates",
-  requireAdmin,
+  requirePerm("templates.manage"),
   h((req, res) => {
     const id = saveTemplate(null, req.body, req.user!.id);
     res.json(templatePayload(req).find((t) => t.id === id));
@@ -333,13 +335,13 @@ settingsRouter.post(
 );
 settingsRouter.patch(
   "/templates/:id",
-  requireAdmin,
+  requirePerm("templates.manage"),
   h((req, res) => {
     const id = saveTemplate(Number(req.params.id), req.body, req.user!.id);
     res.json(templatePayload(req).find((t) => t.id === id));
   }),
 );
-settingsRouter.delete("/templates/:id", requireAdmin, (req, res) => {
+settingsRouter.delete("/templates/:id", requirePerm("templates.manage"), (req, res) => {
   run("DELETE FROM templates WHERE id = ?", Number(req.params.id));
   res.json({ ok: true });
 });
@@ -407,7 +409,7 @@ const DEPT_NOTE = "Cột Bộ phận: ghi tên bộ phận đúng như trong app
 
 settingsRouter.get(
   "/tags/export.xlsx",
-  requireAdmin,
+  requirePerm("tags.manage"),
   h(async (_req, res) => {
     const names = deptNames();
     const links = linkMap("tag_departments", "tag_id", "department_id");
@@ -433,7 +435,7 @@ settingsRouter.get(
 
 settingsRouter.post(
   "/tags/import",
-  requireAdmin,
+  requirePerm("tags.manage"),
   upload.single("file"),
   h(async (req, res) => {
     const rows = await readSheet(req.file);
@@ -470,7 +472,7 @@ settingsRouter.post(
 
 settingsRouter.get(
   "/templates/export.xlsx",
-  requireAdmin,
+  requirePerm("templates.manage"),
   h(async (_req, res) => {
     const names = deptNames();
     const links = linkMap("template_departments", "template_id", "department_id");
@@ -498,7 +500,7 @@ settingsRouter.get(
 
 settingsRouter.post(
   "/templates/import",
-  requireAdmin,
+  requirePerm("templates.manage"),
   upload.single("file"),
   h(async (req, res) => {
     const rows = await readSheet(req.file);

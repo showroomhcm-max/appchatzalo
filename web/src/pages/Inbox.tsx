@@ -30,13 +30,14 @@ import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
+import { can } from '../perm'
 
 type Scope = 'mine' | 'unassigned' | 'all'
 
 export default function Inbox({ convId, focusMsgId }: { convId: string | null; focusMsgId: number | null }) {
   const { user, departments, tags, activeChannels, workingChannelIds } = useApp()
   const channels = activeChannels
-  const [scope, setScope] = useState<Scope>(user.role === 'admin' ? 'all' : 'mine')
+  const [scope, setScope] = useState<Scope>(can(user, 'conversations.all') ? 'all' : 'mine')
   // Mặc định hiện mọi trạng thái như Zalo: bấm "Xong" không làm hội thoại biến mất.
   const [status, setStatus] = useState<string>('all')
   const [channelFilter, setChannelFilter] = useState<string>('')
@@ -56,7 +57,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   activeRef.current = convId
 
   // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
-  const myDepartments = user.role === 'admin' ? departments : departments.filter((d) => d.user_ids.includes(user.id))
+  const myDepartments = can(user, 'conversations.all') ? departments : departments.filter((d) => d.user_ids.includes(user.id))
   const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || !!tagFilter
 
   const matches = useCallback(
@@ -192,7 +193,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                     ))}
                   </select>
                 )}
-                {myDepartments.length > 1 || (user.role === 'admin' && departments.length > 0) ? (
+                {myDepartments.length > 1 || (can(user, 'conversations.all') && departments.length > 0) ? (
                   <select className="select sm" value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} aria-label="Lọc bộ phận">
                     <option value="">Mọi bộ phận</option>
                     {myDepartments.map((d) => (
@@ -249,7 +250,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   ? 'Không có hội thoại khớp bộ lọc.'
                   : scope === 'mine'
                     ? 'Chưa có hội thoại nào giao cho bạn. Xem tab "Chưa nhận".'
-                    : user.role !== 'admin' && myDepartments.length === 0
+                    : !can(user, 'conversations.all') && myDepartments.length === 0
                       ? 'Bạn chưa thuộc bộ phận nào. Nhờ quản trị viên thêm bạn vào bộ phận để thấy hội thoại.'
                       : 'Tin nhắn mới từ Zalo sẽ hiện ở đây.'}
               </Empty>
@@ -803,22 +804,22 @@ function ChatView({
   const others = (presence.byConversation[convId] ?? []).filter((p) => p.userId !== user.id)
   const typingOthers = others.filter((p) => p.typing)
   const assignedToOther = conv?.assigned_to && conv.assigned_to !== user.id
-  const canReassign = user.role === 'admin' || conv?.assigned_to === user.id
-  const canTransfer = user.role === 'admin' || !conv?.assigned_to || conv.assigned_to === user.id
+  const canReassign = can(user, 'conversations.assign') || conv?.assigned_to === user.id
+  const canTransfer = can(user, 'conversations.assign') || !conv?.assigned_to || conv.assigned_to === user.id
   // Chuyển được sang bộ phận được xem kênh của hội thoại (quản trị viên: mọi bộ phận).
   const transferTargets = departments.filter(
-    (d) => user.role === 'admin' || d.channel_ids.includes(conv?.channel_id ?? -1) || d.id === conv?.department_id,
+    (d) => can(user, 'conversations.all') || d.channel_ids.includes(conv?.channel_id ?? -1) || d.id === conv?.department_id,
   )
   // Người phụ trách: thành viên bộ phận của hội thoại + quản trị viên (chưa có bộ phận → mọi người).
   const dept = departments.find((d) => d.id === conv?.department_id)
   const assignable = users.filter(
-    (u) => u.active && (!dept || u.role === 'admin' || dept.user_ids.includes(u.id) || u.id === conv?.assigned_to),
+    (u) => u.active && (!dept || can(u, 'conversations.all') || dept.user_ids.includes(u.id) || u.id === conv?.assigned_to),
   )
 
   async function transfer(value: string) {
     const target = value ? Number(value) : null
     const name = departments.find((d) => d.id === target)?.name ?? 'chưa thuộc bộ phận'
-    const leaving = user.role !== 'admin' && target !== null && !departments.find((d) => d.id === target)?.user_ids.includes(user.id)
+    const leaving = !can(user, 'conversations.all') && target !== null && !departments.find((d) => d.id === target)?.user_ids.includes(user.id)
     if (leaving && !confirm(`Chuyển hội thoại sang "${name}"? Bạn không thuộc bộ phận này nên sẽ không thấy hội thoại nữa.`)) return
     await patch({ department_id: target })
   }
@@ -948,7 +949,7 @@ function ChatView({
                   grouped={!!grouped}
                   isGroup={conv?.type === 1}
                   flash={m.id === flashId}
-                  canUndo={user.role === 'admin' || m.agent_id === user.id}
+                  canUndo={can(user, 'messages.undo_any') || m.agent_id === user.id}
                   onAction={onMessageAction}
                   onReact={onReact}
                 />
@@ -1326,7 +1327,7 @@ function InfoPanel({
           tags={tags}
           selected={conv.tags}
           onToggle={toggleTag}
-          emptyText={user.role === 'admin' ? 'Chưa có tag. Tạo ở Cài đặt › Tag.' : 'Chưa có tag cho bộ phận của bạn.'}
+          emptyText={can(user, 'tags.manage') ? 'Chưa có tag. Tạo ở Cài đặt › Tag.' : 'Chưa có tag cho bộ phận của bạn.'}
         />
       </div>
 
@@ -1356,7 +1357,7 @@ function InfoPanel({
         </ul>
       </div>
 
-      {user.role === 'admin' && (
+      {can(user, 'reviews.manage') && (
       <div className="info-section">
         <div className="section-title">
           <Star size={14} /> Đánh giá chất lượng tư vấn
@@ -1370,7 +1371,7 @@ function InfoPanel({
             {r.comment && <div>{r.comment}</div>}
           </div>
         ))}
-        {user.role === 'admin' ? (
+        {can(user, 'reviews.manage') ? (
           <div className="stack sm">
             <Stars value={score} onChange={setScore} />
             <textarea
@@ -1391,7 +1392,7 @@ function InfoPanel({
       )}
 
       <div className="info-section">
-        {user.role === 'admin' && (
+        {can(user, 'data.export') && (
           <>
             <div className="section-title">
               <Download size={14} /> Xuất hội thoại này

@@ -30,12 +30,10 @@ export default function TagPicker({
 
   return (
     <div className={`tag-picker ${compact ? 'compact' : ''}`}>
-      {tags.length > 6 && (
-        <div className="search tag-search">
-          <Search size={13} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tag…" aria-label="Tìm tag" />
-        </div>
-      )}
+      <div className="search tag-search">
+        <Search size={13} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tag…" aria-label="Tìm tag" />
+      </div>
       <div className="tag-options">
         {[...extra, ...shown].map((t) => {
           const on = selected.includes(t.name)

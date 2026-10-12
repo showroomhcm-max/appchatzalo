@@ -6,9 +6,11 @@ import type { User } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
 import { fullTime } from '../util'
 import { DeptChips, DeptPicker } from './Settings'
+import { PermissionChecklist, usePermissionData } from './Permissions'
 
 export default function UsersPage({ embedded = false }: { embedded?: boolean }) {
   const { users, reloadUsers, user: me, presence, channels } = useApp()
+  const { groups } = usePermissionData()
   const [editing, setEditing] = useState<User | 'new' | null>(null)
   const online = new Set(presence.online.map((o) => o.userId))
   // Tài khoản Odoo tự đăng nhập lần đầu: chưa được duyệt, chưa từng vào app.
@@ -71,7 +73,7 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
               <tr>
                 <th>Nhân viên</th>
                 <th>Tài khoản</th>
-                <th>Vai trò</th>
+                <th>Quyền</th>
                 <th>Bộ phận / kênh</th>
                 <th>Trạng thái</th>
                 <th>Lần vào gần nhất</th>
@@ -99,14 +101,20 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
                     <td>
                       {u.super_admin ? (
                         <Badge tone="warning">Super Admin</Badge>
-                      ) : u.role === 'admin' ? (
-                        <Badge tone="green">Quản trị</Badge>
                       ) : (
-                        <Badge>Nhân viên</Badge>
+                        <span className="row wrap">
+                          {(u.group_ids ?? []).map((id) => (
+                            <Badge key={id} tone="green">
+                              {groups.find((g) => g.id === id)?.name ?? '…'}
+                            </Badge>
+                          ))}
+                          {!!u.own_permissions?.length && <Badge tone="info">+{u.own_permissions.length} quyền riêng</Badge>}
+                          {!u.group_ids?.length && !u.own_permissions?.length && <Badge>Nhân viên</Badge>}
+                        </span>
                       )}
                     </td>
                     <td>
-                      {u.role === 'admin' && !u.department_ids?.length ? (
+                      {(u.super_admin || u.permissions?.includes('conversations.all')) && !u.department_ids?.length ? (
                         <span className="muted small">Thấy tất cả</span>
                       ) : (
                         <span className="stack sm">
@@ -125,7 +133,7 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
                     <td>{u.active ? 'Đang hoạt động' : 'Đã khóa'}</td>
                     <td className="muted">{u.last_login_at ? fullTime(u.last_login_at) : 'Chưa vào'}</td>
                     <td className="right">
-                      {(me.super_admin || (u.role !== 'admin' && !u.super_admin)) && (
+                      {(me.super_admin || (!u.super_admin && (u.permissions ?? []).every((k) => me.permissions?.includes(k)))) && (
                         <button className="btn ghost sm" onClick={() => setEditing(u)}>
                           Sửa
                         </button>
@@ -163,31 +171,38 @@ function UserForm({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { user: me, channels, can: allowed } = useApp()
+  const { defs, groups } = usePermissionData()
   const [source, setSource] = useState<User['auth_source']>(user?.auth_source ?? 'odoo')
   const [username, setUsername] = useState(user?.username ?? '')
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
-  const { user: me } = useApp()
-  // Vai trò hiển thị: agent | admin | super
-  const [role, setRole] = useState<'agent' | 'admin' | 'super'>(user?.super_admin ? 'super' : user?.role ?? 'agent')
+  const [isSuper, setIsSuper] = useState(!!user?.super_admin)
+  const [groupIds, setGroupIds] = useState<number[]>(user?.group_ids ?? [])
+  const [ownPerms, setOwnPerms] = useState<string[]>(user?.own_permissions ?? [])
   const [active, setActive] = useState(user ? !!user.active : true)
   const [password, setPassword] = useState('')
   const [deptIds, setDeptIds] = useState<number[]>(user?.department_ids ?? [])
   const [channelIds, setChannelIds] = useState<number[]>(user?.channel_ids ?? [])
-  const { channels } = useApp()
   const [error, setError] = useState('')
   const isOdoo = source === 'odoo'
+  const canGrant = allowed('permissions.manage')
+  const myPerms = me.super_admin ? defs.map((d) => d.key) : me.permissions ?? []
+  // Quyền có từ các nhóm đang chọn (hiện tick mờ trong danh sách quyền riêng)
+  const inherited = [...new Set(groups.filter((g) => groupIds.includes(g.id)).flatMap((g) => g.permissions))]
+  const seesAll = isSuper || inherited.includes('conversations.all') || ownPerms.includes('conversations.all')
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    const perms = canGrant && !isSuper ? { group_ids: groupIds, own_permissions: ownPerms } : {}
     try {
       if (user) {
         await api(`/users/${user.id}`, {
           method: 'PATCH',
           body: {
             display_name: displayName,
-            role: role === 'agent' ? 'agent' : 'admin',
-            ...(me.super_admin ? { super_admin: role === 'super' } : {}),
+            ...(me.super_admin && !isSelf ? { super_admin: isSuper } : {}),
+            ...perms,
             active,
             department_ids: deptIds,
             channel_ids: channelIds,
@@ -195,7 +210,18 @@ function UserForm({
           },
         })
       } else {
-        await api('/users', { body: { auth_source: source, username, display_name: displayName, role: role === 'agent' ? 'agent' : 'admin', super_admin: role === 'super', password, department_ids: deptIds, channel_ids: channelIds } })
+        await api('/users', {
+          body: {
+            auth_source: source,
+            username,
+            display_name: displayName,
+            ...(me.super_admin ? { super_admin: isSuper } : {}),
+            ...perms,
+            password,
+            department_ids: deptIds,
+            channel_ids: channelIds,
+          },
+        })
       }
       onSaved()
     } catch (err: any) {
@@ -204,7 +230,7 @@ function UserForm({
   }
 
   return (
-    <Modal title={user ? `Sửa ${user.display_name}` : 'Thêm nhân viên'} onClose={onClose}>
+    <Modal title={user ? `Sửa ${user.display_name}` : 'Thêm nhân viên'} onClose={onClose} wide>
       <form className="stack" onSubmit={submit}>
         {!user && (
           <label className="field">
@@ -215,20 +241,22 @@ function UserForm({
             </select>
           </label>
         )}
-        <label className="field">
-          <span>{isOdoo ? 'Email đăng nhập Odoo' : 'Tên đăng nhập'}</span>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={!!user}
-            autoComplete="off"
-            placeholder={isOdoo ? 'ten@sieutoc.com' : ''}
-          />
-        </label>
-        <label className="field">
-          <span>Tên hiển thị (hiện trong lịch sử chat và báo cáo)</span>
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoFocus />
-        </label>
+        <div className="form-grid">
+          <label className="field">
+            <span>{isOdoo ? 'Email đăng nhập Odoo' : 'Tên đăng nhập'}</span>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={!!user}
+              autoComplete="off"
+              placeholder={isOdoo ? 'ten@sieutoc.com' : ''}
+            />
+          </label>
+          <label className="field">
+            <span>Tên hiển thị (hiện trong lịch sử chat và báo cáo)</span>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoFocus />
+          </label>
+        </div>
         {isOdoo ? (
           <p className="muted small">Nhân viên dùng mật khẩu Odoo của họ để đăng nhập. App không lưu mật khẩu Odoo.</p>
         ) : (
@@ -237,32 +265,68 @@ function UserForm({
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
           </label>
         )}
-        <label className="field">
-          <span>Vai trò</span>
-          <select
-            className="select"
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'agent' | 'admin' | 'super')}
-            disabled={isSelf || !me.super_admin}
-          >
-            <option value="agent">Nhân viên — chat ở các kênh được phân công</option>
-            <option value="admin">Quản trị — thấy tất cả, dữ liệu, cài đặt, kết nối kênh</option>
-            {me.super_admin ? <option value="super">Super Admin — thêm quản lý quản trị viên, nhật ký, tích hợp</option> : null}
-          </select>
-          {!me.super_admin && <span className="muted small">Chỉ Super Admin mới cấp được quyền quản trị.</span>}
-        </label>
+
+        <div className="field">
+          <span>Phân quyền</span>
+          {me.super_admin && (
+            <label className="check">
+              <input type="checkbox" checked={isSuper} disabled={isSelf} onChange={(e) => setIsSuper(e.target.checked)} />
+              <b>Super Admin</b> <span className="muted small">— toàn quyền, không giới hạn</span>
+            </label>
+          )}
+          {!isSuper &&
+            (canGrant ? (
+              <>
+                <span className="muted small">Nhóm quyền (chọn một hoặc nhiều):</span>
+                <div className="check-grid">
+                  {groups.map((g) => {
+                    const blocked = g.permissions.some((p) => !myPerms.includes(p))
+                    return (
+                      <label key={g.id} className="check" title={g.description ?? undefined}>
+                        <input
+                          type="checkbox"
+                          checked={groupIds.includes(g.id)}
+                          disabled={blocked && !groupIds.includes(g.id)}
+                          onChange={(e) => setGroupIds(e.target.checked ? [...groupIds, g.id] : groupIds.filter((x) => x !== g.id))}
+                        />
+                        {g.name}
+                      </label>
+                    )
+                  })}
+                </div>
+                <details className="perm-details">
+                  <summary>Quyền riêng cho người này ({ownPerms.length})</summary>
+                  <PermissionChecklist
+                    defs={defs}
+                    value={ownPerms}
+                    onChange={setOwnPerms}
+                    inherited={inherited}
+                    disabledKeys={defs.map((d) => d.key).filter((k) => !myPerms.includes(k))}
+                  />
+                </details>
+              </>
+            ) : (
+              <span className="muted small">
+                {user?.permissions?.length
+                  ? `Quyền hiện có: ${user.permissions.map((k) => defs.find((d) => d.key === k)?.label ?? k).join(', ')}`
+                  : 'Nhân viên chat ở kênh, bộ phận được phân công.'}{' '}
+                Chỉ người có quyền phân quyền mới đổi được.
+              </span>
+            ))}
+        </div>
+
         <DeptPicker
           value={deptIds}
           onChange={setDeptIds}
           hint={
-            role !== 'agent'
-              ? 'Quản trị viên luôn thấy tất cả, bộ phận chỉ để lọc và giao việc.'
+            seesAll
+              ? 'Người này thấy mọi hội thoại, bộ phận chỉ để lọc và giao việc.'
               : 'Nhân viên thấy kênh, hội thoại, tag và tin nhắn mẫu của các bộ phận được chọn.'
           }
         />
-        {role === 'agent' && channels.length > 0 && (
+        {!seesAll && channels.length > 0 && (
           <div className="field">
-            <span>Kênh Zalo được vào thẳng</span>
+            <span>Kênh chat được vào thẳng</span>
             <span className="muted small">Thấy toàn bộ hội thoại của kênh, không phụ thuộc bộ phận.</span>
             <div className="check-grid">
               {channels.map((c) => (
