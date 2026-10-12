@@ -11,6 +11,7 @@ import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
+import { oauthRouter, webhookRouter } from "./platform-routes.js";
 
 ensureAdmin();
 applySuperAdmins();
@@ -18,6 +19,8 @@ applySuperAdmins();
 const app = express();
 app.disable("x-powered-by");
 app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
+// Webhook các nền tảng cần body thô để kiểm tra chữ ký → gắn trước express.json
+app.use("/webhooks", webhookRouter);
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/healthz", (_req, res) => res.json({ ok: true, version: appVersion().version, zalo: zalo.summary() }));
@@ -27,6 +30,7 @@ app.get("/api/version", (_req, res) => {
   res.json(appVersion());
 });
 app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false }));
+app.use("/api/oauth", oauthRouter);
 app.use("/api/v1", publicRouter);
 app.use("/api", appRouter);
 app.use("/api", errorHandler);
@@ -34,7 +38,7 @@ app.use("/api", errorHandler);
 // Phục vụ giao diện đã build (web/dist) ở cùng cổng.
 if (fs.existsSync(config.webDist)) {
   app.use(express.static(config.webDist, { index: false }));
-  app.get(/^(?!\/api|\/socket\.io|\/uploads).*/, (_req, res) => res.sendFile(path.join(config.webDist, "index.html")));
+  app.get(/^(?!\/api|\/socket\.io|\/uploads|\/webhooks).*/, (_req, res) => res.sendFile(path.join(config.webDist, "index.html")));
 }
 
 const server = http.createServer(app);

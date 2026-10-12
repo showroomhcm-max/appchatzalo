@@ -120,6 +120,8 @@ export async function sendToConversation(opts: {
   source: Source;
   /** id (trong app) của tin được trả lời */
   quoteMessageId?: number | null;
+  /** Bình luận Facebook: trả lời công khai hay nhắn riêng */
+  mode?: "public" | "private";
 }) {
   const conv = getConversation(opts.conversationId);
   if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
@@ -127,7 +129,7 @@ export async function sendToConversation(opts: {
   if (!text && !opts.files?.length) throw new HttpError(400, "Nội dung trống");
   const session = zalo.session(conv.channel_id);
   if (!session.connected) {
-    throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo, chưa gửi được tin`);
+    throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối, chưa gửi được tin`);
   }
 
   const quote = opts.quoteMessageId
@@ -137,15 +139,20 @@ export async function sendToConversation(opts: {
         opts.conversationId,
       )
     : null;
-  const messages = await session.send({
-    threadId: conv.thread_id,
-    isGroup: conv.type === 1,
-    quote: quote ? { ...quote, raw: quote.raw ? JSON.parse(quote.raw) : null } : null,
-    text,
-    attachments: opts.files?.map(storeUpload),
-    agentId: opts.agentId,
-    source: opts.source,
-  });
+  const messages = await session
+    .sendMessage({
+      conversation: conv,
+      quote: quote ? { ...quote, raw: quote.raw ? JSON.parse(quote.raw) : null } : null,
+      text,
+      attachments: opts.files?.map(storeUpload),
+      agentId: opts.agentId,
+      source: opts.source,
+      mode: opts.mode,
+    })
+    .catch((e: any) => {
+      // Lỗi từ nền tảng (Facebook, TikTok…) trả về nguyên văn cho nhân viên đọc được
+      throw new HttpError(502, e?.message ?? "Gửi tin thất bại");
+    });
 
   if (opts.agentId && !conv.assigned_to) {
     updateConversation(opts.conversationId, { assigned_to: opts.agentId }, opts.agentId);
@@ -166,8 +173,10 @@ export function messageInConversation(conversationId: string, messageId: number)
   return { ...m, raw: m.raw ? JSON.parse(m.raw) : null };
 }
 
-export function connectedSession(conv: { channel_id: number; channel_name: string | null }) {
-  const session = zalo.session(conv.channel_id);
+/** Phiên Zalo đang kết nối của hội thoại (cho sticker, cảm xúc, thu hồi, chuyển tiếp — chỉ Zalo có). */
+export function connectedSession(conv: { channel_id: number; channel_name: string | null; platform?: string }) {
+  if (conv.platform && conv.platform !== "zalo") throw new HttpError(400, "Thao tác này hiện chỉ có ở kênh Zalo");
+  const session = zalo.zaloSession(conv.channel_id);
   if (!session.connected) throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo`);
   return session;
 }

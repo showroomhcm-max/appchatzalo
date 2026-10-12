@@ -6,6 +6,7 @@ import type { Department, Tag, Template } from '../types'
 import { Avatar, Modal } from '../components'
 import UsersPage from './Users'
 import { BUILD, buildTimeLabel } from '../version'
+import PlatformApps from './PlatformApps'
 import Integrations from './Integrations'
 import LogsTab from './Logs'
 import PermissionsTab from './Permissions'
@@ -96,7 +97,12 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
       {tab === 'departments' && allowed('departments') && <DepartmentsTab />}
       {tab === 'tags' && allowed('tags') && <TagsTab />}
       {tab === 'templates' && allowed('templates') && <TemplatesTab />}
-      {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
+      {tab === 'integrations' && allowed('integrations') && (
+        <>
+          <PlatformApps />
+          <Integrations embedded />
+        </>
+      )}
       {tab === 'logs' && allowed('logs') && <LogsTab />}
     </div>
   )

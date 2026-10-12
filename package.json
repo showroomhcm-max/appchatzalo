@@ -1,6 +1,6 @@
 {
   "name": "zalo-cskh",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Web app chăm sóc khách hàng: nhiều nhân viên dùng chung 1 tài khoản Zalo cá nhân",
   "scripts": {

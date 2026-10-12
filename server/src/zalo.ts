@@ -13,30 +13,25 @@ import {
   type Source,
 } from "./store.js";
 
+import {
+  type Capabilities,
+  type ChannelAdapter,
+  type ChannelStatus,
+  type OutgoingAttachment,
+  type Platform,
+  type SendOptions,
+  type StoredMessage,
+} from "./platforms/common.js";
+import { MetaSession } from "./platforms/meta.js";
+import { TikTokSession } from "./platforms/tiktok.js";
+import { TikTokShopSession } from "./platforms/tiktok-shop.js";
+export type { OutgoingAttachment, StoredMessage } from "./platforms/common.js";
+
 export type StickerInfo = { id: number; cateId: number; type: number; url: string | null; text: string };
 
-/** Tin nhắn đã lưu, dùng để trả lời / thả cảm xúc / thu hồi trên Zalo. */
-export type StoredMessage = {
-  zalo_msg_id: string | null;
-  cli_msg_id: string | null;
-  msg_type: string | null;
-  sender_uid: string | null;
-  sender_name: string | null;
-  text: string | null;
-  raw: any;
-  ts: number;
-};
 
-export type ZaloStatus = {
-  channelId: number;
-  channelName: string;
-  state: "disconnected" | "qr" | "scanned" | "connecting" | "connected" | "error";
-  qrImage?: string; // data URL ảnh QR
-  scannedBy?: { name: string; avatar: string };
-  account?: { id: string; name: string; avatar: string };
-  error?: string;
-  updatedAt: number;
-};
+
+export type ZaloStatus = ChannelStatus;
 
 export type ZaloPerson = {
   uid: string;
@@ -47,20 +42,22 @@ export type ZaloPerson = {
   isFriend: boolean;
 };
 
-export type OutgoingAttachment = {
-  data: Buffer;
-  filename: string;
-  size: number;
-  width?: number;
-  height?: number;
-  /** Đường dẫn bản lưu trên server để hiển thị lại trong lịch sử chat. */
-  localUrl?: string;
-};
+
 
 type ChannelRow = { id: number; name: string; credentials: string | null; zalo_uid: string | null; active: number };
 
 /** Một kênh = một tài khoản Zalo đang kết nối. */
-class ChannelSession {
+export class ChannelSession implements ChannelAdapter {
+  readonly platform = "zalo" as const;
+  readonly capabilities: Capabilities = {
+    stickers: true,
+    reactions: true,
+    undo: true,
+    forward: true,
+    quote: true,
+    files: true,
+    contacts: true,
+  };
   private api: API | null = null;
   private qrActions: { abort: () => unknown } | null = null;
   private qrCancelled = false;
@@ -70,7 +67,7 @@ class ChannelSession {
   private lookupTimes: number[] = [];
 
   constructor(readonly channelId: number) {
-    this.status = { channelId, channelName: this.channelName(), state: "disconnected", updatedAt: Date.now() };
+    this.status = { channelId, channelName: this.channelName(), platform: "zalo", state: "disconnected", updatedAt: Date.now() };
   }
 
   private row() {
@@ -94,7 +91,7 @@ class ChannelSession {
   }
 
   private setStatus(patch: Partial<ZaloStatus>, replace = false) {
-    const base = { channelId: this.channelId, channelName: this.channelName() };
+    const base = { channelId: this.channelId, channelName: this.channelName(), platform: "zalo" as const };
     this.status = replace
       ? ({ ...base, ...patch, updatedAt: Date.now() } as ZaloStatus)
       : { ...this.status, ...base, ...patch, updatedAt: Date.now() };
@@ -516,6 +513,19 @@ class ChannelSession {
     return results;
   }
 
+  /** Giao diện chung cho mọi nền tảng */
+  sendMessage(opts: SendOptions) {
+    return this.send({
+      threadId: opts.conversation.thread_id,
+      isGroup: opts.conversation.type === 1,
+      text: opts.text,
+      attachments: opts.attachments,
+      agentId: opts.agentId,
+      source: opts.source,
+      quote: opts.quote,
+    });
+  }
+
   /** Gửi tin nhắn và ghi nhận nhân viên đã gửi (để thống kê + training). */
   async send(opts: {
     threadId: string;
@@ -593,34 +603,61 @@ class ChannelSession {
   }
 }
 
-/** Quản lý tất cả kênh Zalo. */
-class ZaloManager {
-  private sessions = new Map<number, ChannelSession>();
+/** Quản lý tất cả kênh chat (Zalo, Facebook, TikTok, TikTok Shop). */
+class ChannelManager {
+  private sessions = new Map<number, ChannelAdapter>();
 
-  session(channelId: number) {
+  session(channelId: number): ChannelAdapter {
     let s = this.sessions.get(channelId);
     if (!s) {
-      if (!get("SELECT 1 FROM channels WHERE id = ?", channelId)) throw new Error("Kênh không tồn tại");
-      s = new ChannelSession(channelId);
+      const row = get<{ platform: Platform }>("SELECT platform FROM channels WHERE id = ?", channelId);
+      if (!row) throw new Error("Kênh không tồn tại");
+      s =
+        row.platform === "facebook"
+          ? new MetaSession(channelId)
+          : row.platform === "tiktok"
+            ? new TikTokSession(channelId)
+            : row.platform === "tiktok_shop"
+              ? new TikTokShopSession(channelId)
+              : new ChannelSession(channelId);
       this.sessions.set(channelId, s);
     }
     return s;
   }
 
-  async initAll() {
-    const rows = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND credentials IS NOT NULL");
-    for (const r of rows) await this.session(r.id).init();
+  /** Kênh Zalo (cho các tính năng riêng của Zalo: QR, sticker, cảm xúc, bạn bè…). */
+  zaloSession(channelId: number): ChannelSession {
+    const s = this.session(channelId);
+    if (!(s instanceof ChannelSession)) throw new Error("Tính năng này chỉ có ở kênh Zalo");
+    return s;
   }
 
-  statuses(): ZaloStatus[] {
+  /** Tìm kênh theo id tài khoản bên nền tảng (page id, open_id, shop id) — dùng cho webhook. */
+  byExternal(platform: Platform, externalId: string) {
+    const row = get<{ id: number }>("SELECT id FROM channels WHERE platform = ? AND external_id = ? AND active = 1", platform, externalId);
+    return row ? this.session(row.id) : null;
+  }
+
+  async initAll() {
+    const rows = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND credentials IS NOT NULL");
+    for (const r of rows) {
+      try {
+        await this.session(r.id).init();
+      } catch (e) {
+        console.error(`[channels] Khởi động kênh #${r.id} lỗi:`, e);
+      }
+    }
+  }
+
+  statuses(): ChannelStatus[] {
     return all<{ id: number }>("SELECT id FROM channels WHERE active = 1 ORDER BY id").map((r) => this.session(r.id).getStatus());
   }
 
-  /** Một kênh bất kỳ đang kết nối (để tra thông tin dùng chung như ảnh sticker). */
+  /** Một kênh Zalo bất kỳ đang kết nối (để tra thông tin dùng chung như ảnh sticker). */
   anyConnected() {
-    for (const r of all<{ id: number }>("SELECT id FROM channels WHERE active = 1 ORDER BY id")) {
+    for (const r of all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND platform = 'zalo' ORDER BY id")) {
       const s = this.session(r.id);
-      if (s.connected) return s;
+      if (s instanceof ChannelSession && s.connected) return s;
     }
     return null;
   }
@@ -637,4 +674,6 @@ class ZaloManager {
   }
 }
 
-export const zalo = new ZaloManager();
+/** Tên cũ "zalo" giữ lại: thực chất là bộ quản lý mọi kênh chat. */
+export const zalo = new ChannelManager();
+export const channels = zalo;

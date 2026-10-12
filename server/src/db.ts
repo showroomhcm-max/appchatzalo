@@ -279,6 +279,15 @@ function migrateToChannels() {
 migrateToChannels();
 db.exec("PRAGMA foreign_keys = ON");
 if (!columns("messages").has("quote")) db.exec("ALTER TABLE messages ADD COLUMN quote TEXT");
+// Đa kênh: nền tảng của kênh (zalo / facebook / tiktok / tiktok_shop) và id tài khoản bên nền tảng (page id, open_id, shop id)
+const chanCols = columns("channels");
+if (!chanCols.has("platform")) db.exec("ALTER TABLE channels ADD COLUMN platform TEXT NOT NULL DEFAULT 'zalo'");
+if (!chanCols.has("external_id")) db.exec("ALTER TABLE channels ADD COLUMN external_id TEXT");
+// Hội thoại: "chat" (tin nhắn) hoặc "comment" (bình luận dưới bài viết); meta = thông tin bài viết / bình luận
+const convCols2 = columns("conversations");
+if (!convCols2.has("kind")) db.exec("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");
+if (!convCols2.has("meta")) db.exec("ALTER TABLE conversations ADD COLUMN meta TEXT");
+db.exec("CREATE INDEX IF NOT EXISTS idx_channels_external ON channels(platform, external_id)");
 
 db.exec(`
 CREATE INDEX IF NOT EXISTS idx_conv_last ON conversations(last_message_at DESC);

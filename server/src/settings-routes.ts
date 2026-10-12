@@ -49,13 +49,14 @@ function channelPayload(isAdmin: boolean) {
       r.n,
     ]),
   );
-  return all<any>("SELECT id, name, zalo_uid, zalo_name, avatar, default_department_id, active, created_at FROM channels ORDER BY id").map(
+  return all<any>("SELECT id, name, platform, zalo_uid, zalo_name, avatar, default_department_id, active, created_at FROM channels ORDER BY id").map(
     (c) => ({
       ...c,
       department_ids: deptLinks.get(c.id) ?? [],
       user_ids: isAdmin ? userLinks.get(c.id) ?? [] : undefined,
       conversations: isAdmin ? convCounts.get(c.id) ?? 0 : undefined,
       status: c.active ? zalo.session(c.id).getStatus() : null,
+      capabilities: zalo.session(c.id).capabilities,
     }),
   );
 }
@@ -136,8 +137,8 @@ const channelAction = (fn: (id: number) => unknown) =>
     await fn(id);
     res.json(zalo.session(id).getStatus());
   });
-settingsRouter.post("/channels/:id/login-qr", requirePerm("channels.manage"), channelAction((id) => void zalo.session(id).startQRLogin()));
-settingsRouter.post("/channels/:id/cancel", requirePerm("channels.manage"), channelAction((id) => zalo.session(id).cancelQR()));
+settingsRouter.post("/channels/:id/login-qr", requirePerm("channels.manage"), channelAction((id) => void zalo.zaloSession(id).startQRLogin()));
+settingsRouter.post("/channels/:id/cancel", requirePerm("channels.manage"), channelAction((id) => zalo.zaloSession(id).cancelQR()));
 settingsRouter.post(
   "/channels/:id/reconnect",
   requirePerm("channels.manage"),

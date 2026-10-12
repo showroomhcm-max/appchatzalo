@@ -7,6 +7,19 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.0.0 — 12/10/2026
+
+**Đa kênh: Facebook, TikTok, TikTok Shop chung một hộp thư với Zalo**
+- **Facebook Messenger**: nhận và trả lời tin nhắn Fanpage (chữ, ảnh, tệp). Tin trả lời từ Meta Business Suite / điện thoại cũng được lưu.
+- **Bình luận Facebook**: mỗi người bình luận dưới một bài viết thành một hội thoại (nhãn "Bình luận", có link bài viết). Khi trả lời chọn **Trả lời công khai** (dưới bình luận) hoặc **Nhắn riêng qua Messenger**. Bấm "Trả lời" trên một bình luận để trả lời đúng bình luận đó.
+- **TikTok Business**: nhận và trả lời tin nhắn trực tiếp của tài khoản TikTok doanh nghiệp.
+- **TikTok Shop**: nhận và trả lời chat của người mua (mỗi shop một kênh, tự quét tin mới mỗi phút).
+- **Kênh Chat › Thêm kênh**: chọn Zalo (quét QR), Facebook, TikTok hoặc TikTok Shop (đăng nhập ủy quyền). Facebook cho chọn nhiều Fanpage một lần.
+- **Cài đặt › Tích hợp**: nhập thông tin app Meta / TikTok / TikTok Shop, có sẵn các đường dẫn webhook và redirect để chép.
+- Danh sách hội thoại có ký hiệu nền tảng trên ảnh đại diện; khung chat chỉ hiện nút mà nền tảng đó hỗ trợ (sticker, cảm xúc, thu hồi, chuyển tiếp chỉ có ở Zalo).
+- Bộ phận, phân quyền, tag, tin nhắn mẫu, xuất dữ liệu training dùng chung cho mọi kênh.
+- Hướng dẫn tạo app từng nền tảng: `docs/ket-noi-facebook-tiktok.md`.
+
 ## v2.2.0 — 12/10/2026
 
 **Phân quyền theo từng người và theo nhóm**

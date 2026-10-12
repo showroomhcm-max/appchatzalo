@@ -34,6 +34,7 @@ import { WEBHOOK_EVENTS, dispatch } from "./webhooks.js";
 import { bus } from "./bus.js";
 import { openConversationWith, searchContacts, searchMessages } from "./people.js";
 import { settingsRouter } from "./settings-routes.js";
+import { platformRouter } from "./platform-routes.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
@@ -468,8 +469,9 @@ appRouter.get("/system/public-url", (_req, res) => {
   res.json({ url: fixed ?? url, fixed: !!fixed });
 });
 
-// Kênh Zalo, bộ phận, tag, tin nhắn mẫu
+// Kênh chat, bộ phận, tag, tin nhắn mẫu, kết nối nền tảng
 appRouter.use(settingsRouter);
+appRouter.use(platformRouter);
 
 /** Lấy hội thoại và kiểm tra người đang đăng nhập có được xem không (không được xem → 404 như không tồn tại). */
 function visibleConversation(req: Request, id: string) {
@@ -601,6 +603,7 @@ appRouter.post(
       agentId: req.user!.id,
       source: "web",
       quoteMessageId: num(req.body?.quote_message_id),
+      mode: req.body?.mode === "private" ? "private" : "public",
     });
     res.json(messages);
   }),
@@ -615,7 +618,9 @@ appRouter.get(
     const scope = scopeOf(req.user!);
     const channelId = num(req.query.channelId);
     const session =
-      channelId && canUseChannel(scope, channelId) && zalo.session(channelId).connected ? zalo.session(channelId) : zalo.anyConnected();
+      channelId && canUseChannel(scope, channelId) && zalo.session(channelId).platform === "zalo" && zalo.session(channelId).connected
+        ? zalo.zaloSession(channelId)
+        : zalo.anyConnected();
     if (!session) throw new HttpError(503, "Chưa có kênh Zalo nào kết nối");
     const list = await session.searchStickers(q);
     for (const st of list) {
@@ -698,7 +703,7 @@ appRouter.post(
       agentId: req.user!.id,
       source: "web",
     });
-    res.json(results.map((r) => ({ ...r, conversation_id: targets.find((t) => t.thread_id === r.threadId)?.id })));
+    res.json(results.map((r: { threadId: string; ok: boolean; error?: string }) => ({ ...r, conversation_id: targets.find((t) => t.thread_id === r.threadId)?.id })));
   }),
 );
 appRouter.get(

@@ -1,5 +1,18 @@
 export type Role = 'admin' | 'agent'
 
+export type Platform = 'zalo' | 'facebook' | 'tiktok' | 'tiktok_shop'
+
+/** Tính năng nền tảng hỗ trợ (ẩn nút không dùng được) */
+export type Capabilities = {
+  stickers: boolean
+  reactions: boolean
+  undo: boolean
+  forward: boolean
+  quote: boolean
+  files: boolean
+  contacts: boolean
+}
+
 export type User = {
   id: number
   username: string
@@ -48,6 +61,11 @@ export type Conversation = {
   last_message_preview: string | null
   last_direction: 'in' | 'out' | null
   created_at: number
+  platform?: Platform
+  /** chat = tin nhắn, comment = bình luận Facebook */
+  kind?: 'chat' | 'comment'
+  /** Bình luận: bài viết gốc */
+  meta?: { post_id?: string; post_url?: string; post_message?: string | null } | null
 }
 
 export type Message = {
@@ -72,6 +90,7 @@ export type Message = {
 export type ZaloStatus = {
   channelId: number
   channelName: string
+  platform?: Platform
   state: 'disconnected' | 'qr' | 'scanned' | 'connecting' | 'connected' | 'error'
   qrImage?: string
   scannedBy?: { name: string; avatar: string }
@@ -99,6 +118,8 @@ export type Template = { id: number; shortcut: string; content: string; created_
 export type Channel = {
   id: number
   name: string
+  platform: Platform
+  capabilities?: Capabilities
   zalo_uid: string | null
   zalo_name: string | null
   avatar: string | null

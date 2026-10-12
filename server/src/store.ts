@@ -27,6 +27,12 @@ export type SaveMessageInput = {
   isHistory?: boolean;
   /** Tin này trả lời (trích dẫn) tin nào */
   quote?: MessageQuote | null;
+  /** Hội thoại bình luận (Facebook) và thông tin bài viết */
+  kind?: "chat" | "comment";
+  meta?: Record<string, any> | null;
+  /** Tên / ảnh khách (nền tảng có sẵn trong sự kiện) */
+  customerName?: string | null;
+  customerAvatar?: string | null;
 };
 
 export type MessageQuote = { msg: string; fromD: string; globalMsgId: string; ownerId: string };
@@ -68,6 +74,11 @@ export type Conversation = {
   id: string;
   channel_id: number;
   channel_name: string | null;
+  /** Nền tảng của kênh: zalo | facebook | tiktok | tiktok_shop */
+  platform: string;
+  /** chat = tin nhắn, comment = bình luận dưới bài viết */
+  kind: "chat" | "comment";
+  meta: Record<string, any> | null;
   thread_id: string;
   department_id: number | null;
   department_name: string | null;
@@ -90,11 +101,15 @@ export type Conversation = {
 
 function parseConv(row: Row | undefined): Conversation | undefined {
   if (!row) return undefined;
-  return { ...row, tags: JSON.parse(row.tags ?? "[]") as string[] } as Conversation;
+  return {
+    ...row,
+    tags: JSON.parse(row.tags ?? "[]") as string[],
+    meta: row.meta ? JSON.parse(row.meta) : null,
+  } as Conversation;
 }
 
 const CONV_SELECT = `
-  SELECT c.*, u.display_name AS assigned_name, ch.name AS channel_name,
+  SELECT c.*, u.display_name AS assigned_name, ch.name AS channel_name, ch.platform AS platform,
          d.name AS department_name, d.color AS department_color
   FROM conversations c
   LEFT JOIN users u ON u.id = c.assigned_to
@@ -250,18 +265,19 @@ export function ensureConversation(
   channelId: number,
   threadId: string,
   type: number,
-  info: { name?: string | null; avatar?: string | null } = {},
+  info: { name?: string | null; avatar?: string | null; kind?: "chat" | "comment"; meta?: Record<string, any> | null } = {},
 ) {
   const id = conversationKey(channelId, threadId);
-  const existing = get("SELECT id, name, avatar FROM conversations WHERE id = ?", id);
+  const existing = get("SELECT id, name, avatar, meta FROM conversations WHERE id = ?", id);
+  if (existing && info.meta && !existing.meta) run("UPDATE conversations SET meta = ? WHERE id = ?", JSON.stringify(info.meta), id);
   if (!existing) {
     const dept = get<{ default_department_id: number | null }>(
       "SELECT default_department_id FROM channels WHERE id = ?",
       channelId,
     );
     run(
-      `INSERT INTO conversations(id, channel_id, thread_id, type, department_id, name, avatar, created_at)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO conversations(id, channel_id, thread_id, type, department_id, name, avatar, created_at, kind, meta)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       channelId,
       threadId,
@@ -270,6 +286,8 @@ export function ensureConversation(
       info.name ?? null,
       info.avatar ?? null,
       Date.now(),
+      info.kind ?? "chat",
+      info.meta ? JSON.stringify(info.meta) : null,
     );
     return { id, created: true };
   }
@@ -307,7 +325,10 @@ export function saveMessage(input: SaveMessageInput) {
   const conversationId = conversationKey(input.channelId, input.threadId);
   const result = tx(() => {
     ensureConversation(input.channelId, input.threadId, input.conversationType, {
-      name: input.direction === "in" && input.conversationType === 0 ? input.senderName : null,
+      name: input.customerName ?? (input.direction === "in" && input.conversationType === 0 ? input.senderName : null),
+      avatar: input.customerAvatar ?? null,
+      kind: input.kind,
+      meta: input.meta,
     });
 
     const existing = input.zaloMsgId

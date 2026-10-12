@@ -1,6 +1,9 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   ArrowLeft,
+  ExternalLink,
+  Globe,
+  Lock,
   Check,
   Download,
   Eye,
@@ -31,6 +34,7 @@ import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
+import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
 
 type Scope = 'mine' | 'unassigned' | 'all'
 
@@ -577,8 +581,10 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
 }
 
 function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean; showChannel: boolean }) {
-  const { presence, user, tags } = useApp()
+  const { presence, user, tags, channels } = useApp()
   const viewers = (presence.byConversation[c.id] ?? []).filter((p) => p.userId !== user.id)
+  // Chỉ hiện ký hiệu nền tảng khi có từ 2 nền tảng trở lên
+  const mixed = new Set(channels.map((ch) => ch.platform ?? 'zalo')).size > 1 || platformOf(c.platform) !== 'zalo'
   const typing = viewers.find((v) => v.typing)
   const waiting = c.last_direction === 'in' && c.status !== 'closed'
   return (
@@ -586,7 +592,10 @@ function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean
       href={`#/inbox/${encodeURIComponent(c.id)}`}
       className={`conv-item ${active ? 'active' : ''} ${c.unread_count ? 'unread' : ''} ${c.status === 'closed' ? 'closed' : ''}`}
     >
-      <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
+      <span className="avatar-wrap">
+        <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
+        {mixed && <PlatformDot platform={c.platform} />}
+      </span>
       <div className="conv-main">
         <div className="conv-top">
           <span className="conv-name">
@@ -617,6 +626,7 @@ function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean
             <Badge tone="warning">Chưa nhận</Badge>
           )}
           {waiting && <Badge tone="info">Chờ trả lời</Badge>}
+          {c.kind === 'comment' && <Badge tone="lime">Bình luận</Badge>}
           {c.status !== 'open' && <Badge tone={c.status === 'closed' ? 'neutral' : 'lime'}>{STATUS_LABEL[c.status]}</Badge>}
           {viewers.length > 0 && !typing && (
             <span className="viewers" title={`Đang xem: ${viewers.map((v) => v.name).join(', ')}`}>
@@ -656,8 +666,9 @@ function ChatView({
   showInfo: boolean
   toggleInfo: () => void
 }) {
-  const { user, users, presence, socket, departments } = useApp()
+  const { user, users, presence, socket, departments, channels } = useApp()
   const [conv, setConv] = useState<Conversation | null>(initial)
+  const caps = channels.find((ch) => ch.id === conv?.channel_id)?.capabilities ?? PLATFORM_CAPS[platformOf(conv?.platform)]
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [hasOlder, setHasOlder] = useState(false)
@@ -851,9 +862,14 @@ function ChatView({
               ) : conv?.type === 1 ? (
                 'Nhóm Zalo'
               ) : (
-                'Khách hàng Zalo'
+                <PlatformBadge platform={conv?.platform} comment={conv?.kind === 'comment'} />
               )}
             </div>
+            {conv?.kind === 'comment' && conv.meta?.post_url && (
+              <a className="post-link" href={conv.meta.post_url} target="_blank" rel="noreferrer" title={conv.meta.post_message ?? undefined}>
+                <ExternalLink size={12} /> {conv.meta.post_message ? `Bài viết: ${conv.meta.post_message.slice(0, 80)}` : 'Xem bài viết'}
+              </a>
+            )}
           </div>
           <div className="chat-actions">
             {!conv?.assigned_to ? (
@@ -950,6 +966,8 @@ function ChatView({
                   isGroup={conv?.type === 1}
                   flash={m.id === flashId}
                   canUndo={can(user, 'messages.undo_any') || m.agent_id === user.id}
+                  caps={caps}
+                  canReply={caps.quote || conv?.kind === 'comment'}
                   onAction={onMessageAction}
                   onReact={onReact}
                 />
@@ -977,6 +995,7 @@ function ChatView({
         <Composer
           convId={convId}
           channelId={conv?.channel_id ?? null}
+          conv={conv}
           replyTo={replyTo}
           onClearReply={() => setReplyTo(null)}
         />
@@ -990,16 +1009,24 @@ function ChatView({
 function Composer({
   convId,
   channelId,
+  conv,
   replyTo,
   onClearReply,
 }: {
   convId: string
   channelId: number | null
+  conv: Conversation | null
   replyTo: Message | null
   onClearReply: () => void
 }) {
   const [stickerOpen, setStickerOpen] = useState(false)
-  const { socket, zaloStatuses } = useApp()
+  const { socket, zaloStatuses, channels } = useApp()
+  const platform = platformOf(conv?.platform)
+  const caps = channels.find((ch) => ch.id === channelId)?.capabilities ?? PLATFORM_CAPS[platform]
+  const isComment = conv?.kind === 'comment'
+  // Bình luận Facebook: trả lời công khai dưới bình luận hoặc nhắn riêng qua Messenger
+  const [mode, setMode] = useState<'public' | 'private'>('public')
+  useEffect(() => setMode('public'), [convId])
   const channelStatus = zaloStatuses.find((s) => s.channelId === channelId)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -1079,6 +1106,7 @@ function Composer({
       const fd = new FormData()
       fd.append('text', text)
       if (replyTo) fd.append('quote_message_id', String(replyTo.id))
+      if (isComment) fd.append('mode', mode)
       files.forEach((f) => fd.append('files', f))
       await api(`/conversations/${encodeURIComponent(convId)}/messages`, { body: fd })
       setText('')
@@ -1178,7 +1206,23 @@ function Composer({
       )}
       {error && <div className="form-error">{error}</div>}
       {stickerOpen && <StickerPicker channelId={channelId} onPick={sendSticker} onClose={() => setStickerOpen(false)} />}
+      {isComment && (
+        <div className="reply-mode" role="radiogroup" aria-label="Cách trả lời bình luận">
+          <button role="radio" aria-checked={mode === 'public'} className={mode === 'public' ? 'on' : ''} onClick={() => setMode('public')}>
+            <Globe size={14} /> Trả lời công khai
+          </button>
+          <button role="radio" aria-checked={mode === 'private'} className={mode === 'private' ? 'on' : ''} onClick={() => setMode('private')}>
+            <Lock size={14} /> Nhắn riêng qua Messenger
+          </button>
+          <span className="muted small">
+            {mode === 'public'
+              ? `Trả lời dưới ${replyTo ? 'bình luận đang chọn' : 'bình luận mới nhất của khách'}, ai cũng thấy.`
+              : 'Mỗi bình luận chỉ nhắn riêng được 1 lần, trong 7 ngày.'}
+          </span>
+        </div>
+      )}
       <div className="composer-row">
+        {caps.stickers && (
         <button
           className={`icon-btn ${stickerOpen ? 'on' : ''}`}
           onMouseDown={(e) => e.stopPropagation()}
@@ -1189,9 +1233,12 @@ function Composer({
         >
           <Smile size={20} />
         </button>
-        <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Đính kèm ảnh/tệp" title="Gửi ảnh, tệp" disabled={disabled}>
-          <Paperclip size={20} />
-        </button>
+        )}
+        {caps.files && !isComment && (
+          <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Đính kèm ảnh/tệp" title="Gửi ảnh, tệp" disabled={disabled}>
+            <Paperclip size={20} />
+          </button>
+        )}
         <input
           ref={fileInput}
           type="file"
@@ -1206,7 +1253,13 @@ function Composer({
           ref={textarea}
           rows={1}
           value={text}
-          placeholder={disabled ? 'Zalo chưa kết nối' : 'Nhập tin nhắn… (gõ / để chọn mẫu câu, Shift+Enter xuống dòng)'}
+          placeholder={
+            disabled
+              ? `${PLATFORM_LABEL[platform]} chưa kết nối`
+              : isComment
+                ? 'Nhập trả lời bình luận… (gõ / để chọn mẫu câu)'
+                : 'Nhập tin nhắn… (gõ / để chọn mẫu câu, Shift+Enter xuống dòng)'
+          }
           onChange={(e) => {
             setText(e.target.value)
             setPickerIndex(0)

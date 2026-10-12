@@ -2471,3 +2471,123 @@ mark {
     justify-self: center;
   }
 }
+
+/* ───────────── Đa kênh (v3) ───────────── */
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.platform-badge.zalo { background: #e5f0ff; color: #0657c9; }
+.platform-badge.facebook { background: #e7effd; color: #1259c3; }
+.platform-badge.tiktok { background: var(--mz-ink-100); color: var(--mz-ink-900); }
+.platform-badge.tiktok_shop { background: #fdeceb; color: #b42318; }
+.channel-name .platform-badge { margin-left: 6px; }
+
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+.platform-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+.platform-dot.zalo { background: #0068ff; }
+.platform-dot.facebook { background: #1877f2; }
+.platform-dot.tiktok { background: #111; }
+.platform-dot.tiktok_shop { background: #fe2c55; }
+
+.post-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--mz-green-700);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+.reply-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--mz-ink-300);
+  background: #fff;
+  color: var(--mz-ink-700);
+  cursor: pointer;
+}
+.reply-mode button.on {
+  border-color: var(--mz-green-700);
+  background: var(--mz-green-100);
+  color: var(--mz-green-900);
+  font-weight: 600;
+}
+
+.platform-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--mz-ink-200);
+  border-radius: var(--radius);
+}
+.platform-option > .row { width: 100%; }
+.platform-option details { width: 100%; }
+.platform-option summary { cursor: pointer; color: var(--mz-ink-600); }
+.page-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.platform-apps { margin-bottom: 32px; }
+.platform-apps h2 { margin: 0 0 4px; font-size: 20px; }
+input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.banner.ok {
+  background: var(--mz-green-100);
+  color: var(--mz-green-900);
+}
+.banner .btn.ghost { margin-left: auto; }
+@media (max-width: 760px) {
+  .grid-3 { grid-template-columns: 1fr; }
+}

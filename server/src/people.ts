@@ -38,7 +38,7 @@ async function lookupPhone(channelId: number, phone: string) {
   const key = `${channelId}:${phone}`;
   const cached = phoneCache.get(key);
   if (cached && Date.now() - cached.at < 24 * 3600_000) return cached.person;
-  const person = await zalo.session(channelId).findByPhone(phone);
+  const person = await zalo.zaloSession(channelId).findByPhone(phone);
   phoneCache.set(key, { at: Date.now(), person });
   return person;
 }
@@ -51,9 +51,10 @@ function channelName(id: number) {
 export function pickChannel(access: Scope, requested?: number) {
   if (requested) {
     if (!canUseChannel(access, requested)) throw new HttpError(403, "Bạn không có quyền dùng kênh này");
-    return requested;
+    return get<{ platform: string }>("SELECT platform FROM channels WHERE id = ?", requested)?.platform === "zalo" ? requested : null;
   }
-  const ids = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 ORDER BY id").map((r) => r.id);
+  // Tìm bạn bè / tra số điện thoại chỉ làm được qua kênh Zalo
+  const ids = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND platform = 'zalo' ORDER BY id").map((r) => r.id);
   const usable = ids.filter((id) => canUseChannel(access, id));
   return usable.find((id) => zalo.session(id).connected) ?? usable[0] ?? null;
 }
@@ -121,7 +122,7 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
     try {
       const needle = fold(q);
       const friendDigits = phone ? phone.slice(1) : digits.length >= 4 ? digits : null;
-      for (const f of await zalo.session(channelId).friends()) {
+      for (const f of await zalo.zaloSession(channelId).friends()) {
         if (seen.has(f.uid)) {
           const c = contacts.find((x) => x.uid === f.uid && x.channel_id === channelId);
           if (c) c.is_friend = true;

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Copy, FileText, Forward, MoreHorizontal, Quote, Search, SmilePlus, StickyNote, Undo2, X } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
-import type { Conversation, Message, Sticker } from '../types'
+import type { Conversation, Message, Sticker, Capabilities } from '../types'
 import { Avatar, Modal } from '../components'
 import { fullTime } from '../util'
 
@@ -57,6 +57,8 @@ export function Bubble({
   isGroup,
   flash,
   canUndo,
+  caps,
+  canReply = true,
   onAction,
   onReact,
 }: {
@@ -65,6 +67,9 @@ export function Bubble({
   isGroup: boolean
   flash: boolean
   canUndo: boolean
+  /** Tính năng của nền tảng (không truyền = Zalo, đủ tính năng) */
+  caps?: Capabilities
+  canReply?: boolean
   onAction: (action: MessageAction, m: Message) => void
   onReact: (m: Message, code: string) => void
 }) {
@@ -179,9 +184,12 @@ export function Bubble({
 
         {actionable && (
           <div className="msg-actions">
-            <button className="icon-btn sm" onClick={() => act('reply')} title="Trả lời" aria-label="Trả lời">
-              <Quote size={15} />
-            </button>
+            {canReply && (
+              <button className="icon-btn sm" onClick={() => act('reply')} title="Trả lời" aria-label="Trả lời">
+                <Quote size={15} />
+              </button>
+            )}
+            {(caps?.reactions ?? true) && (
             <div className="msg-pop-wrap">
               <button
                 className="icon-btn sm"
@@ -221,6 +229,7 @@ export function Bubble({
                 </div>
               )}
             </div>
+            )}
             <div className="msg-pop-wrap">
               <button
                 className="icon-btn sm"
@@ -237,7 +246,7 @@ export function Bubble({
                       <Copy size={14} /> Sao chép
                     </button>
                   )}
-                  {(!m.msg_type || m.msg_type === 'webchat') && m.text && (
+                  {(caps?.forward ?? true) && (!m.msg_type || m.msg_type === 'webchat') && m.text && (
                     <button onClick={() => act('forward')}>
                       <Forward size={14} /> Chuyển tiếp
                     </button>
@@ -245,7 +254,7 @@ export function Bubble({
                   <button onClick={() => act('note')}>
                     <StickyNote size={14} /> Tạo ghi chú từ tin này
                   </button>
-                  {out && canUndo && (
+                  {out && canUndo && (caps?.undo ?? true) && (
                     <button className="danger" onClick={() => act('undo')}>
                       <Undo2 size={14} /> Thu hồi
                     </button>

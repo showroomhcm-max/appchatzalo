@@ -1,14 +1,32 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, CheckCircle2, LogOut, MessagesSquare, Plus, QrCode, RefreshCw, Settings2, Smartphone, Users } from 'lucide-react'
-import { api } from '../api'
+import { AlertTriangle, CheckCircle2, ExternalLink, KeyRound, LogIn, LogOut, MessagesSquare, Plus, QrCode, RefreshCw, Settings2, Smartphone, Users } from 'lucide-react'
+import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Channel, User, ZaloStatus } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
+import { PLATFORM_LABEL, PlatformBadge, platformOf } from '../platform'
+import type { Platform } from '../types'
 
 export default function Channels() {
   const { channels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed } = useApp()
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [fbKey, setFbKey] = useState<string | null>(null)
+  const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null)
   const isAdmin = allowed('channels.manage')
+
+  // Quay về từ trang đăng nhập Facebook / TikTok: #/channels/<kết quả>
+  useEffect(() => {
+    const raw = window.location.hash.split('/')[2]
+    if (!raw) return
+    const q = new URLSearchParams(decodeURIComponent(raw))
+    if (q.get('error')) setFlash({ ok: false, text: q.get('error')! })
+    else if (q.get('connected')) setFlash({ ok: true, text: 'Đã kết nối kênh mới. Gán bộ phận và nhân viên cho kênh bên dưới.' })
+    if (q.get('connect') === 'facebook' && q.get('key')) setFbKey(q.get('key'))
+    history.replaceState(null, '', '#/channels')
+    reloadSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const statusOf = (c: Channel) => zaloStatuses.find((s) => s.channelId === c.id) ?? c.status
   const visible = isAdmin ? channels : channels.filter((c) => c.active)
@@ -20,16 +38,25 @@ export default function Channels() {
           <h1>Kênh Chat</h1>
           <p className="muted">
             {isAdmin
-              ? 'Mỗi kênh là một tài khoản Zalo. Kết nối kênh, chọn bộ phận được xem và phân công nhân viên vào kênh.'
-              : 'Các kênh Zalo bạn được phân công. Tick chọn kênh đang trực để hộp thư chỉ hiện hội thoại của các kênh đó.'}
+              ? 'Mỗi kênh là một tài khoản Zalo, Fanpage Facebook, tài khoản TikTok hoặc shop TikTok. Kết nối kênh, chọn bộ phận được xem và phân công nhân viên vào kênh.'
+              : 'Các kênh chat bạn được phân công. Tick chọn kênh đang trực để hộp thư chỉ hiện hội thoại của các kênh đó.'}
           </p>
         </div>
         {isAdmin && (
-          <button className="btn primary" onClick={() => setEditing('new')}>
+          <button className="btn primary" onClick={() => setAdding(true)}>
             <Plus size={18} /> Thêm kênh
           </button>
         )}
       </div>
+
+      {flash && (
+        <div className={`banner ${flash.ok ? 'ok' : 'warn'} inline`}>
+          {flash.ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />} {flash.text}
+          <button className="btn ghost sm" onClick={() => setFlash(null)}>
+            Đóng
+          </button>
+        </div>
+      )}
 
       <WorkingChannels channels={visible} />
       {isAdmin && <PublicLink />}
@@ -39,7 +66,7 @@ export default function Channels() {
           <QrCode size={40} className="muted" />
           <div>
             {isAdmin
-              ? 'Chưa có kênh Zalo nào. Bấm "Thêm kênh" để kết nối tài khoản đầu tiên.'
+              ? 'Chưa có kênh nào. Bấm "Thêm kênh" để kết nối tài khoản đầu tiên.'
               : 'Bạn chưa được phân công kênh nào. Nhờ quản lý thêm bạn vào kênh hoặc bộ phận.'}
           </div>
         </div>
@@ -59,9 +86,17 @@ export default function Channels() {
 
       <div className="card notice">
         <h3>
-          <Smartphone size={18} /> Lưu ý khi dùng Zalo cá nhân
+          <Smartphone size={18} /> Lưu ý khi dùng các kênh
         </h3>
         <ul>
+          <li>
+            <b>Facebook Messenger:</b> chỉ trả lời được trong 24 giờ kể từ tin cuối của khách. <b>Bình luận:</b> trả lời công khai bất kỳ
+            lúc nào, nhắn riêng được 1 lần cho mỗi bình luận trong 7 ngày.
+          </li>
+          <li>
+            <b>TikTok:</b> trả lời trong 48 giờ, tối đa 10 tin cho mỗi lần khách nhắn. <b>TikTok Shop:</b> chỉ gửi chữ, tối đa 2000 ký
+            tự.
+          </li>
           <li>
             Mỗi tài khoản Zalo chỉ cho <b>một phiên web</b>. Đừng mở chat.zalo.me hoặc Zalo PC bằng tài khoản đã gắn vào app.
             Ứng dụng trên điện thoại vẫn dùng bình thường.
@@ -75,6 +110,31 @@ export default function Channels() {
         </ul>
       </div>
 
+      {adding && (
+        <AddChannelModal
+          onClose={() => setAdding(false)}
+          onZalo={() => {
+            setAdding(false)
+            setEditing('new')
+          }}
+          onConnected={(text) => {
+            setAdding(false)
+            setFlash({ ok: true, text })
+            reloadSettings()
+          }}
+        />
+      )}
+      {fbKey && (
+        <FacebookPagePicker
+          pendingKey={fbKey}
+          onClose={() => setFbKey(null)}
+          onDone={(n) => {
+            setFbKey(null)
+            setFlash({ ok: true, text: `Đã kết nối ${n} Fanpage. Gán bộ phận và nhân viên cho kênh bên dưới.` })
+            reloadSettings()
+          }}
+        />
+      )}
       {editing && (
         <ChannelForm
           channel={editing === 'new' ? null : editing}
@@ -164,13 +224,15 @@ function AgentChannelCard({ channel: c, status }: { channel: Channel; status: Za
       <div className="channel-head">
         <Avatar name={status?.account?.name ?? c.zalo_name ?? c.name} src={status?.account?.avatar ?? c.avatar} size={48} />
         <div className="grow">
-          <div className="channel-name">{c.name}</div>
-          <div className="muted small">{status?.account?.name ?? c.zalo_name ?? 'Chưa gắn tài khoản Zalo'}</div>
+          <div className="channel-name">
+            {c.name} <PlatformBadge platform={c.platform} />
+          </div>
+          <div className="muted small">{status?.account?.name ?? c.zalo_name ?? 'Chưa gắn tài khoản'}</div>
         </div>
         <ChannelState state={state} />
       </div>
       {state !== 'connected' && (
-        <div className="muted small">Kênh đang mất kết nối Zalo. Báo quản lý quét lại mã QR để tiếp tục nhận/gửi tin.</div>
+        <div className="muted small">Kênh đang mất kết nối. Báo quản lý kết nối lại để tiếp tục nhận/gửi tin.</div>
       )}
       <a className="btn outline sm" href="#/inbox" style={{ alignSelf: 'flex-start' }}>
         <MessagesSquare size={14} /> Mở hộp thư
@@ -289,6 +351,8 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
   const { departments, reloadSettings } = useApp()
   const [busy, setBusy] = useState(false)
   const state = c.active ? status?.state ?? 'disconnected' : 'off'
+  const platform = platformOf(c.platform)
+  const isZalo = platform === 'zalo'
 
   async function call(action: string, confirmText?: string) {
     if (confirmText && !confirm(confirmText)) return
@@ -313,9 +377,11 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
       <div className="channel-head">
         <Avatar name={status?.account?.name ?? c.zalo_name ?? c.name} src={status?.account?.avatar ?? c.avatar} size={48} />
         <div className="grow">
-          <div className="channel-name">{c.name}</div>
+          <div className="channel-name">
+            {c.name} <PlatformBadge platform={c.platform} />
+          </div>
           <div className="muted small">
-            {status?.account?.name ?? c.zalo_name ?? 'Chưa gắn tài khoản Zalo'}
+            {status?.account?.name ?? c.zalo_name ?? (isZalo ? 'Chưa gắn tài khoản Zalo' : 'Chưa kết nối tài khoản')}
             {c.conversations !== undefined && ` · ${c.conversations} hội thoại`}
           </div>
         </div>
@@ -386,7 +452,39 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
         </div>
       )}
 
-      {c.active ? (
+      {c.active && !isZalo ? (
+        <div className="row wrap">
+          {state === 'connected' ? (
+            <>
+              <button className="btn outline sm" disabled={busy} onClick={() => call('reconnect')}>
+                <RefreshCw size={14} /> Kết nối lại
+              </button>
+              <button
+                className="btn danger sm"
+                disabled={busy}
+                onClick={() =>
+                  call('logout', `Ngắt ${PLATFORM_LABEL[platform]} khỏi kênh "${c.name}"? Muốn dùng lại phải đăng nhập ủy quyền lại.`)
+                }
+              >
+                <LogOut size={14} /> Ngắt kết nối
+              </button>
+            </>
+          ) : state === 'connecting' ? (
+            <span className="muted small row">
+              <RefreshCw size={14} className="spin" /> Đang kết nối…
+            </span>
+          ) : (
+            <>
+              <a className="btn primary sm" href={authUrl(`/oauth/${OAUTH_SLUG[platform]}/start`)}>
+                <LogIn size={14} /> Đăng nhập lại {PLATFORM_LABEL[platform]}
+              </a>
+              <button className="btn outline sm" disabled={busy} onClick={() => call('reconnect')}>
+                <RefreshCw size={14} /> Thử lại
+              </button>
+            </>
+          )}
+        </div>
+      ) : c.active ? (
         <div className="row wrap">
           {state === 'connected' ? (
             <>
@@ -563,6 +661,205 @@ function ChannelForm({
           </button>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+const OAUTH_SLUG: Record<Platform, string> = { zalo: '', facebook: 'facebook', tiktok: 'tiktok', tiktok_shop: 'tiktok-shop' }
+
+type PlatformConfig = {
+  meta: { configured: boolean }
+  tiktok: { configured: boolean; authUrl?: string }
+  tiktok_shop: { configured: boolean; serviceId?: string }
+}
+
+/** Chọn nền tảng để thêm kênh: Zalo (QR), Facebook, TikTok, TikTok Shop (đăng nhập ủy quyền). */
+function AddChannelModal({ onClose, onZalo, onConnected }: { onClose: () => void; onZalo: () => void; onConnected: (text: string) => void }) {
+  const { can: allowed } = useApp()
+  const [cfg, setCfg] = useState<PlatformConfig | null>(null)
+  const [pageToken, setPageToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    api<PlatformConfig>('/platform-config')
+      .then(setCfg)
+      .catch((e) => setError(e.message))
+  }, [])
+
+  async function connectToken() {
+    setBusy(true)
+    setError('')
+    try {
+      const r = await api<{ name: string }>('/platform-connect/facebook-token', { body: { page_token: pageToken } })
+      setPageToken('')
+      onConnected(`Đã kết nối Fanpage "${r.name}".`)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const needConfig = (label: string) => (
+    <div className="muted small">
+      Chưa nhập thông tin app {label}.{' '}
+      {allowed('integrations.manage') ? (
+        <a href="#/settings/integrations" onClick={onClose}>
+          Nhập ở Cài đặt › Tích hợp
+        </a>
+      ) : (
+        'Nhờ quản trị viên nhập ở Cài đặt › Tích hợp.'
+      )}
+    </div>
+  )
+
+  return (
+    <Modal title="Thêm kênh chat" onClose={onClose}>
+      <div className="stack">
+        <div className="platform-option">
+          <div className="row">
+            <PlatformBadge platform="zalo" />
+            <b className="grow">Tài khoản Zalo</b>
+          </div>
+          <div className="muted small">Tạo kênh rồi quét mã QR bằng Zalo trên điện thoại.</div>
+          <button className="btn primary sm" onClick={onZalo}>
+            <QrCode size={14} /> Thêm kênh Zalo
+          </button>
+        </div>
+
+        <div className="platform-option">
+          <div className="row">
+            <PlatformBadge platform="facebook" />
+            <b className="grow">Fanpage Facebook: Messenger và bình luận</b>
+          </div>
+          {!cfg ? (
+            <div className="muted small">Đang tải…</div>
+          ) : cfg.meta.configured ? (
+            <>
+              <div className="muted small">Đăng nhập Facebook bằng tài khoản quản trị Fanpage, sau đó chọn các trang cần kết nối.</div>
+              <a className="btn primary sm" href={authUrl('/oauth/facebook/start')}>
+                <LogIn size={14} /> Đăng nhập Facebook
+              </a>
+              <details>
+                <summary className="small">Hoặc dán Page Access Token</summary>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <input
+                    className="grow"
+                    type="password"
+                    autoComplete="off"
+                    value={pageToken}
+                    onChange={(e) => setPageToken(e.target.value)}
+                    placeholder="Page Access Token (lấy ở Graph API Explorer)"
+                  />
+                  <button className="btn outline sm" disabled={busy || !pageToken.trim()} onClick={connectToken}>
+                    <KeyRound size={14} /> Kết nối
+                  </button>
+                </div>
+              </details>
+            </>
+          ) : (
+            needConfig('Meta (Facebook)')
+          )}
+        </div>
+
+        <div className="platform-option">
+          <div className="row">
+            <PlatformBadge platform="tiktok" />
+            <b className="grow">Tài khoản TikTok Business: tin nhắn</b>
+          </div>
+          {!cfg ? null : cfg.tiktok.configured && cfg.tiktok.authUrl ? (
+            <>
+              <div className="muted small">Đăng nhập TikTok bằng tài khoản doanh nghiệp và cho phép quyền nhắn tin.</div>
+              <a className="btn primary sm" href={authUrl('/oauth/tiktok/start')}>
+                <LogIn size={14} /> Đăng nhập TikTok
+              </a>
+            </>
+          ) : (
+            needConfig('TikTok for Business')
+          )}
+        </div>
+
+        <div className="platform-option">
+          <div className="row">
+            <PlatformBadge platform="tiktok_shop" />
+            <b className="grow">TikTok Shop: chat với người mua</b>
+          </div>
+          {!cfg ? null : cfg.tiktok_shop.configured && cfg.tiktok_shop.serviceId ? (
+            <>
+              <div className="muted small">Đăng nhập Seller Center và ủy quyền cho app. Mỗi shop thành một kênh.</div>
+              <a className="btn primary sm" href={authUrl('/oauth/tiktok-shop/start')}>
+                <LogIn size={14} /> Đăng nhập TikTok Shop
+              </a>
+            </>
+          ) : (
+            needConfig('TikTok Shop')
+          )}
+        </div>
+        {error && <div className="form-error">{error}</div>}
+      </div>
+    </Modal>
+  )
+}
+
+/** Sau khi đăng nhập Facebook: chọn Fanpage cần kết nối. */
+function FacebookPagePicker({ pendingKey, onClose, onDone }: { pendingKey: string; onClose: () => void; onDone: (n: number) => void }) {
+  const [pages, setPages] = useState<{ id: string; name: string; picture: string; connected: boolean }[] | null>(null)
+  const [picked, setPicked] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    api<typeof pages>(`/platform-connect/facebook/${pendingKey}`)
+      .then((list) => {
+        setPages(list)
+        setPicked((list ?? []).filter((p) => !p.connected).map((p) => p.id))
+      })
+      .catch((e) => setError(e.message))
+  }, [pendingKey])
+
+  async function save() {
+    setBusy(true)
+    setError('')
+    try {
+      const r = await api<{ channel_ids: number[] }>(`/platform-connect/facebook/${pendingKey}`, { body: { page_ids: picked } })
+      onDone(r.channel_ids.length)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Chọn Fanpage cần kết nối" onClose={onClose}>
+      <div className="stack">
+        {!pages && !error && <div className="muted">Đang tải danh sách trang…</div>}
+        {pages?.length === 0 && <div className="muted">Tài khoản này không quản trị Fanpage nào, hoặc chưa cấp quyền cho trang khi đăng nhập.</div>}
+        {pages?.map((p) => (
+          <label key={p.id} className="check page-pick">
+            <input
+              type="checkbox"
+              checked={picked.includes(p.id)}
+              onChange={(e) => setPicked(e.target.checked ? [...picked, p.id] : picked.filter((x) => x !== p.id))}
+            />
+            <Avatar name={p.name} src={p.picture} size={32} />
+            <span className="grow">{p.name}</span>
+            {p.connected && <Badge tone="green">Đã có kênh, sẽ cập nhật token</Badge>}
+          </label>
+        ))}
+        {error && <div className="form-error">{error}</div>}
+        <div className="row end">
+          <a className="btn ghost" href="https://business.facebook.com/" target="_blank" rel="noreferrer">
+            <ExternalLink size={14} /> Meta Business Suite
+          </a>
+          <span className="grow" />
+          <button className="btn ghost" onClick={onClose}>
+            Hủy
+          </button>
+          <button className="btn primary" disabled={busy || !picked.length} onClick={save}>
+            {busy ? 'Đang kết nối…' : `Kết nối ${picked.length} trang`}
+          </button>
+        </div>
+      </div>
     </Modal>
   )
 }

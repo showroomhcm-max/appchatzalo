@@ -212,12 +212,12 @@ function Shell() {
             className={`zalo-dot ${zaloOk ? 'ok' : 'bad'}`}
             title={
               zaloOk
-                ? `Đã kết nối ${zaloStatuses.length} kênh Zalo`
+                ? `Đã kết nối ${zaloStatuses.length} kênh chat`
                 : offline.length
                   ? `Chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}`
-                  : 'Chưa có kênh Zalo nào'
+                  : 'Chưa có kênh chat nào'
             }
-            aria-label="Trạng thái Zalo"
+            aria-label="Trạng thái kênh chat"
           />
           {user.auth_source === 'local' && (
             <button className="icon-btn" onClick={() => setPwOpen(true)} title="Đổi mật khẩu" aria-label="Đổi mật khẩu">
@@ -238,9 +238,9 @@ function Shell() {
         {route.page !== 'channels' && (offline.length > 0 || (allowed('channels.manage') && zaloStatuses.length === 0)) && (
           <div className="banner warn">
             {zaloStatuses.length === 0
-              ? 'Chưa có kênh Zalo nào — chưa nhận/gửi được tin nhắn.'
+              ? 'Chưa có kênh chat nào — chưa nhận/gửi được tin nhắn.'
               : offline.every((s) => s.state === 'connecting')
-                ? `Đang kết nối Zalo: ${offline.map((s) => s.channelName).join(', ')}…`
+                ? `Đang kết nối kênh: ${offline.map((s) => s.channelName).join(', ')}…`
                 : `Kênh chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}. Tin nhắn của kênh này chưa nhận/gửi được.`}
             <a href="#/channels">Mở trang Kênh Chat</a>
           </div>
