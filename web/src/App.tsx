@@ -9,6 +9,7 @@ import type { SettingsTab } from './pages/Settings'
 import Channels from './pages/Channels'
 import SettingsPage from './pages/Settings'
 import { Avatar, Modal } from './components'
+import { UpdateBanner, VersionTag } from './version'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -227,9 +228,11 @@ function Shell() {
           <button className="icon-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
             <LogOut size={18} />
           </button>
+          <VersionTag />
         </div>
       </aside>
       <main className="main">
+        <UpdateBanner />
         {route.page !== 'channels' && (offline.length > 0 || (isAdmin && zaloStatuses.length === 0)) && (
           <div className="banner warn">
             {zaloStatuses.length === 0

@@ -1,5 +1,6 @@
 {
   "name": "zalo-cskh",
+  "version": "2.0.0",
   "private": true,
   "description": "Web app chăm sóc khách hàng: nhiều nhân viên dùng chung 1 tài khoản Zalo cá nhân",
   "scripts": {
@@ -13,7 +14,8 @@
     "prod:stop": "pm2 stop zalo-cskh",
     "prod:logs": "pm2 logs --lines 100",
     "prod:status": "pm2 status",
-    "prod:url": "node scripts/public-url.mjs"
+    "prod:url": "node scripts/public-url.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "concurrently": "^10.0.6",

@@ -547,6 +547,20 @@ textarea:focus {
   align-items: center;
   gap: 12px;
 }
+.banner.update {
+  background: var(--mz-green-100);
+  color: var(--mz-green-900);
+}
+.banner.update .btn {
+  margin-left: auto;
+}
+.version-tag {
+  font-size: 10.5px;
+  color: var(--mz-green-300);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  letter-spacing: 0.2px;
+}
 .banner.warn {
   background: #fdf1dc;
   color: #7a4d00;

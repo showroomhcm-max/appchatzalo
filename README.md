@@ -98,6 +98,13 @@ npm run prod:logs      # xem log
 
 **Sao lưu** thư mục `data/`. Thư mục này chứa database và cookie đăng nhập Zalo, nên phải giữ bí mật.
 
+## Phiên bản
+
+- Phiên bản đang chạy hiện ở góc trái dưới của app (rê chuột để xem giờ cập nhật) và ở đầu trang **Cài đặt**.
+- Khi máy chủ cập nhật xong, ai đang mở app sẽ thấy dải **"Đã có phiên bản mới"**, bấm **Tải lại** là dùng bản mới.
+- Lịch sử thay đổi: [CHANGELOG.md](CHANGELOG.md). Trên GitHub xem ở mục **Tags** của repo.
+- Phát hành bản mới: ghi mục mới vào CHANGELOG.md, chạy `npm run release -- 2.1.0`, rồi `npm run prod:restart` trên máy chủ.
+
 ## Lưu ý quan trọng về Zalo cá nhân
 
 - Zalo không có API chính thức cho tài khoản cá nhân. App dùng thư viện cộng đồng [zca-js](https://github.com/RFS-ADRENO/zca-js), mô phỏng Zalo Web. Zalo có thể khóa tài khoản nếu thấy dấu hiệu spam hoặc gửi hàng loạt. Chỉ dùng để trả lời khách.

@@ -5,6 +5,7 @@ import { useApp } from '../store'
 import type { Department, Tag, Template } from '../types'
 import { Avatar, Modal } from '../components'
 import UsersPage from './Users'
+import { BUILD, buildTimeLabel } from '../version'
 import Integrations from './Integrations'
 
 export type SettingsTab = 'users' | 'departments' | 'tags' | 'templates' | 'integrations'
@@ -42,6 +43,10 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
           <p className="muted">
             Nhân viên, bộ phận, tag, tin nhắn mẫu và kết nối với web app khác. Nhân viên thuộc bộ phận nào thì thấy kênh, hội
             thoại, tag và tin nhắn mẫu của bộ phận đó.
+          </p>
+          <p className="muted small">
+            Phiên bản {BUILD.version} · cập nhật lúc {buildTimeLabel(BUILD.builtAt)}
+            {BUILD.commit ? ` · mã ${BUILD.commit}` : ''}
           </p>
         </div>
       </div>

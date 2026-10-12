@@ -9,6 +9,7 @@ import { appRouter, publicRouter, errorHandler } from "./routes.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { zalo } from "./zalo.js";
+import { appVersion } from "./version.js";
 
 ensureAdmin();
 
@@ -17,7 +18,12 @@ app.disable("x-powered-by");
 app.use(cors({ origin: config.corsOrigins.length ? config.corsOrigins : true }));
 app.use(express.json({ limit: "2mb" }));
 
-app.get("/healthz", (_req, res) => res.json({ ok: true, zalo: zalo.summary() }));
+app.get("/healthz", (_req, res) => res.json({ ok: true, version: appVersion().version, zalo: zalo.summary() }));
+// Phiên bản đang chạy (công khai): trình duyệt so với bản mình đang mở để báo "có bản mới".
+app.get("/api/version", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json(appVersion());
+});
 app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false }));
 app.use("/api/v1", publicRouter);
 app.use("/api", appRouter);
