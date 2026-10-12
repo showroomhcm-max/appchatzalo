@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.4.1 — 13/10/2026
+
+**Sửa lỗi**
+- Biểu tượng trên tab trình duyệt vẫn là hình cũ do trình duyệt / Cloudflare giữ bản cũ trong bộ nhớ đệm. Đổi sang file mới (`mmz-icon.svg`) để tải lại ngay; thêm bản PNG, `favicon.ico` và icon khi lưu ra màn hình điện thoại, tất cả là logo MemoryZone.
+
 ## v3.4.0 — 13/10/2026
 
 **Đồng bộ đơn hàng** (Cài đặt › Tích hợp, trước là "Đồng bộ Sapo")
