@@ -40,7 +40,7 @@ export function senderLabel(m: Message) {
   if (m.agent_name) return m.agent_name
   if (m.source === 'api') return 'Hệ thống (API)'
   if (m.source === 'history') return 'Shop'
-  return 'Gửi từ điện thoại'
+  return m.holder_name ? `Gửi từ điện thoại · ${m.holder_name}` : 'Gửi từ điện thoại'
 }
 
 /** Mô tả ngắn một tin (dùng cho khung "Đang trả lời" và chuyển tiếp). */

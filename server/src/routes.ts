@@ -36,6 +36,7 @@ import { openConversationWith, searchContacts, searchMessages } from "./people.j
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
 import { alertConfig, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
+import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 
@@ -447,6 +448,8 @@ appRouter.patch(
     if (display_name) run("UPDATE users SET display_name = ? WHERE id = ?", String(display_name), id);
     if (role) run("UPDATE users SET role = ? WHERE id = ?", role === "admin" ? "admin" : "agent", id);
     if (active !== undefined) run("UPDATE users SET active = ? WHERE id = ?", active ? 1 : 0, id);
+    // Khóa nhân viên còn giữ Zalo / SĐT công ty → đánh dấu cần thu hồi
+    if (active === false) onUserDeactivated(id, req.user!.id);
     if (password && target.auth_source === "local") {
       if (String(password).length < 6) throw new HttpError(400, "Mật khẩu tối thiểu 6 ký tự");
       run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(password), 10), id);
@@ -542,6 +545,35 @@ appRouter.post("/alerts/:id/resolve", (req, res) => {
 });
 appRouter.get("/alerts/config", (_req, res) => res.json(alertConfig()));
 appRouter.put("/alerts/config", requirePerm("alerts.manage"), (req, res) => res.json(saveAlertConfig(req.body, req.user!)));
+
+// ───────────── Zalo & SĐT công ty cấp cho nhân viên ─────────────
+const zaloChannel = (id: number) => get<{ id: number }>("SELECT id FROM channels WHERE id = ? AND platform = 'zalo'", id);
+appRouter.get("/company-accounts", requirePerm("channels.manage"), (_req, res) =>
+  res.json({ accounts: listAccounts(), statuses: ASSET_STATUS, checklist: REVOKE_CHECKLIST }),
+);
+appRouter.patch("/company-accounts/:id", requirePerm("channels.manage"), (req, res) => {
+  const id = Number(req.params.id);
+  if (!zaloChannel(id)) return res.status(404).json({ error: "Không tìm thấy tài khoản Zalo" });
+  updateAsset(id, req.body, req.user!.id);
+  res.json({ ok: true });
+});
+appRouter.post("/company-accounts/:id/handover", requirePerm("channels.manage"), (req, res) => {
+  const id = Number(req.params.id);
+  if (!zaloChannel(id)) return res.status(404).json({ error: "Không tìm thấy tài khoản Zalo" });
+  const toUserId = req.body?.user_id ? Number(req.body.user_id) : null;
+  if (toUserId && !get("SELECT 1 FROM users WHERE id = ? AND active = 1", toUserId)) return res.status(400).json({ error: "Nhân viên không tồn tại hoặc đã bị khóa" });
+  try {
+    res.json(
+      handover(id, { toUserId, note: req.body?.note, checklist: req.body?.checklist, reassign: req.body?.reassign !== false }, req.user!.id),
+    );
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+appRouter.get("/company-accounts/:id/history", requirePerm("channels.manage"), (req, res) => res.json(accountHistory(Number(req.params.id))));
+/** Tài khoản Zalo công ty một nhân viên đang giữ (hiện trong hồ sơ nhân viên) */
+appRouter.get("/users/:id/company-accounts", requirePerm("users.manage"), (req, res) => res.json(accountsHeldBy(Number(req.params.id))));
+appRouter.get("/me/company-accounts", (req, res) => res.json(accountsHeldBy(req.user!.id)));
 
 // ───────────── Đơn hàng (Sapo / API) ─────────────
 appRouter.get("/conversations/:id/orders", (req, res) => {
@@ -950,7 +982,7 @@ appRouter.get("/logs/download", requirePerm("logs.view"), (req, res) => {
   const days = num(req.query.days) ?? 3;
   const v = appVersion();
   const header = [
-    "Zalo CSKH — nhật ký hệ thống",
+    "Chat Siêu Tốc — nhật ký hệ thống",
     `Tải lúc: ${new Date().toISOString()}`,
     `Phiên bản: ${v.version} (máy chủ ${v.commit || "?"}, giao diện ${v.web?.buildId ?? "?"})`,
     `Máy: ${os.hostname()} · ${os.platform()} ${os.release()} · Node ${process.version} · chạy từ ${v.startedAt}`,

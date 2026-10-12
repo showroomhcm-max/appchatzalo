@@ -7,6 +7,19 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.3.0 — 13/10/2026
+
+**Đổi tên: Chat Siêu Tốc**
+- App đổi tên thành **Chat Siêu Tốc**, dùng logo MemoryZone (mark "M" màu lime) ở màn đăng nhập, thanh menu và biểu tượng tab trình duyệt.
+
+**Zalo & SĐT công ty cấp cho nhân viên** (Cài đặt › Quản lý chung)
+- Mỗi tài khoản Zalo (quét QR) là tài sản công ty: nhập **SĐT, nhà mạng, serial SIM, điện thoại**; trạng thái Đang cấp / Trong kho / Cần thu hồi / Mất máy / Tạm khóa.
+- **Cấp cho nhân viên**: người nhận được vào thẳng kênh trên app. **Thu hồi / bàn giao**: chọn người nhận hoặc thu về kho, khách đang tư vấn tự chuyển sang người mới, tick **checklist** (thu SIM, đổi mật khẩu Zalo, bàn giao khách, kiểm tra danh bạ).
+- **Tin nhắn từ điện thoại** giờ ghi tên người đang giữ máy ("Gửi từ điện thoại · tên"). Mỗi tài khoản có số liệu hôm nay: khách nhắn, trả lời trên app, nhắn từ điện thoại, hội thoại chờ trả lời.
+- **Khóa nhân viên** còn giữ Zalo công ty → tài khoản tự chuyển **Cần thu hồi**, có cảnh báo trên trang. Hồ sơ nhân viên hiện tài khoản họ đang giữ.
+- **Lịch sử** từng tài khoản: ai giữ từ lúc nào đến lúc nào, ai cấp / thu hồi, checklist, các lần Zalo **mất kết nối** (dấu hiệu đăng nhập Zalo PC / Web ở máy khác).
+- Khách hàng và lịch sử chat luôn thuộc tài khoản công ty, không mất khi nhân viên nghỉ.
+
 ## v3.2.0 — 13/10/2026
 
 **Cài đặt có menu bên trái**

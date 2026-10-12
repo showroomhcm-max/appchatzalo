@@ -1,8 +1,8 @@
 {
   "name": "zalo-cskh",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "private": true,
-  "description": "Web app chăm sóc khách hàng: nhiều nhân viên dùng chung 1 tài khoản Zalo cá nhân",
+  "description": "Chat Siêu Tốc (MemoryZone): chat đa kênh cho đội chăm sóc khách hàng",
   "scripts": {
     "setup": "npm --prefix server install && npm --prefix web install",
     "dev": "concurrently -n api,web -c green,blue \"npm --prefix server run dev\" \"npm --prefix web run dev\"",

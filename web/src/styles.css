@@ -426,9 +426,6 @@ textarea:focus {
 .brand-mark {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
-  background: var(--primary);
-  color: #fff;
   display: grid;
   place-items: center;
 }
@@ -461,9 +458,6 @@ textarea:focus {
 .sidenav-brand {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: var(--primary);
-  color: #fff;
   display: grid;
   place-items: center;
 }
@@ -2889,4 +2883,27 @@ details.notice[open] > summary { margin-bottom: 12px; }
   .settings-mobile-nav { display: block; }
   .settings-content { padding: 16px; }
   .rule-options { padding-left: 0; }
+}
+
+/* ───────────── Zalo & SĐT công ty (v3.3) ───────────── */
+.account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+.account-card { display: flex; flex-direction: column; gap: 12px; }
+.account-card.alert { border-color: #f3b8b1; }
+.account-facts { display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; margin: 0; font-size: 14px; }
+.account-facts dt { color: var(--mz-ink-500); }
+.account-facts dd { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.warn-text { color: #9a6200; font-weight: 600; }
+.kpi b { display: block; font-size: 26px; color: var(--mz-ink-900); }
+.kpi-bad b { color: var(--mz-danger); }
+.btn.sm.danger { border-color: var(--mz-danger); color: var(--mz-danger); }
+.grid-2.tight { gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.small-head { margin: 0; font-size: 15px; }
+.timeline { display: flex; flex-direction: column; border-left: 2px solid var(--mz-ink-200); margin-left: 6px; }
+.timeline-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 10px 16px; position: relative; }
+.timeline-item::before { content: ''; position: absolute; left: -6px; top: 11px; width: 10px; height: 10px; border-radius: 50%; background: var(--mz-green-600); }
+.timeline-item.bad::before { background: var(--mz-danger); }
+.sidenav-brand svg, .brand-mark svg { display: block; }
+@media (max-width: 760px) {
+  .account-grid { grid-template-columns: 1fr; }
+  .account-facts { grid-template-columns: 1fr; }
 }

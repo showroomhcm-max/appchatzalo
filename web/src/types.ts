@@ -77,6 +77,8 @@ export type Message = {
   sender_name: string | null
   agent_id: number | null
   agent_name: string | null
+  /** Zalo công ty: người đang giữ máy khi tin được gửi từ điện thoại */
+  holder_name?: string | null
   source: 'web' | 'api' | 'phone' | 'history' | 'customer'
   msg_type: string | null
   text: string | null

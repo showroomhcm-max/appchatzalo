@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Check, UserPlus } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
@@ -180,6 +180,11 @@ function UserForm({
   const [groupIds, setGroupIds] = useState<number[]>(user?.group_ids ?? [])
   const [ownPerms, setOwnPerms] = useState<string[]>(user?.own_permissions ?? [])
   const [active, setActive] = useState(user ? !!user.active : true)
+  // Zalo / SĐT công ty người này đang giữ
+  const [held, setHeld] = useState<{ channel_id: number; name: string; phone: string | null; status: string }[]>([])
+  useEffect(() => {
+    if (user) api<typeof held>(`/users/${user.id}/company-accounts`).then(setHeld).catch(() => {})
+  }, [user])
   const [password, setPassword] = useState('')
   const [deptIds, setDeptIds] = useState<number[]>(user?.department_ids ?? [])
   const [channelIds, setChannelIds] = useState<number[]>(user?.channel_ids ?? [])
@@ -342,11 +347,20 @@ function UserForm({
             </div>
           </div>
         )}
+        {held.length > 0 && (
+          <div className="banner info inline">
+            Đang giữ Zalo công ty: {held.map((h) => `${h.name}${h.phone ? ` (${h.phone})` : ''}`).join(', ')}.{' '}
+            <a href="#/settings/company">Quản lý</a>
+          </div>
+        )}
         {user && !isSelf && (
           <label className="check">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             Cho phép đăng nhập
           </label>
+        )}
+        {user && !active && held.some((h) => h.status === 'in_use') && (
+          <div className="banner warn inline">Khóa nhân viên này: tài khoản Zalo công ty họ giữ sẽ chuyển sang "Cần thu hồi".</div>
         )}
         {error && <div className="form-error">{error}</div>}
         <div className="row end">

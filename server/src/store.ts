@@ -189,8 +189,8 @@ export function listConversations(opts: {
 }
 
 const MSG_SELECT = `
-  SELECT m.*, u.display_name AS agent_name
-  FROM messages m LEFT JOIN users u ON u.id = m.agent_id`;
+  SELECT m.*, u.display_name AS agent_name, hu.display_name AS holder_name
+  FROM messages m LEFT JOIN users u ON u.id = m.agent_id LEFT JOIN users hu ON hu.id = m.holder_id`;
 
 function parseMsg(row: Row | undefined) {
   if (!row) return undefined;
@@ -347,16 +347,21 @@ export function saveMessage(input: SaveMessageInput) {
       if (input.cliMsgId && !existing.cli_msg_id) run("UPDATE messages SET cli_msg_id = ? WHERE id = ?", input.cliMsgId, existing.id);
       if (input.quote && !existing.quote) run("UPDATE messages SET quote = ? WHERE id = ?", JSON.stringify(input.quote), existing.id);
       if (input.agentId && !existing.agent_id) {
-        run("UPDATE messages SET agent_id = ?, source = ? WHERE id = ?", input.agentId, input.source, existing.id);
+        run("UPDATE messages SET agent_id = ?, source = ?, holder_id = NULL WHERE id = ?", input.agentId, input.source, existing.id);
         return { id: existing.id, isNew: false, changed: true };
       }
       return { id: existing.id, isNew: false, changed: false };
     }
 
+    // Tin gửi từ điện thoại của Zalo công ty: ghi người đang giữ máy (Cài đặt › Zalo & SĐT công ty)
+    const holderId =
+      input.source === "phone" && input.direction === "out" && !input.agentId
+        ? get<{ holder_id: number | null }>("SELECT holder_id FROM channel_assets WHERE channel_id = ? AND status = 'in_use'", input.channelId)?.holder_id ?? null
+        : null;
     const r = run(
       `INSERT INTO messages(conversation_id, zalo_msg_id, cli_msg_id, direction, sender_uid, sender_name,
-         agent_id, source, msg_type, text, raw, ts, quote)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         agent_id, source, msg_type, text, raw, ts, quote, holder_id)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       conversationId,
       input.zaloMsgId,
       input.cliMsgId ?? null,
@@ -370,6 +375,7 @@ export function saveMessage(input: SaveMessageInput) {
       raw,
       input.ts,
       input.quote ? JSON.stringify(input.quote) : null,
+      holderId,
     );
     const id = Number(r.lastInsertRowid);
 

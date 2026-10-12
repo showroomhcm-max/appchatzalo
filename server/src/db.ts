@@ -377,3 +377,40 @@ export function ensureAdmin() {
     Date.now(),
   );
 }
+
+// ───────────── Zalo & SĐT công ty cấp cho nhân viên (company-accounts.ts) ─────────────
+db.exec(`
+CREATE TABLE IF NOT EXISTS channel_assets (
+  channel_id INTEGER PRIMARY KEY REFERENCES channels(id) ON DELETE CASCADE,
+  phone TEXT,
+  sim_serial TEXT,
+  carrier TEXT,
+  device TEXT,
+  holder_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  holder_since INTEGER,
+  /** 1 = quyền vào kênh của người giữ do bàn giao tạo ra (thu hồi thì gỡ) */
+  holder_access INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'stored',
+  note TEXT,
+  updated_at INTEGER,
+  updated_by INTEGER
+);
+CREATE TABLE IF NOT EXISTS channel_holder_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  from_at INTEGER NOT NULL,
+  to_at INTEGER,
+  handed_by INTEGER,
+  returned_by INTEGER,
+  hand_note TEXT,
+  return_note TEXT,
+  checklist TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_holder_hist ON channel_holder_history(channel_id, from_at);
+`);
+if (!(db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]).some((c) => c.name === "holder_id")) {
+  // Người đang giữ máy lúc tin được gửi từ điện thoại
+  db.exec("ALTER TABLE messages ADD COLUMN holder_id INTEGER");
+}
+

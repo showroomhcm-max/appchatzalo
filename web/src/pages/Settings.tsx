@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { AlertTriangle, Building2, ChevronDown, Download, KeyRound, MessageSquareText, Pencil, PlugZap, Plus, Radio, RefreshCw, Tag as TagIcon, Trash2, Upload, Users as UsersIcon } from 'lucide-react'
+import { AlertTriangle, Smartphone, Building2, ChevronDown, Download, KeyRound, MessageSquareText, Pencil, PlugZap, Plus, Radio, RefreshCw, Tag as TagIcon, Trash2, Upload, Users as UsersIcon } from 'lucide-react'
 import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Department, Tag, Template } from '../types'
@@ -11,6 +11,7 @@ import Integrations from './Integrations'
 import LogsTab from './Logs'
 import PermissionsTab from './Permissions'
 import AlertsSettings from './AlertsSettings'
+import CompanyZalo from './CompanyZalo'
 import SapoSettings from './SapoSettings'
 import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
@@ -22,6 +23,7 @@ export type SettingsTab =
   | 'integrations'
   | 'sapo'
   | 'alerts'
+  | 'company'
   | 'logs'
   | 'templates'
   | 'tags'
@@ -45,6 +47,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
     title: 'Quản lý chung',
     items: [
       { id: 'alerts', label: 'Cảnh báo đơn "rơi"', icon: <AlertTriangle size={18} />, perms: ['alerts.manage'] },
+      { id: 'company', label: 'Zalo & SĐT công ty', icon: <Smartphone size={18} />, perms: ['channels.manage'] },
       { id: 'logs', label: 'Nhật ký hệ thống', icon: <ScrollText size={18} />, perms: ['logs.view'] },
     ],
   },
@@ -162,12 +165,13 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
             </optgroup>
           ))}
         </select>
-        {current && !['alerts', 'sapo', 'channels'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
+        {current && !['alerts', 'sapo', 'channels', 'company'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
         {tab === 'channels' && allowed('channels') && <Channels manage />}
         {tab === 'apps' && allowed('apps') && <PlatformApps />}
         {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
         {tab === 'sapo' && allowed('sapo') && <SapoSettings />}
         {tab === 'alerts' && allowed('alerts') && <AlertsSettings />}
+        {tab === 'company' && allowed('company') && <CompanyZalo />}
         {tab === 'logs' && allowed('logs') && <LogsTab />}
         {tab === 'templates' && allowed('templates') && <TemplatesTab />}
         {tab === 'tags' && allowed('tags') && <TagsTab />}

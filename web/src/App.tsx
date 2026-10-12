@@ -11,6 +11,7 @@ import SettingsPage from './pages/Settings'
 import { Avatar, Modal } from './components'
 import { UpdateBanner, VersionTag } from './version'
 import ChannelPicker from './ChannelPicker'
+import { APP_NAME, MzMark } from './Logo'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -71,10 +72,10 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
       <form className="login-card" onSubmit={submit}>
         <div className="brand-lockup">
           <span className="brand-mark">
-            <MessagesSquare size={22} />
+            <MzMark size={44} />
           </span>
           <div>
-            <div className="brand-name">Zalo CSKH</div>
+            <div className="brand-name">{APP_NAME}</div>
             <div className="brand-sub">Đăng nhập bằng tài khoản Odoo SieuToc</div>
           </div>
         </div>
@@ -191,8 +192,8 @@ function Shell() {
   return (
     <div className="shell">
       <aside className="sidenav">
-        <div className="sidenav-brand" title="Zalo CSKH">
-          <MessagesSquare size={22} />
+        <div className="sidenav-brand" title={`${APP_NAME} · MemoryZone`}>
+          <MzMark size={30} />
         </div>
         <nav>
           {nav

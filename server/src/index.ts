@@ -10,6 +10,7 @@ import { appRouter, publicRouter, errorHandler } from "./routes.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { startAlerts } from "./alerts.js";
+import { startAccountWatch } from "./company-accounts.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
@@ -47,8 +48,9 @@ const server = http.createServer(app);
 setupRealtime(server);
 setupWebhooks();
 startAlerts();
+startAccountWatch();
 
 server.listen(config.port, () => {
-  console.log(`[server] Zalo CSKH chạy tại http://localhost:${config.port}`);
+  console.log(`[server] Chat Siêu Tốc chạy tại http://localhost:${config.port}`);
   void zalo.initAll();
 });
