@@ -437,3 +437,17 @@ CREATE TABLE IF NOT EXISTS monitor_flags (
 );
 CREATE INDEX IF NOT EXISTS idx_flags_open ON monitor_flags(channel_id, reviewed_at);
 `);
+
+// ───────────── Ghim / xóa hội thoại (menu thao tác hội thoại) ─────────────
+db.exec(`
+CREATE TABLE IF NOT EXISTS conversation_pins (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  pinned_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, conversation_id)
+);
+`);
+if (!(db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]).some((c) => c.name === "deleted_at")) {
+  // Xóa = ẩn khỏi hộp thư (giữ dữ liệu cho training / kiểm tra); có tin mới thì hiện lại
+  db.exec("ALTER TABLE conversations ADD COLUMN deleted_at INTEGER");
+}

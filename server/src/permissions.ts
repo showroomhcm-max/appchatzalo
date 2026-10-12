@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   { key: "conversations.all", group: "Hội thoại", label: "Xem tất cả hội thoại (mọi kênh, mọi bộ phận)" },
   { key: "conversations.assign", group: "Hội thoại", label: "Giao, chuyển, giành hội thoại của người khác" },
   { key: "messages.undo_any", group: "Hội thoại", label: "Thu hồi tin nhắn do người khác gửi" },
+  { key: "conversations.delete", group: "Hội thoại", label: "Xóa hội thoại khỏi hộp thư (dữ liệu vẫn giữ)" },
   { key: "reviews.manage", group: "Dữ liệu", label: "Chấm điểm chất lượng tư vấn" },
   { key: "data.view", group: "Dữ liệu", label: "Xem trang Dữ liệu (thống kê nhân viên)" },
   { key: "data.export", group: "Dữ liệu", label: "Xuất dữ liệu hội thoại (TXT, CSV, JSONL, JSON)" },
@@ -84,6 +85,18 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
     run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
   }
   run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.alerts', '1')");
+})();
+
+/** Quyền xóa hội thoại: cấp sẵn cho nhóm Quản trị (một lần). */
+(function grantDeletePermission() {
+  if (get("SELECT 1 FROM settings WHERE key = 'perm.migrated.delete'")) return;
+  const g = get<{ id: number; permissions: string }>("SELECT id, permissions FROM permission_groups WHERE name = 'Quản trị'");
+  if (g) {
+    const list = new Set<string>(JSON.parse(g.permissions || "[]"));
+    list.add("conversations.delete");
+    run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
+  }
+  run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.delete', '1')");
 })();
 
 /** Quyền giám sát Zalo nhân viên: cấp sẵn cho nhóm Quản trị (một lần). */

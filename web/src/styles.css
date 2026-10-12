@@ -2951,3 +2951,63 @@ details.notice[open] > summary { margin-bottom: 12px; }
   .monitor-accounts, .monitor-convs { width: auto; border-right: 0; border-bottom: 1px solid var(--mz-ink-200); max-height: 45vh; }
   .monitor-transcript { min-height: 60vh; }
 }
+
+/* ───────────── Menu thao tác hội thoại, chọn nhiều, ghim (v3.6) ───────────── */
+.conv-item { position: relative; }
+.conv-item.checked { background: var(--mz-green-50); }
+.conv-check { flex: none; align-self: center; width: 18px; height: 18px; accent-color: var(--mz-green-700); }
+.conv-more { position: absolute; right: 6px; top: 6px; opacity: 0; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.conv-item:hover .conv-more, .conv-more:focus-visible { opacity: 1; }
+@media (hover: none) { .conv-more { opacity: 1; position: static; } }
+.pin-icon { color: var(--mz-green-700); margin-right: 4px; }
+.conv-section { display: flex; align-items: center; gap: 6px; padding: 8px 16px 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--mz-ink-500); background: var(--mz-ink-50); }
+.conv-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--mz-ink-200);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(13, 31, 22, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.conv-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: var(--mz-ink-800);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  width: 100%;
+}
+.conv-menu button:hover, .conv-menu button.on { background: var(--mz-green-50); }
+.conv-menu button.danger { color: var(--mz-danger); }
+.conv-menu button.danger:hover { background: #fde8e6; }
+.menu-sub-wrap { position: relative; }
+.menu-chev { margin-left: auto; color: var(--mz-ink-500); }
+.conv-menu.sub { position: absolute; left: calc(100% - 4px); top: -4px; max-height: 50vh; }
+@media (max-width: 760px) { .conv-menu.sub { position: static; box-shadow: none; border: 0; padding-left: 16px; } }
+.bulk-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--mz-green-50); border-bottom: 1px solid var(--mz-green-200); }
+.list-msg { margin: 8px 12px 0; }
+.tag-filter { display: flex; flex-direction: column; gap: 6px; }
+.seg.sm button { font-size: 12px; padding: 4px 10px; }
+.badge-wrap { position: relative; }
+.badge-wrap .nav-badge { top: -2px; right: -4px; }
+.friend-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--mz-ink-100); }
+.friend-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.friend-pick { max-height: 300px; overflow-y: auto; border: 1px solid var(--mz-ink-200); border-radius: var(--radius); padding: 4px; }
+.conv-title-row { display: flex; align-items: center; gap: 4px; }
+.conv-title-row h2 { flex: 1; }
+/* Menu chính không cuộn (để menu con không bị cắt); menu con tự cuộn */
+.conv-menu { overflow: visible; max-height: none; }
+.conv-menu.sub { overflow-y: auto; max-height: 50vh; }

@@ -202,6 +202,16 @@ export class MetaSession implements ChannelAdapter {
     });
   }
 
+  /** Bình luận: thích, ẩn / hiện, xóa (cần quyền pages_manage_engagement). */
+  async commentAction(commentId: string, action: "like" | "unlike" | "hide" | "unhide" | "delete") {
+    const c = this.creds();
+    if (!c || !this.connected) throw new Error("Fanpage chưa kết nối");
+    if (action === "like") await graph(`/${commentId}/likes`, c.pageToken, { method: "POST", body: {} });
+    else if (action === "unlike") await graph(`/${commentId}/likes`, c.pageToken, { method: "DELETE" });
+    else if (action === "hide" || action === "unhide") await graph(`/${commentId}`, c.pageToken, { method: "POST", body: { is_hidden: action === "hide" } });
+    else await graph(`/${commentId}`, c.pageToken, { method: "DELETE" });
+  }
+
   /** Tên + ảnh khách Messenger (cần quyền đọc hồ sơ; không có quyền thì bỏ qua). */
   private ensureProfile(psid: string) {
     const id = conversationKey(this.channelId, psid);

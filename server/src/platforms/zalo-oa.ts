@@ -5,7 +5,7 @@
  * Gửi tin tư vấn (message/cs) được trong 7 ngày kể từ lần cuối khách tương tác (theo quy định của Zalo).
  */
 import crypto from "node:crypto";
-import { logEvent } from "../db.js";
+import { logEvent, run } from "../db.js";
 import { bus } from "../bus.js";
 import { config } from "../config.js";
 import { conversationKey, getConversation, saveMessage, updateConversationProfile } from "../store.js";
@@ -205,6 +205,32 @@ export class ZaloOaSession implements ChannelAdapter {
     const name = String(ev?.event_name ?? "");
     const c = this.creds();
     if (!c) return;
+    if (name === "user_submit_info") {
+      // Khách bấm chia sẻ thông tin (từ tin "Xin thông tin khách")
+      const userId = String(ev.sender?.id ?? "");
+      const info = ev.info ?? {};
+      const parts = [
+        info.name && `Tên: ${info.name}`,
+        info.phone && `SĐT: ${info.phone}`,
+        info.address && `Địa chỉ: ${[info.address, info.ward, info.district, info.city].filter(Boolean).join(", ")}`,
+      ].filter(Boolean);
+      if (!userId || !parts.length) return;
+      saveMessage({
+        channelId: this.channelId,
+        threadId: userId,
+        conversationType: 0,
+        zaloMsgId: `info_${ev.timestamp ?? Date.now()}`,
+        direction: "in",
+        senderUid: userId,
+        senderName: info.name ?? null,
+        source: "customer",
+        msgType: "webchat",
+        content: `[Khách chia sẻ thông tin] ${parts.join(" · ")}`,
+        ts: Number(ev.timestamp) || Date.now(),
+      });
+      if (info.phone) run("UPDATE conversations SET phone = COALESCE(phone, ?) WHERE id = ?", String(info.phone), conversationKey(this.channelId, userId));
+      return;
+    }
     const fromOa = name.startsWith("oa_send_");
     const fromUser = name.startsWith("user_send_");
     if (!fromOa && !fromUser) return;
@@ -273,6 +299,33 @@ export class ZaloOaSession implements ChannelAdapter {
         console.warn(`[zalo_oa#${this.channelId}] Không đọc được hồ sơ khách ${userId}:`, e.message);
         if (!conv.name) updateConversationProfile(id, { name: "Khách Zalo OA" });
       });
+  }
+
+  /** Gửi mẫu "Xin thông tin khách" (khách bấm là chia sẻ tên, SĐT, địa chỉ cho OA). */
+  async requestUserInfo(userId: string, title: string, subtitle: string, imageUrl: string) {
+    const c = this.creds();
+    if (!c || !this.connected) throw new Error("Zalo OA chưa kết nối");
+    const token = await this.token();
+    const r = await oaCall<{ message_id: string }>("/v3.0/oa/message/cs", token, {
+      body: {
+        recipient: { user_id: userId },
+        message: { attachment: { type: "template", payload: { template_type: "request_user_info", elements: [{ title, subtitle, image_url: imageUrl }] } } },
+      },
+    });
+    return saveMessage({
+      channelId: this.channelId,
+      threadId: userId,
+      conversationType: 0,
+      zaloMsgId: r.message_id,
+      direction: "out",
+      senderUid: c.oaId,
+      senderName: c.name ?? "OA",
+      agentId: null,
+      source: "web",
+      msgType: "webchat",
+      content: `[Xin thông tin khách] ${title}`,
+      ts: Date.now(),
+    }).message;
   }
 
   async sendMessage(opts: SendOptions) {

@@ -62,6 +62,8 @@ export type Conversation = {
   last_direction: 'in' | 'out' | null
   created_at: number
   platform?: Platform
+  /** Đã xóa khỏi hộp thư (ẩn; có tin mới thì hiện lại) */
+  deleted_at?: number | null
   /** chat = tin nhắn, comment = bình luận Facebook */
   kind?: 'chat' | 'comment'
   /** Bình luận: bài viết gốc */

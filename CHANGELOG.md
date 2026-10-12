@@ -7,6 +7,24 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.6.0 — 13/10/2026
+
+**Menu thao tác hội thoại** (nút ⋯ khi rê chuột, hoặc bấm chuột phải vào hội thoại)
+- **Ghim hội thoại**: hội thoại ghim nằm ở mục "Đã ghim" trên cùng danh sách. Ghim riêng từng người.
+- **Đánh dấu đã đọc / chưa đọc**.
+- **Phân công người hỗ trợ**: chọn nhân viên, "Tôi nhận" hoặc "Bỏ phân công" (theo quyền như trước).
+- **Chọn nhiều**: tick nhiều hội thoại (hoặc nút chọn nhiều ở đầu danh sách) rồi Đã đọc / Chưa đọc / Ghim / Xong / Phân công / Xóa cùng lúc.
+- **Xóa hội thoại**: ẩn khỏi hộp thư, dữ liệu vẫn giữ để training; khách nhắn lại thì hiện lại. Bộ lọc trạng thái có mục **"Đã xóa"** để xem và **Khôi phục**. Quyền mới **"Xóa hội thoại"** (nhóm Quản trị có sẵn); hội thoại Zalo đang giám sát chỉ Super Admin xóa được.
+
+**Lọc theo nhiều tag**
+- Bấm chọn nhiều tag ở bộ lọc Tag, rồi chọn **"A hoặc B"** (có 1 trong các tag) hay **"A và B"** (có đủ các tag).
+
+**Tính năng riêng từng kênh**
+- **Zalo cá nhân**: nút **Lời mời kết bạn** ở đầu danh sách (Đồng ý / Từ chối, đồng ý xong mở luôn hội thoại; có số báo khi có lời mời mới), nút **Tạo nhóm** (chọn bạn bè Zalo làm thành viên), và trong khung chat 1-1: **Kết bạn** / Hủy lời mời / Đồng ý kết bạn / nhãn "Bạn bè Zalo".
+- **Facebook bình luận**: thêm **Thích**, **Ẩn**, **Hiện lại**, **Xóa bình luận** trong menu "⋯" của từng bình luận.
+- **Zalo OA**: nút **Xin thông tin khách** trong khung soạn tin: khách bấm chia sẻ tên, SĐT, địa chỉ → hiện thành tin trong hội thoại và tự lưu SĐT.
+- TikTok và TikTok Shop: API của TikTok không có kết bạn / nhóm / thao tác tương tự nên không có thêm.
+
 ## v3.5.0 — 13/10/2026
 
 **Giám sát Zalo nhân viên** (làm lại theo đúng ý: công ty cấp SIM, nhân viên tự tạo Zalo và chat với khách bằng điện thoại)

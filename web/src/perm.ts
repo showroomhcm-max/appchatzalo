@@ -4,6 +4,7 @@ export type Permission =
   | 'conversations.all'
   | 'conversations.assign'
   | 'messages.undo_any'
+  | 'conversations.delete'
   | 'reviews.manage'
   | 'data.view'
   | 'data.export'

@@ -60,6 +60,8 @@ export function Bubble({
   caps,
   canReply = true,
   readOnly = false,
+  extraActions,
+  onExtra,
   onAction,
   onReact,
 }: {
@@ -73,6 +75,9 @@ export function Bubble({
   canReply?: boolean
   /** Chỉ xem (trang Giám sát): ẩn mọi thao tác */
   readOnly?: boolean
+  /** Thao tác riêng của nền tảng (VD bình luận Facebook: thích, ẩn, xóa) */
+  extraActions?: { key: string; label: string; danger?: boolean }[]
+  onExtra?: (key: string) => void
   onAction: (action: MessageAction, m: Message) => void
   onReact: (m: Message, code: string) => void
 }) {
@@ -254,6 +259,18 @@ export function Bubble({
                       <Forward size={14} /> Chuyển tiếp
                     </button>
                   )}
+                  {extraActions?.map((x) => (
+                    <button
+                      key={x.key}
+                      className={x.danger ? 'danger' : ''}
+                      onClick={() => {
+                        setMenu(null)
+                        onExtra?.(x.key)
+                      }}
+                    >
+                      {x.label}
+                    </button>
+                  ))}
                   <button onClick={() => act('note')}>
                     <StickyNote size={14} /> Tạo ghi chú từ tin này
                   </button>

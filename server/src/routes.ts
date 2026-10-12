@@ -19,7 +19,10 @@ import { logFilesText, recentLogs, redact } from "./logger.js";
 import os from "node:os";
 import { appVersion } from "./version.js";
 import { zalo } from "./zalo.js";
-import { getConversation, listConversations, listMessages } from "./store.js";
+import { ensureConversation, getConversation, listConversations, listMessages, markUndone } from "./store.js";
+import { MetaSession } from "./platforms/meta.js";
+import { ZaloOaSession } from "./platforms/zalo-oa.js";
+import { publicBaseUrl } from "./platforms/common.js";
 import {
   HttpError,
   connectedSession,
@@ -526,13 +529,232 @@ appRouter.get("/conversations", (req, res) =>
       channelIds: req.query.channelIds ? String(req.query.channelIds).split(",").map(Number) : undefined,
       departmentId: req.query.departmentId === "none" ? null : num(req.query.departmentId),
       tag: req.query.tag ? String(req.query.tag) : undefined,
+      tags: req.query.tags ? String(req.query.tags).split(",").map((t) => t.trim()).filter(Boolean) : undefined,
+      tagMode: req.query.tagMode === "all" ? "all" : "any",
       q: req.query.q as string | undefined,
       type: num(req.query.type),
       before: num(req.query.before),
       limit: num(req.query.limit),
       alert: req.query.alert === "1",
+      deleted: req.query.deleted === "1" && can(req.user, "conversations.delete"),
+      pinnedBy: req.query.pinned === "1" ? req.user!.id : undefined,
     }),
   ),
+);
+/** Id hội thoại người này đã ghim (ghim riêng từng người) */
+appRouter.get("/conversations-pinned", (req, res) =>
+  res.json(all<{ conversation_id: string }>("SELECT conversation_id FROM conversation_pins WHERE user_id = ? ORDER BY pinned_at DESC", req.user!.id).map((r) => r.conversation_id)),
+);
+
+// ───────────── Tính năng riêng từng nền tảng ─────────────
+function zaloChannelFor(req: Request, channelId: number) {
+  if (!canUseChannel(scopeOf(req.user!), channelId)) throw new HttpError(403, "Bạn không có quyền dùng kênh này");
+  try {
+    return zalo.zaloSession(channelId);
+  } catch {
+    throw new HttpError(400, "Tính năng này chỉ có ở kênh Zalo cá nhân");
+  }
+}
+const platformError = (e: any) => new HttpError(e instanceof HttpError ? e.status : 502, e?.message ?? "Lỗi nền tảng");
+
+/** Zalo: lời mời kết bạn đang chờ xác nhận (mọi kênh Zalo người này dùng được) */
+appRouter.get(
+  "/zalo/friend-requests",
+  h(async (req, res) => {
+    const scope = scopeOf(req.user!);
+    const out: any[] = [];
+    for (const ch of all<{ id: number; name: string }>("SELECT id, name FROM channels WHERE platform = 'zalo' AND active = 1 AND mode = 'shared'")) {
+      if (!canUseChannel(scope, ch.id)) continue;
+      const s = zalo.zaloSession(ch.id);
+      if (!s.connected) continue;
+      try {
+        for (const r of await s.friendRequests()) out.push({ ...r, channel_id: ch.id, channel_name: ch.name });
+      } catch (e: any) {
+        console.warn(`[zalo#${ch.id}] Đọc lời mời kết bạn lỗi:`, e.message);
+      }
+    }
+    res.json(out);
+  }),
+);
+appRouter.post(
+  "/zalo/:channelId/friend-requests/:uid/:action",
+  h(async (req, res) => {
+    const s = zaloChannelFor(req, Number(req.params.channelId));
+    const uid = String(req.params.uid);
+    try {
+      if (req.params.action === "accept") await s.acceptFriend(uid);
+      else if (req.params.action === "reject") await s.rejectFriend(uid);
+      else throw new HttpError(400, "Thao tác không hợp lệ");
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    logEvent(null, req.user!.id, `zalo.friend_${req.params.action}`, { channel: Number(req.params.channelId), uid });
+    // Đồng ý → mở sẵn hội thoại với người đó
+    const conv = req.params.action === "accept" ? openConversationWith({ uid, channel_id: Number(req.params.channelId), name: req.body?.name, avatar: req.body?.avatar }, scopeOf(req.user!), req.user!.id) : null;
+    res.json({ ok: true, conversation_id: conv?.id ?? null });
+  }),
+);
+/** Zalo: trạng thái kết bạn / gửi lời mời / hủy lời mời với khách của hội thoại */
+appRouter.get(
+  "/conversations/:id/friend",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    if (conv.type !== 0) throw new HttpError(400, "Chỉ áp dụng cho hội thoại 1-1");
+    const s = zaloChannelFor(req, conv.channel_id);
+    try {
+      res.json(await s.friendStatus(conv.thread_id));
+    } catch (e: any) {
+      throw platformError(e);
+    }
+  }),
+);
+appRouter.post(
+  "/conversations/:id/friend",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    if (conv.type !== 0) throw new HttpError(400, "Chỉ áp dụng cho hội thoại 1-1");
+    const s = zaloChannelFor(req, conv.channel_id);
+    try {
+      if (req.body?.action === "undo") await s.undoFriendRequest(conv.thread_id);
+      else await s.sendFriendRequest(conv.thread_id, String(req.body?.message ?? ""));
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    logEvent(conv.id, req.user!.id, req.body?.action === "undo" ? "zalo.friend_undo" : "zalo.friend_request", {});
+    res.json(await s.friendStatus(conv.thread_id).catch(() => ({ ok: true })));
+  }),
+);
+/** Zalo: danh sách bạn bè của kênh (chọn thành viên tạo nhóm) */
+appRouter.get(
+  "/zalo/:channelId/friends",
+  h(async (req, res) => {
+    const s = zaloChannelFor(req, Number(req.params.channelId));
+    try {
+      res.json((await s.friends()).map((f) => ({ uid: f.uid, name: f.name, avatar: f.avatar, phone: f.phone })));
+    } catch (e: any) {
+      throw platformError(e);
+    }
+  }),
+);
+/** Zalo: tạo nhóm với các khách / bạn bè đã chọn */
+appRouter.post(
+  "/zalo/:channelId/groups",
+  h(async (req, res) => {
+    const channelId = Number(req.params.channelId);
+    const s = zaloChannelFor(req, channelId);
+    const name = String(req.body?.name ?? "").trim();
+    const members: string[] = Array.isArray(req.body?.members) ? [...new Set(req.body.members.map(String))].filter((m) => /^\d{5,25}$/.test(m as string)) as string[] : [];
+    if (!name) throw new HttpError(400, "Đặt tên nhóm");
+    if (members.length < 1) throw new HttpError(400, "Chọn ít nhất 1 thành viên");
+    let r: { groupId: string; failed: string[] };
+    try {
+      r = await s.createGroup(name, members);
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    const { id } = ensureConversation(channelId, r.groupId, 1, { name });
+    logEvent(id, req.user!.id, "zalo.group_created", { name, members: members.length, failed: r.failed.length });
+    res.json({ conversation_id: id, failed: r.failed });
+  }),
+);
+/** Facebook: thích / ẩn / xóa bình luận */
+appRouter.post(
+  "/messages/:id/comment-action",
+  h(async (req, res) => {
+    const msg = get<{ id: number; conversation_id: string; zalo_msg_id: string | null }>("SELECT id, conversation_id, zalo_msg_id FROM messages WHERE id = ?", Number(req.params.id));
+    if (!msg?.zalo_msg_id) throw new HttpError(404, "Không tìm thấy bình luận");
+    const conv = visibleConversation(req, msg.conversation_id);
+    if ((conv as any).kind !== "comment") throw new HttpError(400, "Chỉ áp dụng cho bình luận Facebook");
+    const action = String(req.body?.action ?? "") as "like" | "unlike" | "hide" | "unhide" | "delete";
+    if (!["like", "unlike", "hide", "unhide", "delete"].includes(action)) throw new HttpError(400, "Thao tác không hợp lệ");
+    const s = zalo.session(conv.channel_id) as MetaSession;
+    try {
+      await s.commentAction(msg.zalo_msg_id, action);
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    if (action === "delete") markUndone(conv.channel_id, conv.thread_id, msg.zalo_msg_id);
+    logEvent(conv.id, req.user!.id, `facebook.comment_${action}`, { comment: msg.zalo_msg_id });
+    res.json({ ok: true });
+  }),
+);
+/** Zalo OA: gửi mẫu "Xin thông tin khách" */
+appRouter.post(
+  "/conversations/:id/request-info",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    const s = zalo.session(conv.channel_id);
+    if (!(s instanceof ZaloOaSession)) throw new HttpError(400, "Tính năng này chỉ có ở kênh Zalo OA");
+    try {
+      res.json(
+        await s.requestUserInfo(
+          conv.thread_id,
+          String(req.body?.title ?? "MemoryZone xin thông tin giao hàng").slice(0, 100),
+          String(req.body?.subtitle ?? "Bạn bấm chia sẻ để MemoryZone lên đơn và giao hàng nhanh nhé.").slice(0, 500),
+          String(req.body?.image_url ?? `${publicBaseUrl()}/mmz-icon-512.png`),
+        ),
+      );
+    } catch (e: any) {
+      throw platformError(e);
+    }
+  }),
+);
+
+/** Thao tác nhiều hội thoại: ghim, đã đọc / chưa đọc, phân công, đổi trạng thái, xóa, khôi phục. */
+appRouter.post(
+  "/conversations/bulk",
+  h((req, res) => {
+    const ids: string[] = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))].slice(0, 500) as string[] : [];
+    const action = String(req.body?.action ?? "");
+    const value = req.body?.value;
+    if (!ids.length) throw new HttpError(400, "Chưa chọn hội thoại nào");
+    if ((action === "delete" || action === "restore") && !can(req.user, "conversations.delete")) {
+      throw new HttpError(403, "Bạn chưa được cấp quyền: Xóa hội thoại");
+    }
+    const scope = scopeOf(req.user!);
+    const results: { id: string; ok: boolean; error?: string }[] = [];
+    for (const id of ids) {
+      try {
+        const conv = getConversation(id);
+        if (!conv || !canSeeConversation(scope, conv)) throw new HttpError(404, "Không tìm thấy hội thoại");
+        if (action === "read") markRead(id);
+        else if (action === "unread") {
+          run("UPDATE conversations SET unread_count = CASE WHEN unread_count > 0 THEN unread_count ELSE 1 END WHERE id = ?", id);
+          bus.emit("conversation.updated", getConversation(id)!);
+        } else if (action === "pin") run("INSERT OR REPLACE INTO conversation_pins(user_id, conversation_id, pinned_at) VALUES(?, ?, ?)", req.user!.id, id, Date.now());
+        else if (action === "unpin") run("DELETE FROM conversation_pins WHERE user_id = ? AND conversation_id = ?", req.user!.id, id);
+        else if (action === "assign") {
+          const to = value === null || value === "" || value === undefined ? null : Number(value);
+          if (!can(req.user, "conversations.assign")) {
+            const ok = conv.assigned_to === req.user!.id || (conv.assigned_to == null && to === req.user!.id);
+            if (!ok) throw new HttpError(403, "Hội thoại đang do người khác phụ trách");
+          }
+          if (to && !get("SELECT 1 FROM users WHERE id = ? AND active = 1", to)) throw new HttpError(400, "Nhân viên không tồn tại");
+          updateConversation(id, { assigned_to: to }, req.user!.id);
+        } else if (action === "status") {
+          if (!["open", "pending", "closed"].includes(String(value))) throw new HttpError(400, "Trạng thái không hợp lệ");
+          updateConversation(id, { status: value }, req.user!.id);
+        } else if (action === "delete") {
+          // Zalo nhân viên đang giám sát: chỉ Super Admin được xóa (tránh xóa dấu vết)
+          const mode = get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", conv.channel_id)?.mode;
+          if (mode === "monitor" && !req.user!.super_admin) throw new HttpError(403, "Hội thoại đang giám sát, chỉ Super Admin được xóa");
+          run("UPDATE conversations SET deleted_at = ? WHERE id = ?", Date.now(), id);
+          run("DELETE FROM conversation_pins WHERE conversation_id = ?", id);
+          logEvent(id, req.user!.id, "conversation.deleted");
+          bus.emit("conversation.updated", getConversation(id)!, { type: "deleted", by: req.user!.id });
+        } else if (action === "restore") {
+          run("UPDATE conversations SET deleted_at = NULL WHERE id = ?", id);
+          logEvent(id, req.user!.id, "conversation.restored");
+          bus.emit("conversation.updated", getConversation(id)!, { type: "restored", by: req.user!.id });
+        } else throw new HttpError(400, "Thao tác không hợp lệ");
+        results.push({ id, ok: true });
+      } catch (e: any) {
+        results.push({ id, ok: false, error: e.message });
+      }
+    }
+    const failed = results.filter((r) => !r.ok);
+    res.json({ ok: failed.length === 0, done: results.length - failed.length, failed });
+  }),
 );
 
 // ───────────── Cảnh báo đơn "rơi" ─────────────

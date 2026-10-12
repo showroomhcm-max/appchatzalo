@@ -138,6 +138,13 @@ export function listConversations(opts: {
   alert?: boolean;
   /** Gồm cả hội thoại của Zalo nhân viên đang giám sát */
   includeMonitor?: boolean;
+  /** Lọc nhiều tag */
+  tags?: string[];
+  tagMode?: "any" | "all";
+  /** Chỉ hội thoại đã xóa */
+  deleted?: boolean;
+  /** Chỉ hội thoại người này đã ghim */
+  pinnedBy?: number;
 }) {
   const where: string[] = [conversationFilter(opts.access)];
   const params: any[] = [];
@@ -164,6 +171,25 @@ export function listConversations(opts: {
   if (opts.tag) {
     where.push("EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)");
     params.push(opts.tag);
+  }
+  // Nhiều tag: "any" = có 1 trong các tag (A hoặc B), "all" = có đủ các tag (A và B)
+  const tagList = (opts.tags ?? []).filter(Boolean).slice(0, 20);
+  if (tagList.length) {
+    if (opts.tagMode === "all") {
+      for (const t of tagList) {
+        where.push("EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)");
+        params.push(t);
+      }
+    } else {
+      where.push(`EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value IN (${tagList.map(() => "?").join(",")}))`);
+      params.push(...tagList);
+    }
+  }
+  // Hội thoại đã xóa chỉ hiện khi xem mục "Đã xóa"
+  where.push(opts.deleted ? "c.deleted_at IS NOT NULL" : "c.deleted_at IS NULL");
+  if (opts.pinnedBy) {
+    where.push("EXISTS (SELECT 1 FROM conversation_pins p WHERE p.conversation_id = c.id AND p.user_id = ?)");
+    params.push(opts.pinnedBy);
   }
   if (opts.scope === "mine" && opts.userId) {
     where.push("c.assigned_to = ?");
@@ -402,7 +428,7 @@ export function saveMessage(input: SaveMessageInput) {
       if (input.direction === "in") {
         // Khách nhắn lại vào cuộc đã đóng → mở lại.
         run(
-          "UPDATE conversations SET unread_count = unread_count + 1, status = CASE WHEN status = 'closed' THEN 'open' ELSE status END WHERE id = ?",
+          "UPDATE conversations SET unread_count = unread_count + 1, deleted_at = NULL, status = CASE WHEN status = 'closed' THEN 'open' ELSE status END WHERE id = ?",
           conversationId,
         );
       } else {

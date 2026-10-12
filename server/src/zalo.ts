@@ -264,6 +264,19 @@ export class ChannelSession implements ChannelAdapter {
     listener.on("message", (m) => this.handleMessage(m, false));
     listener.on("old_messages", (msgs) => msgs.forEach((m) => this.handleMessage(m, true)));
     listener.on("reaction", (r) => this.handleReaction(r));
+    // Lời mời kết bạn mới / được chấp nhận → báo giao diện
+    listener.on("friend_event", (ev: any) => {
+      try {
+        if (ev?.isSelf) return;
+        if (ev.type === 2) bus.emit("zalo.friend", { channelId: this.channelId, type: "request", uid: String(ev.data?.fromUid ?? ev.threadId ?? "") });
+        else if (ev.type === 0) {
+          this.friendsCache = null;
+          bus.emit("zalo.friend", { channelId: this.channelId, type: "added", uid: String(ev.threadId ?? "") });
+        }
+      } catch (e) {
+        console.warn(`[zalo#${this.channelId}] friend_event lỗi:`, e);
+      }
+    });
     listener.on("old_reactions", (list) => list.forEach((r) => this.handleReaction(r)));
     listener.on("undo", (u) => {
       const id = String(u.data.content?.globalMsgId ?? "");
@@ -390,6 +403,53 @@ export class ChannelSession implements ChannelAdapter {
     }));
     this.friendsCache = { at: Date.now(), list };
     return list;
+  }
+
+  /** Lời mời kết bạn đang chờ mình xác nhận. */
+  async friendRequests() {
+    const api = this.requireApi();
+    const r = await api.getFriendRecommendations();
+    return (r.recommItems ?? [])
+      .map((i) => i.dataInfo)
+      .filter((d) => d && d.recommType === 2)
+      .map((d) => ({
+        uid: d.userId,
+        name: d.displayName || d.zaloName,
+        avatar: d.avatar,
+        phone: d.phoneNumber || null,
+        message: d.recommInfo?.message ?? "",
+        time: d.recommTime || null,
+      }));
+  }
+
+  async acceptFriend(uid: string) {
+    await this.requireApi().acceptFriendRequest(uid);
+    this.friendsCache = null;
+  }
+
+  async rejectFriend(uid: string) {
+    await this.requireApi().rejectFriendRequest(uid);
+  }
+
+  /** Trạng thái kết bạn với một người: đã là bạn / mình đã gửi lời mời / họ đã gửi lời mời. */
+  async friendStatus(uid: string) {
+    const s = await this.requireApi().getFriendRequestStatus(uid);
+    return { isFriend: !!s.is_friend, requested: !!s.is_requested, requesting: !!s.is_requesting };
+  }
+
+  async sendFriendRequest(uid: string, message: string) {
+    await this.requireApi().sendFriendRequest(message.slice(0, 150) || "Xin chào, mình kết bạn nhé", uid);
+  }
+
+  async undoFriendRequest(uid: string) {
+    await this.requireApi().undoFriendRequest(uid);
+  }
+
+  /** Tạo nhóm Zalo với các thành viên (uid). Trả id nhóm. */
+  async createGroup(name: string, members: string[]) {
+    const r = await this.requireApi().createGroup({ name, members });
+    if (!r?.groupId) throw new Error("Zalo không tạo được nhóm");
+    return { groupId: String(r.groupId), failed: r.errorMembers ?? [] };
   }
 
   /** Tra người dùng theo số điện thoại (0xxx, 84xxx hoặc +84xxx). Không tìm thấy → null. */

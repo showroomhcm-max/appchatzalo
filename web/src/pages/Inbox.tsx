@@ -1,6 +1,11 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   AlertTriangle,
+  ClipboardList,
+  ListChecks,
+  MoreVertical,
+  Pin,
+  UserPlus,
   ArrowLeft,
   ShoppingBag,
   ExternalLink,
@@ -35,6 +40,7 @@ import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
+import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
 import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
@@ -49,7 +55,19 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   const [status, setStatus] = useState<string>('all')
   const [channelFilter, setChannelFilter] = useState<string>('')
   const [deptFilter, setDeptFilter] = useState<string>('')
-  const [tagFilter, setTagFilter] = useState<string>('')
+  // Lọc nhiều tag: any = có 1 trong các tag (A hoặc B), all = có đủ (A và B)
+  const [tagFilters, setTagFilters] = useState<string[]>([])
+  const [tagMode, setTagMode] = useState<'any' | 'all'>('any')
+  // Ghim (riêng từng người), chọn nhiều, menu ⋯
+  const [pinnedIds, setPinnedIds] = useState<string[]>([])
+  const [pinnedList, setPinnedList] = useState<Conversation[]>([])
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const [menu, setMenu] = useState<{ conv: Conversation; x: number; y: number } | null>(null)
+  const [listMsg, setListMsg] = useState('')
+  const [friendReqOpen, setFriendReqOpen] = useState(false)
+  const [groupOpen, setGroupOpen] = useState(false)
+  const [friendReqCount, setFriendReqCount] = useState(0)
   // Chỉ hội thoại đang có cảnh báo đơn "rơi"
   const [alertOnly, setAlertOnly] = useState(false)
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.conversation_id)), [alerts])
@@ -74,36 +92,42 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
 
   // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
   const myDepartments = can(user, 'conversations.all') ? departments : departments.filter((d) => d.user_ids.includes(user.id))
-  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || !!tagFilter || alertOnly
+  const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || tagFilters.length > 0 || alertOnly
+  const deletedView = status === 'deleted'
 
   const matches = useCallback(
     (c: Conversation) => {
       if (scope === 'mine' && c.assigned_to !== user.id) return false
       if (scope === 'unassigned' && c.assigned_to !== null) return false
       if (status === 'active' && c.status === 'closed') return false
-      if (status !== 'active' && status !== 'all' && c.status !== status) return false
+      if (status !== 'active' && status !== 'all' && status !== 'deleted' && c.status !== status) return false
       if (workingChannelIds && !workingChannelIds.includes(c.channel_id)) return false
       // Zalo nhân viên đang giám sát không vào hộp thư chung
       if (monitorIds.has(c.channel_id)) return false
       if (channelFilter && c.channel_id !== Number(channelFilter)) return false
       if (deptFilter === 'none' && c.department_id !== null) return false
       if (deptFilter && deptFilter !== 'none' && c.department_id !== Number(deptFilter)) return false
-      if (tagFilter && !c.tags.includes(tagFilter)) return false
+      if (tagFilters.length && (tagMode === 'all' ? !tagFilters.every((t) => c.tags.includes(t)) : !tagFilters.some((t) => c.tags.includes(t)))) return false
+      if (status === 'deleted' ? !c.deleted_at : !!c.deleted_at) return false
       if (alertOnly && !alertIds.has(c.id)) return false
       return true
     },
-    [scope, status, channelFilter, deptFilter, tagFilter, user.id, workingChannelIds, alertOnly, alertIds, monitorIds],
+    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, user.id, workingChannelIds, alertOnly, alertIds, monitorIds],
   )
 
   const load = useCallback(
     async (before?: number) => {
       const params = new URLSearchParams({ scope, limit: '50' })
-      if (status !== 'all' && status !== 'active') params.set('status', status)
+      if (status === 'deleted') params.set('deleted', '1')
+      else if (status !== 'all' && status !== 'active') params.set('status', status)
       if (channelFilter) params.set('channelId', channelFilter)
       // Chỉ các kênh đang tick chọn ở trang Kênh Chat
       if (workingChannelIds) params.set('channelIds', workingChannelIds.join(','))
       if (deptFilter) params.set('departmentId', deptFilter)
-      if (tagFilter) params.set('tag', tagFilter)
+      if (tagFilters.length) {
+        params.set('tags', tagFilters.join(','))
+        params.set('tagMode', tagMode)
+      }
       if (alertOnly) params.set('alert', '1')
       if (before) params.set('before', String(before))
       const rows = await api<Conversation[]>(`/conversations?${params}`)
@@ -112,7 +136,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
       setList((prev) => (before ? [...prev, ...filtered.filter((r) => !prev.some((p) => p.id === r.id))] : filtered))
       setLoading(false)
     },
-    [scope, status, channelFilter, deptFilter, tagFilter, workingChannelIds, alertOnly],
+    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, workingChannelIds, alertOnly],
   )
 
   useEffect(() => {
@@ -141,6 +165,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
 
   const upsert = useCallback(
     (c: Conversation) => {
+      setPinnedList((prev) => prev.map((p) => (p.id === c.id ? c : p)))
       setList((prev) => {
         const without = prev.filter((p) => p.id !== c.id)
         // Hội thoại đang mở luôn được giữ trong danh sách, kể cả khi đổi trạng thái/bộ lọc.
@@ -151,6 +176,36 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
     },
     [matches],
   )
+
+  // Ghim riêng từng người: tải danh sách id + dữ liệu hội thoại đã ghim
+  const loadPinned = useCallback(async () => {
+    const ids = await api<string[]>('/conversations-pinned').catch(() => [] as string[])
+    setPinnedIds(ids)
+    if (!ids.length) return setPinnedList([])
+    const rows = await api<Conversation[]>('/conversations?pinned=1&limit=100&scope=all').catch(() => [] as Conversation[])
+    setPinnedList(ids.map((id) => rows.find((r) => r.id === id)).filter((c): c is Conversation => !!c && (!workingChannelIds || workingChannelIds.includes(c.channel_id))))
+  }, [workingChannelIds])
+  useEffect(() => {
+    void loadPinned()
+  }, [loadPinned])
+  const hasZalo = channels.some((c) => c.platform === 'zalo')
+  useSocketEvent<{ type: string }>('zalo:friend', (ev) => {
+    if (ev.type === 'request') setFriendReqCount((n) => n + 1)
+  })
+
+  function afterAction(msg: string | null, action: ConvAction) {
+    setListMsg(msg ?? '')
+    if (action === 'pin' || action === 'unpin' || action === 'delete') void loadPinned()
+    if (action === 'delete' || action === 'restore') void load()
+    if (selecting && (action === 'delete' || action === 'restore')) setSelected([])
+  }
+  const itemProps = (c: Conversation, pinned: boolean) => ({
+    pinned,
+    selecting,
+    checked: selected.includes(c.id),
+    onCheck: (on: boolean) => setSelected((cur) => (on ? [...new Set([...cur, c.id])] : cur.filter((x) => x !== c.id))),
+    onMenu: (x: number, y: number) => setMenu({ conv: c, x, y }),
+  })
 
   useSocketEvent<{ conversation: Conversation }>('message:new', ({ conversation }) => upsert(conversation))
   useSocketEvent<Conversation>('conversation:update', upsert)
@@ -164,6 +219,28 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
         <div className="conv-head">
           <div className="conv-title-row">
             <h2>Hội thoại</h2>
+            {hasZalo && (
+              <>
+                <button className="icon-btn badge-wrap" onClick={() => setFriendReqOpen(true)} title="Lời mời kết bạn Zalo" aria-label="Lời mời kết bạn Zalo">
+                  <UserPlus size={18} />
+                  {friendReqCount > 0 && <span className="nav-badge">{friendReqCount}</span>}
+                </button>
+                <button className="icon-btn" onClick={() => setGroupOpen(true)} title="Tạo nhóm Zalo" aria-label="Tạo nhóm Zalo">
+                  <UsersRound size={18} />
+                </button>
+              </>
+            )}
+            <button
+              className={`icon-btn ${selecting ? 'on' : ''}`}
+              onClick={() => {
+                setSelecting((v) => !v)
+                setSelected([])
+              }}
+              title="Chọn nhiều hội thoại"
+              aria-label="Chọn nhiều hội thoại"
+            >
+              <ListChecks size={18} />
+            </button>
             {workingChannelIds && (
               <a className="working-pill" href="#/channels" title="Đổi kênh đang chat">
                 {channels.length === 1 ? channels[0].name : `${channels.length} kênh`}
@@ -208,6 +285,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   <option value="open">Đang xử lý</option>
                   <option value="pending">Chờ phản hồi</option>
                   <option value="closed">Đã xong</option>
+                  {can(user, 'conversations.delete') && <option value="deleted">Đã xóa</option>}
                 </select>
                 {channels.length > 1 && (
                   <select className="select sm" value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} aria-label="Lọc kênh">
@@ -241,11 +319,11 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                 </button>
                 {tags.length > 0 && (
                   <button
-                    className={`btn ghost sm ${showTagFilter || tagFilter ? 'on' : ''}`}
+                    className={`btn ghost sm ${showTagFilter || tagFilters.length ? 'on' : ''}`}
                     onClick={() => setShowTagFilter((v) => !v)}
                     aria-expanded={showTagFilter}
                   >
-                    Tag{tagFilter ? `: ${tagFilter}` : ''}
+                    Tag{tagFilters.length ? ` (${tagFilters.length})` : ''}
                   </button>
                 )}
                 {filtersActive && (
@@ -255,7 +333,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                       setStatus('all')
                       setChannelFilter('')
                       setDeptFilter('')
-                      setTagFilter('')
+                      setTagFilters([])
                       setAlertOnly(false)
                     }}
                   >
@@ -264,16 +342,88 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                 )}
               </div>
               {showTagFilter && tags.length > 0 && (
-                <TagPicker
-                  compact
-                  tags={tags}
-                  selected={tagFilter ? [tagFilter] : []}
-                  onToggle={(name) => setTagFilter((cur) => (cur === name ? '' : name))}
-                />
+                <div className="tag-filter">
+                  {tagFilters.length > 1 && (
+                    <div className="seg sm" role="radiogroup" aria-label="Cách lọc nhiều tag">
+                      <button role="radio" aria-checked={tagMode === 'any'} className={tagMode === 'any' ? 'on' : ''} onClick={() => setTagMode('any')}>
+                        {tagFilters.slice(0, 2).join(' hoặc ')}
+                        {tagFilters.length > 2 ? '…' : ''}
+                      </button>
+                      <button role="radio" aria-checked={tagMode === 'all'} className={tagMode === 'all' ? 'on' : ''} onClick={() => setTagMode('all')}>
+                        {tagFilters.slice(0, 2).join(' và ')}
+                        {tagFilters.length > 2 ? '…' : ''}
+                      </button>
+                    </div>
+                  )}
+                  <TagPicker
+                    compact
+                    tags={tags}
+                    selected={tagFilters}
+                    onToggle={(name) => setTagFilters((cur) => (cur.includes(name) ? cur.filter((t) => t !== name) : [...cur, name]))}
+                  />
+                  {tagFilters.length === 1 && <span className="small muted">Chọn thêm tag để lọc "A hoặc B" / "A và B".</span>}
+                </div>
               )}
             </>
           )}
         </div>
+        {listMsg && (
+          <div className="banner info inline list-msg">
+            {listMsg}
+            <button className="btn ghost sm" onClick={() => setListMsg('')}>
+              Đóng
+            </button>
+          </div>
+        )}
+        {selecting && !searching && (
+          <BulkBar
+            ids={selected}
+            total={list.length}
+            deletedView={deletedView}
+            onSelectAll={() => setSelected(selected.length === list.length ? [] : list.map((c) => c.id))}
+            onCancel={() => {
+              setSelecting(false)
+              setSelected([])
+            }}
+            onDone={afterAction}
+          />
+        )}
+        {menu && (
+          <ConvMenu
+            conv={menu.conv}
+            pinned={pinnedIds.includes(menu.conv.id)}
+            x={menu.x}
+            y={menu.y}
+            deletedView={deletedView}
+            onClose={() => setMenu(null)}
+            onDone={afterAction}
+            onSelectMany={() => {
+              setSelecting(true)
+              setSelected([menu.conv.id])
+            }}
+          />
+        )}
+        {friendReqOpen && (
+          <FriendRequestsModal
+            onClose={() => {
+              setFriendReqOpen(false)
+              setFriendReqCount(0)
+            }}
+            onOpen={(id) => {
+              setFriendReqOpen(false)
+              window.location.hash = `#/inbox/${encodeURIComponent(id)}`
+            }}
+          />
+        )}
+        {groupOpen && (
+          <CreateGroupModal
+            onClose={() => setGroupOpen(false)}
+            onCreated={(id) => {
+              setGroupOpen(false)
+              window.location.hash = `#/inbox/${encodeURIComponent(id)}`
+            }}
+          />
+        )}
         {searching ? (
           <SearchPanel q={q.trim()} activeConv={convId} />
         ) : (
@@ -290,9 +440,22 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                       : 'Tin nhắn mới từ Zalo sẽ hiện ở đây.'}
               </Empty>
             )}
-            {list.map((c) => (
-              <ConvItem key={c.id} c={c} active={c.id === convId} showChannel={channels.length > 1} />
-            ))}
+            {!deletedView && pinnedList.length > 0 && (
+              <>
+                <div className="conv-section">
+                  <Pin size={12} /> Đã ghim
+                </div>
+                {pinnedList.map((c) => (
+                  <ConvItem key={`p-${c.id}`} c={c} active={c.id === convId} showChannel={channels.length > 1} {...itemProps(c, true)} />
+                ))}
+                <div className="conv-section">Tất cả hội thoại</div>
+              </>
+            )}
+            {list
+              .filter((c) => deletedView || !pinnedIds.includes(c.id))
+              .map((c) => (
+                <ConvItem key={c.id} c={c} active={c.id === convId} showChannel={channels.length > 1} {...itemProps(c, false)} />
+              ))}
             {hasMore && !loading && (
               <button
                 className="btn ghost block"
@@ -611,7 +774,25 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
   return <>{parts}</>
 }
 
-function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean; showChannel: boolean }) {
+function ConvItem({
+  c,
+  active,
+  showChannel,
+  pinned = false,
+  selecting = false,
+  checked = false,
+  onCheck,
+  onMenu,
+}: {
+  c: Conversation
+  active: boolean
+  showChannel: boolean
+  pinned?: boolean
+  selecting?: boolean
+  checked?: boolean
+  onCheck?: (on: boolean) => void
+  onMenu?: (x: number, y: number) => void
+}) {
   const { presence, user, tags, channels, alerts } = useApp()
   const convAlerts = alerts.filter((a) => a.conversation_id === c.id)
   const viewers = (presence.byConversation[c.id] ?? []).filter((p) => p.userId !== user.id)
@@ -622,8 +803,21 @@ function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean
   return (
     <a
       href={`#/inbox/${encodeURIComponent(c.id)}`}
-      className={`conv-item ${active ? 'active' : ''} ${c.unread_count ? 'unread' : ''} ${c.status === 'closed' ? 'closed' : ''}`}
+      className={`conv-item ${active ? 'active' : ''} ${c.unread_count ? 'unread' : ''} ${c.status === 'closed' ? 'closed' : ''} ${checked ? 'checked' : ''}`}
+      onClick={(e) => {
+        // Đang chọn nhiều: bấm để tick, không mở hội thoại
+        if (selecting) {
+          e.preventDefault()
+          onCheck?.(!checked)
+        }
+      }}
+      onContextMenu={(e) => {
+        if (!onMenu) return
+        e.preventDefault()
+        onMenu(e.clientX, e.clientY)
+      }}
     >
+      {selecting && <input type="checkbox" className="conv-check" checked={checked} onChange={(e) => onCheck?.(e.target.checked)} onClick={(e) => e.stopPropagation()} aria-label={`Chọn ${c.name ?? c.id}`} />}
       <span className="avatar-wrap">
         <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
         {mixed && <PlatformDot platform={c.platform} />}
@@ -634,7 +828,25 @@ function ConvItem({ c, active, showChannel }: { c: Conversation; active: boolean
             {c.type === 1 && <UsersRound size={14} className="inline-icon" />}
             {c.name ?? c.id}
           </span>
-          <span className="conv-time">{timeLabel(c.last_message_at ?? c.created_at)}</span>
+          <span className="conv-time">
+            {pinned && <Pin size={12} className="inline-icon pin-icon" />}
+            {timeLabel(c.last_message_at ?? c.created_at)}
+          </span>
+          {onMenu && !selecting && (
+            <button
+              className="icon-btn sm conv-more"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const r = e.currentTarget.getBoundingClientRect()
+                onMenu(r.left, r.bottom + 4)
+              }}
+              aria-label="Thao tác hội thoại"
+              title="Thao tác"
+            >
+              <MoreVertical size={16} />
+            </button>
+          )}
         </div>
         <div className="conv-bottom">
           <span className="conv-preview">
@@ -749,6 +961,16 @@ function ChatView({
         setNotesVersion((v) => v + 1)
         setToast('Đã thêm vào ghi chú nội bộ')
       }
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  async function commentAction(m: Message, action: string) {
+    if (action === 'delete' && !confirm('Xóa bình luận này trên Facebook? Không khôi phục được.')) return
+    try {
+      await api(`/messages/${m.id}/comment-action`, { body: { action } })
+      setToast(action === 'like' ? 'Đã thích bình luận' : action === 'hide' ? 'Đã ẩn bình luận (chỉ người viết và bạn bè họ thấy)' : action === 'unhide' ? 'Đã hiện lại bình luận' : 'Đã xóa bình luận')
     } catch (e: any) {
       alert(e.message)
     }
@@ -902,6 +1124,11 @@ function ChatView({
                 <PlatformBadge platform={conv?.platform} comment={conv?.kind === 'comment'} />
               )}
             </div>
+            {conv && conv.type === 0 && platformOf(conv.platform) === 'zalo' && caps.contacts && (
+              <div className="chat-sub">
+                <FriendButton conv={conv} />
+              </div>
+            )}
             {conv?.kind === 'comment' && conv.meta?.post_url && (
               <a className="post-link" href={conv.meta.post_url} target="_blank" rel="noreferrer" title={conv.meta.post_message ?? undefined}>
                 <ExternalLink size={12} /> {conv.meta.post_message ? `Bài viết: ${conv.meta.post_message.slice(0, 80)}` : 'Xem bài viết'}
@@ -1005,6 +1232,8 @@ function ChatView({
                   canUndo={can(user, 'messages.undo_any') || m.agent_id === user.id}
                   caps={caps}
                   canReply={caps.quote || conv?.kind === 'comment'}
+                  extraActions={conv?.kind === 'comment' && m.direction === 'in' ? COMMENT_ACTIONS : undefined}
+                  onExtra={(key) => void commentAction(m, key)}
                   onAction={onMessageAction}
                   onReact={onReact}
                 />
@@ -1270,6 +1499,24 @@ function Composer({
         >
           <Smile size={20} />
         </button>
+        )}
+        {platform === 'zalo_oa' && (
+          <button
+            className="icon-btn"
+            onClick={async () => {
+              setError('')
+              try {
+                await api(`/conversations/${encodeURIComponent(convId)}/request-info`, { body: {} })
+              } catch (e: any) {
+                setError(e.message)
+              }
+            }}
+            aria-label="Xin thông tin khách"
+            title="Gửi mẫu xin thông tin (khách bấm là chia sẻ tên, SĐT, địa chỉ)"
+            disabled={disabled}
+          >
+            <ClipboardList size={20} />
+          </button>
         )}
         {caps.files && !isComment && (
           <button className="icon-btn" onClick={() => fileInput.current?.click()} aria-label="Đính kèm ảnh/tệp" title="Gửi ảnh, tệp" disabled={disabled}>
@@ -1633,3 +1880,10 @@ function alertDetail(a: Alert) {
   const why = [d.phone ? `SĐT ${d.phone}` : '', d.address ? 'có địa chỉ' : '', d.keyword ? `nói "${d.keyword}"` : ''].filter(Boolean).join(', ')
   return `Khách ${why || 'tiềm năng'} nhưng chưa có đơn ${since}`
 }
+
+const COMMENT_ACTIONS = [
+  { key: 'like', label: 'Thích bình luận' },
+  { key: 'hide', label: 'Ẩn bình luận' },
+  { key: 'unhide', label: 'Hiện lại bình luận' },
+  { key: 'delete', label: 'Xóa bình luận', danger: true },
+]
