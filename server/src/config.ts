@@ -28,6 +28,8 @@ export const config = {
   odooDb: process.env.ODOO_DB ?? "SieuToc",
   // Login Odoo được tự động duyệt làm quản trị viên (cách nhau dấu phẩy)
   odooAdmins: (process.env.ODOO_ADMINS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  // Super Admin (quyền cao nhất): tên đăng nhập / email Odoo, cách nhau dấu phẩy
+  superAdmins: (process.env.SUPER_ADMINS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
   // Nguồn gốc web được phép gọi API (CORS), phân tách bằng dấu phẩy. Để trống = cho phép tất cả.
   corsOrigins: (process.env.CORS_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   // Log của Cloudflare Quick Tunnel (pm2 ghi ra) để hiển thị link public trong app.

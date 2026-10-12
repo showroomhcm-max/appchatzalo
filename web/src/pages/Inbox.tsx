@@ -27,6 +27,7 @@ import { useApp, useSocketEvent } from '../store'
 import type { Conversation, ConvStatus, Message, Note, Review, Sticker, Template } from '../types'
 import { Avatar, Badge, Empty } from '../components'
 import { TagChip } from './Settings'
+import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 
@@ -41,6 +42,8 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   const [channelFilter, setChannelFilter] = useState<string>('')
   const [deptFilter, setDeptFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
+  // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
+  const [showTagFilter, setShowTagFilter] = useState(true)
   const [q, setQ] = useState('')
   const [list, setList] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -200,15 +203,15 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                     <option value="none">Chưa thuộc bộ phận</option>
                   </select>
                 ) : null}
+
                 {tags.length > 0 && (
-                  <select className="select sm" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label="Lọc tag">
-                    <option value="">Mọi tag</option>
-                    {tags.map((t) => (
-                      <option key={t.id} value={t.name}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                  <button
+                    className={`btn ghost sm ${showTagFilter || tagFilter ? 'on' : ''}`}
+                    onClick={() => setShowTagFilter((v) => !v)}
+                    aria-expanded={showTagFilter}
+                  >
+                    Tag{tagFilter ? `: ${tagFilter}` : ''}
+                  </button>
                 )}
                 {filtersActive && (
                   <button
@@ -224,6 +227,14 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
                   </button>
                 )}
               </div>
+              {showTagFilter && tags.length > 0 && (
+                <TagPicker
+                  compact
+                  tags={tags}
+                  selected={tagFilter ? [tagFilter] : []}
+                  onToggle={(name) => setTagFilter((cur) => (cur === name ? '' : name))}
+                />
+              )}
             </>
           )}
         </div>
@@ -1260,11 +1271,11 @@ function InfoPanel({
   }
 
   // Tag chọn từ danh sách đã tạo trong Cài đặt (theo bộ phận của nhân viên).
-  const addable = tags.filter((t) => !conv.tags.includes(t.name))
   const colorOf = (name: string) => tags.find((t) => t.name === name)?.color ?? '#9aa6a0'
-  function addTag(name: string) {
-    if (!name || conv.tags.includes(name)) return
-    void onPatch({ tags: [...conv.tags, name] })
+  // Tag cũ không còn trong danh sách (đã xóa / bộ phận khác) vẫn hiện để bỏ được
+  const orphanTags = conv.tags.filter((t) => !tags.some((x) => x.name === t))
+  function toggleTag(name: string) {
+    void onPatch({ tags: conv.tags.includes(name) ? conv.tags.filter((x) => x !== name) : [...conv.tags, name] })
   }
 
   return (
@@ -1303,27 +1314,20 @@ function InfoPanel({
         <div className="section-title">
           <Tag size={14} /> Tag
         </div>
-        <div className="tags">
-          {conv.tags.map((t) => (
-            <TagChip key={t} tag={{ name: t, color: colorOf(t) }} onRemove={() => onPatch({ tags: conv.tags.filter((x) => x !== t) })} />
-          ))}
-          {addable.length > 0 ? (
-            <select className="tag-select" value="" onChange={(e) => addTag(e.target.value)} aria-label="Thêm tag">
-              <option value="">+ Thêm tag</option>
-              {addable.map((t) => (
-                <option key={t.id} value={t.name}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            !conv.tags.length && (
-              <span className="muted small">
-                {user.role === 'admin' ? 'Chưa có tag. Tạo ở trang Bộ phận, tag & tin nhắn mẫu.' : 'Chưa có tag cho bộ phận của bạn.'}
-              </span>
-            )
-          )}
-        </div>
+        <span className="muted small">Bấm để gắn / bỏ tag.</span>
+        {orphanTags.length > 0 && (
+          <div className="tags">
+            {orphanTags.map((t) => (
+              <TagChip key={t} tag={{ name: t, color: colorOf(t) }} onRemove={() => toggleTag(t)} />
+            ))}
+          </div>
+        )}
+        <TagPicker
+          tags={tags}
+          selected={conv.tags}
+          onToggle={toggleTag}
+          emptyText={user.role === 'admin' ? 'Chưa có tag. Tạo ở Cài đặt › Tag.' : 'Chưa có tag cho bộ phận của bạn.'}
+        />
       </div>
 
       <div className="info-section">

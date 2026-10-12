@@ -10,6 +10,8 @@ export type AuthUser = {
   display_name: string;
   role: "admin" | "agent";
   auth_source: "local" | "odoo";
+  /** Super Admin: quyền cao nhất */
+  super_admin: number;
 };
 
 declare global {
@@ -31,7 +33,7 @@ export function userFromToken(token: string | undefined): AuthUser | null {
   try {
     const payload = jwt.verify(token, config.jwtSecret) as unknown as { sub: number };
     const user = get<AuthUser>(
-      "SELECT id, username, display_name, role, auth_source FROM users WHERE id = ? AND active = 1",
+      "SELECT id, username, display_name, role, auth_source, super_admin FROM users WHERE id = ? AND active = 1",
       payload.sub,
     );
     return user ?? null;
@@ -56,6 +58,11 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.user?.role !== "admin") return res.status(403).json({ error: "Chỉ quản trị viên mới có quyền" });
+  next();
+}
+
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user?.super_admin) return res.status(403).json({ error: "Chỉ Super Admin mới có quyền" });
   next();
 }
 

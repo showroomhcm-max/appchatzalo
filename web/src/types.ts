@@ -6,6 +6,8 @@ export type User = {
   display_name: string
   role: Role
   auth_source: 'local' | 'odoo'
+  /** 1 = Super Admin (quyền cao nhất) */
+  super_admin?: number
   department_ids?: number[]
   /** Kênh được vào thẳng (thấy toàn bộ hội thoại của kênh) */
   channel_ids?: number[]

@@ -217,6 +217,8 @@ const userCols = columns("users");
 if (!userCols.has("auth_source")) db.exec("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'");
 if (!userCols.has("odoo_uid")) db.exec("ALTER TABLE users ADD COLUMN odoo_uid INTEGER");
 if (!userCols.has("last_login_at")) db.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER");
+// Super Admin: quyền cao nhất (quản lý quản trị viên, nhật ký hệ thống, tích hợp)
+if (!userCols.has("super_admin")) db.exec("ALTER TABLE users ADD COLUMN super_admin INTEGER NOT NULL DEFAULT 0");
 // Kênh nhân viên đang tick chọn để chat (JSON mảng id kênh; NULL = mọi kênh được quyền)
 if (!userCols.has("working_channels")) db.exec("ALTER TABLE users ADD COLUMN working_channels TEXT");
 
@@ -334,6 +336,17 @@ export function logEvent(conversationId: string | null, userId: number | null, t
     data === undefined ? null : JSON.stringify(data),
     Date.now(),
   );
+}
+
+/** Cấp Super Admin cho các tài khoản trong SUPER_ADMINS (tài khoản chưa đăng nhập lần nào sẽ được cấp lúc đăng nhập). */
+export function applySuperAdmins() {
+  for (const login of config.superAdmins) {
+    const r = run(
+      "UPDATE users SET super_admin = 1, role = 'admin', active = 1 WHERE lower(username) = ? AND super_admin = 0",
+      login,
+    );
+    if (r.changes) console.log(`[setup] Đã cấp Super Admin cho ${login}`);
+  }
 }
 
 /** Tạo tài khoản admin đầu tiên nếu chưa có người dùng nào. */

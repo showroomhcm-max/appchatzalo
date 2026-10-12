@@ -7,15 +7,21 @@ import { Avatar, Modal } from '../components'
 import UsersPage from './Users'
 import { BUILD, buildTimeLabel } from '../version'
 import Integrations from './Integrations'
+import LogsTab from './Logs'
+import { ScrollText } from 'lucide-react'
 
-export type SettingsTab = 'users' | 'departments' | 'tags' | 'templates' | 'integrations'
+export type SettingsTab = 'users' | 'departments' | 'tags' | 'templates' | 'integrations' | 'logs'
 type Tab = SettingsTab
-const TABS: Tab[] = ['users', 'departments', 'tags', 'templates', 'integrations']
+const TABS: Tab[] = ['users', 'departments', 'tags', 'templates', 'integrations', 'logs']
+const SUPER_TABS: Tab[] = ['integrations', 'logs']
 
 const TAB_KEY = 'zcskh.settingsTab'
 
 export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(() => {
+  const { user } = useApp()
+  const isSuper = !!user.super_admin
+  const allowed = (t: Tab) => isSuper || !SUPER_TABS.includes(t)
+  const [tab, setTabRaw] = useState<Tab>(() => {
     if (fromLink && TABS.includes(fromLink)) return fromLink
     try {
       const saved = localStorage.getItem(TAB_KEY) as Tab
@@ -24,9 +30,15 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
       return 'users'
     }
   })
+  const setTab = (t: Tab) => setTabRaw(allowed(t) ? t : 'users')
   useEffect(() => {
     if (fromLink && TABS.includes(fromLink)) setTab(fromLink)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromLink])
+  useEffect(() => {
+    if (!allowed(tab)) setTabRaw('users')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, isSuper])
   useEffect(() => {
     try {
       localStorage.setItem(TAB_KEY, tab)
@@ -58,8 +70,11 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
             ['tags', 'Tag', <TagIcon size={16} key="t" />],
             ['templates', 'Tin nhắn mẫu', <MessageSquareText size={16} key="m" />],
             ['integrations', 'Tích hợp', <PlugZap size={16} key="i" />],
+            ['logs', 'Nhật ký', <ScrollText size={16} key="l" />],
           ] as [Tab, string, React.ReactNode][]
-        ).map(([id, label, icon]) => (
+        )
+          .filter(([id]) => allowed(id))
+          .map(([id, label, icon]) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
             {icon} {label}
           </button>
@@ -69,7 +84,8 @@ export default function SettingsPage({ tab: fromLink }: { tab?: Tab }) {
       {tab === 'departments' && <DepartmentsTab />}
       {tab === 'tags' && <TagsTab />}
       {tab === 'templates' && <TemplatesTab />}
-      {tab === 'integrations' && <Integrations embedded />}
+      {tab === 'integrations' && isSuper && <Integrations embedded />}
+      {tab === 'logs' && isSuper && <LogsTab />}
     </div>
   )
 }

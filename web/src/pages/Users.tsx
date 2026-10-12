@@ -96,7 +96,15 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
                         {u.auth_source === 'odoo' ? <Badge tone="info">Odoo</Badge> : <Badge>Nội bộ</Badge>}
                       </span>
                     </td>
-                    <td>{u.role === 'admin' ? <Badge tone="green">Quản trị</Badge> : <Badge>Nhân viên</Badge>}</td>
+                    <td>
+                      {u.super_admin ? (
+                        <Badge tone="warning">Super Admin</Badge>
+                      ) : u.role === 'admin' ? (
+                        <Badge tone="green">Quản trị</Badge>
+                      ) : (
+                        <Badge>Nhân viên</Badge>
+                      )}
+                    </td>
                     <td>
                       {u.role === 'admin' && !u.department_ids?.length ? (
                         <span className="muted small">Thấy tất cả</span>
@@ -117,9 +125,11 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
                     <td>{u.active ? 'Đang hoạt động' : 'Đã khóa'}</td>
                     <td className="muted">{u.last_login_at ? fullTime(u.last_login_at) : 'Chưa vào'}</td>
                     <td className="right">
-                      <button className="btn ghost sm" onClick={() => setEditing(u)}>
-                        Sửa
-                      </button>
+                      {(me.super_admin || (u.role !== 'admin' && !u.super_admin)) && (
+                        <button className="btn ghost sm" onClick={() => setEditing(u)}>
+                          Sửa
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -156,7 +166,9 @@ function UserForm({
   const [source, setSource] = useState<User['auth_source']>(user?.auth_source ?? 'odoo')
   const [username, setUsername] = useState(user?.username ?? '')
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
-  const [role, setRole] = useState(user?.role ?? 'agent')
+  const { user: me } = useApp()
+  // Vai trò hiển thị: agent | admin | super
+  const [role, setRole] = useState<'agent' | 'admin' | 'super'>(user?.super_admin ? 'super' : user?.role ?? 'agent')
   const [active, setActive] = useState(user ? !!user.active : true)
   const [password, setPassword] = useState('')
   const [deptIds, setDeptIds] = useState<number[]>(user?.department_ids ?? [])
@@ -172,10 +184,18 @@ function UserForm({
       if (user) {
         await api(`/users/${user.id}`, {
           method: 'PATCH',
-          body: { display_name: displayName, role, active, department_ids: deptIds, channel_ids: channelIds, ...(password && !isOdoo ? { password } : {}) },
+          body: {
+            display_name: displayName,
+            role: role === 'agent' ? 'agent' : 'admin',
+            ...(me.super_admin ? { super_admin: role === 'super' } : {}),
+            active,
+            department_ids: deptIds,
+            channel_ids: channelIds,
+            ...(password && !isOdoo ? { password } : {}),
+          },
         })
       } else {
-        await api('/users', { body: { auth_source: source, username, display_name: displayName, role, password, department_ids: deptIds, channel_ids: channelIds } })
+        await api('/users', { body: { auth_source: source, username, display_name: displayName, role: role === 'agent' ? 'agent' : 'admin', super_admin: role === 'super', password, department_ids: deptIds, channel_ids: channelIds } })
       }
       onSaved()
     } catch (err: any) {
@@ -219,21 +239,28 @@ function UserForm({
         )}
         <label className="field">
           <span>Vai trò</span>
-          <select className="select" value={role} onChange={(e) => setRole(e.target.value as User['role'])} disabled={isSelf}>
-            <option value="agent">Nhân viên — chat, ghi chú, xuất dữ liệu của mình</option>
-            <option value="admin">Quản trị — thêm toàn quyền: báo cáo, đánh giá, kết nối Zalo, tích hợp</option>
+          <select
+            className="select"
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'agent' | 'admin' | 'super')}
+            disabled={isSelf || !me.super_admin}
+          >
+            <option value="agent">Nhân viên — chat ở các kênh được phân công</option>
+            <option value="admin">Quản trị — thấy tất cả, dữ liệu, cài đặt, kết nối kênh</option>
+            {me.super_admin ? <option value="super">Super Admin — thêm quản lý quản trị viên, nhật ký, tích hợp</option> : null}
           </select>
+          {!me.super_admin && <span className="muted small">Chỉ Super Admin mới cấp được quyền quản trị.</span>}
         </label>
         <DeptPicker
           value={deptIds}
           onChange={setDeptIds}
           hint={
-            role === 'admin'
+            role !== 'agent'
               ? 'Quản trị viên luôn thấy tất cả, bộ phận chỉ để lọc và giao việc.'
               : 'Nhân viên thấy kênh, hội thoại, tag và tin nhắn mẫu của các bộ phận được chọn.'
           }
         />
-        {role !== 'admin' && channels.length > 0 && (
+        {role === 'agent' && channels.length > 0 && (
           <div className="field">
             <span>Kênh Zalo được vào thẳng</span>
             <span className="muted small">Thấy toàn bộ hội thoại của kênh, không phụ thuộc bộ phận.</span>

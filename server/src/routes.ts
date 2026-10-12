@@ -6,7 +6,10 @@ import multer from "multer";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { all, get, run, logEvent } from "./db.js";
-import { generateApiKey, requireAdmin, requireApiKey, requireUser, signToken, type AuthUser } from "./auth.js";
+import { generateApiKey, requireAdmin, requireApiKey, requireSuperAdmin, requireUser, signToken, type AuthUser } from "./auth.js";
+import { logFilesText, recentLogs, redact } from "./logger.js";
+import os from "node:os";
+import { appVersion } from "./version.js";
 import { zalo } from "./zalo.js";
 import { getConversation, listConversations, listMessages } from "./store.js";
 import {
@@ -110,7 +113,7 @@ function recordFail(key: string) {
   loginFailures.set(key, f);
 }
 
-const USER_FIELDS = "id, username, display_name, role, auth_source";
+const USER_FIELDS = "id, username, display_name, role, auth_source, super_admin";
 
 function issueLogin(res: Response, userId: number) {
   const user = get<AuthUser>(`SELECT ${USER_FIELDS} FROM users WHERE id = ?`, userId)!;
@@ -128,10 +131,11 @@ function finishOdooLogin(res: Response, odoo: OdooIdentity) {
     login,
   );
   if (!row) {
-    const isAdmin = config.odooAdmins.includes(login);
+    const isSuper = config.superAdmins.includes(login);
+    const isAdmin = isSuper || config.odooAdmins.includes(login);
     const r = run(
-      `INSERT INTO users(username, password_hash, display_name, role, active, auth_source, odoo_uid, created_at)
-       VALUES(?, ?, ?, ?, ?, 'odoo', ?, ?)`,
+      `INSERT INTO users(username, password_hash, display_name, role, active, auth_source, odoo_uid, created_at, super_admin)
+       VALUES(?, ?, ?, ?, ?, 'odoo', ?, ?, ${isSuper ? 1 : 0})`,
       login,
       bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 4), // không dùng: mật khẩu do Odoo quản lý
       odoo.name || login,
@@ -295,7 +299,16 @@ appRouter.post(
 );
 
 // Nhân viên
-const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at";
+const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at, super_admin";
+
+/** Quản trị viên chỉ quản lý được nhân viên; quản trị viên khác và Super Admin do Super Admin quản lý. */
+function guardRoleChange(req: Request, target: { role: string; super_admin: number } | null, body: any) {
+  if (req.user!.super_admin) return;
+  if (target && (target.role === "admin" || target.super_admin)) {
+    throw new HttpError(403, "Chỉ Super Admin mới sửa được tài khoản quản trị");
+  }
+  if (body?.role === "admin" || body?.super_admin) throw new HttpError(403, "Chỉ Super Admin mới cấp được quyền quản trị");
+}
 function withDepartments<T extends { id: number }>(rows: T[]) {
   const links = all<{ user_id: number; department_id: number }>("SELECT user_id, department_id FROM user_departments");
   const chans = all<{ user_id: number; channel_id: number }>("SELECT user_id, channel_id FROM user_channels");
@@ -329,6 +342,7 @@ appRouter.post(
   requireAdmin,
   h((req, res) => {
     const { password, display_name, role } = req.body ?? {};
+    guardRoleChange(req, null, req.body);
     const source = req.body?.auth_source === "local" ? "local" : "odoo";
     let username = String(req.body?.username ?? "").trim();
     if (source === "odoo") username = username.toLowerCase();
@@ -344,6 +358,9 @@ appRouter.post(
       source,
       Date.now(),
     );
+    if (req.body?.super_admin && req.user!.super_admin) {
+      run("UPDATE users SET super_admin = 1, role = 'admin' WHERE id = ?", Number(r.lastInsertRowid));
+    }
     setUserDepartments(Number(r.lastInsertRowid), req.body?.department_ids);
     setUserChannels(Number(r.lastInsertRowid), req.body?.channel_ids);
     res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, Number(r.lastInsertRowid))!])[0]);
@@ -358,8 +375,20 @@ appRouter.patch(
     if (id === req.user!.id && (active === false || role === "agent")) {
       throw new HttpError(400, "Không thể tự khóa hoặc tự hạ quyền tài khoản của mình");
     }
-    const target = get<{ auth_source: string }>("SELECT auth_source FROM users WHERE id = ?", id);
+    const target = get<{ auth_source: string; role: string; super_admin: number }>(
+      "SELECT auth_source, role, super_admin FROM users WHERE id = ?",
+      id,
+    );
     if (!target) throw new HttpError(404, "Không tìm thấy nhân viên");
+    guardRoleChange(req, target, req.body);
+    if (req.body?.super_admin !== undefined && req.user!.super_admin) {
+      if (id === req.user!.id && !req.body.super_admin) throw new HttpError(400, "Không thể tự bỏ quyền Super Admin của mình");
+      run("UPDATE users SET super_admin = ? WHERE id = ?", req.body.super_admin ? 1 : 0, id);
+      if (req.body.super_admin) run("UPDATE users SET role = 'admin' WHERE id = ?", id);
+    }
+    if (target.super_admin && (role === "agent" || active === false) && id !== req.user!.id) {
+      throw new HttpError(400, "Bỏ quyền Super Admin trước khi hạ quyền hoặc khóa tài khoản này");
+    }
     if (display_name) run("UPDATE users SET display_name = ? WHERE id = ?", String(display_name), id);
     if (role) run("UPDATE users SET role = ? WHERE id = ?", role === "admin" ? "admin" : "agent", id);
     if (active !== undefined) run("UPDATE users SET active = ? WHERE id = ?", active ? 1 : 0, id);
@@ -693,12 +722,12 @@ appRouter.get("/stats", requireAdmin, (req, res) => res.json(agentStats(exportFi
 appRouter.get("/export", requireAdmin, (req, res) => sendExport(req, res));
 
 // Tích hợp: API key + webhook (chỉ admin)
-appRouter.get("/api-keys", requireAdmin, (_req, res) =>
+appRouter.get("/api-keys", requireSuperAdmin, (_req, res) =>
   res.json(all("SELECT id, name, prefix, created_at, last_used_at FROM api_keys ORDER BY id DESC")),
 );
 appRouter.post(
   "/api-keys",
-  requireAdmin,
+  requireSuperAdmin,
   h((req, res) => {
     const name = String(req.body?.name ?? "").trim();
     if (!name) throw new HttpError(400, "Đặt tên cho API key (vd: tên web app)");
@@ -708,17 +737,17 @@ appRouter.post(
     res.json({ name, key: k.key, prefix: k.prefix });
   }),
 );
-appRouter.delete("/api-keys/:id", requireAdmin, (req, res) => {
+appRouter.delete("/api-keys/:id", requireSuperAdmin, (req, res) => {
   run("DELETE FROM api_keys WHERE id = ?", Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.get("/webhooks", requireAdmin, (_req, res) =>
+appRouter.get("/webhooks", requireSuperAdmin, (_req, res) =>
   res.json(all("SELECT * FROM webhooks ORDER BY id DESC").map((w) => ({ ...w, events: JSON.parse(w.events) }))),
 );
-appRouter.get("/webhook-events", requireAdmin, (_req, res) => res.json(WEBHOOK_EVENTS));
+appRouter.get("/webhook-events", requireSuperAdmin, (_req, res) => res.json(WEBHOOK_EVENTS));
 appRouter.post(
   "/webhooks",
-  requireAdmin,
+  requireSuperAdmin,
   h((req, res) => {
     const url = String(req.body?.url ?? "").trim();
     if (!/^https?:\/\//.test(url)) throw new HttpError(400, "URL phải bắt đầu bằng http:// hoặc https://");
@@ -734,18 +763,55 @@ appRouter.post(
     res.json({ id: Number(r.lastInsertRowid), url, secret, events });
   }),
 );
-appRouter.patch("/webhooks/:id", requireAdmin, (req, res) => {
+appRouter.patch("/webhooks/:id", requireSuperAdmin, (req, res) => {
   const { active, events } = req.body ?? {};
   if (active !== undefined) run("UPDATE webhooks SET active = ? WHERE id = ?", active ? 1 : 0, Number(req.params.id));
   if (Array.isArray(events)) run("UPDATE webhooks SET events = ? WHERE id = ?", JSON.stringify(events), Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.delete("/webhooks/:id", requireAdmin, (req, res) => {
+appRouter.delete("/webhooks/:id", requireSuperAdmin, (req, res) => {
   run("DELETE FROM webhooks WHERE id = ?", Number(req.params.id));
   res.json({ ok: true });
 });
-appRouter.post("/webhooks/test", requireAdmin, (_req, res) => {
+appRouter.post("/webhooks/test", requireSuperAdmin, (_req, res) => {
   dispatch("ping", { message: "Kết nối webhook thành công", at: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+// Nhật ký hệ thống (Super Admin): xem nhanh, tải file để gửi kiểm tra lỗi
+appRouter.get("/logs", requireSuperAdmin, (req, res) =>
+  res.json(
+    recentLogs({
+      level: req.query.level ? String(req.query.level) : undefined,
+      q: req.query.q ? String(req.query.q) : undefined,
+      limit: num(req.query.limit),
+    }),
+  ),
+);
+appRouter.get("/logs/download", requireSuperAdmin, (req, res) => {
+  const days = num(req.query.days) ?? 3;
+  const v = appVersion();
+  const header = [
+    "Zalo CSKH — nhật ký hệ thống",
+    `Tải lúc: ${new Date().toISOString()}`,
+    `Phiên bản: ${v.version} (máy chủ ${v.commit || "?"}, giao diện ${v.web?.buildId ?? "?"})`,
+    `Máy: ${os.hostname()} · ${os.platform()} ${os.release()} · Node ${process.version} · chạy từ ${v.startedAt}`,
+    `RAM trống: ${Math.round(os.freemem() / 1048576)}MB / ${Math.round(os.totalmem() / 1048576)}MB`,
+    "Kênh Zalo:",
+    ...zalo.statuses().map((s) => `  - #${s.channelId} ${s.channelName}: ${s.state}${s.error ? ` (${s.error})` : ""}`),
+    "",
+  ].join("\n");
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="nhat-ky-zalo-cskh-${stamp}.txt"`);
+  res.send(header + "\n" + logFilesText(days));
+});
+/** Lỗi phía trình duyệt của nhân viên gửi về để ghi chung vào nhật ký. */
+appRouter.post("/client-log", (req, res) => {
+  const b = req.body ?? {};
+  const msg = redact(String(b.message ?? "").slice(0, 2000));
+  const stack = redact(String(b.stack ?? "").slice(0, 4000));
+  console.error(`[web] ${req.user!.display_name} (#${req.user!.id}) @ ${String(b.url ?? "").slice(0, 300)}: ${msg}${stack ? "\n" + stack : ""}`);
   res.json({ ok: true });
 });
 

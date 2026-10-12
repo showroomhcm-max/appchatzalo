@@ -458,6 +458,7 @@ function ChannelForm({
   const [defaultDept, setDefaultDept] = useState<number | ''>(channel?.default_department_id ?? '')
   const [active, setActive] = useState(channel ? !!channel.active : true)
   const [userIds, setUserIds] = useState<number[]>(channel?.user_ids ?? [])
+  const isSuper = !!useApp().user.super_admin
   const [error, setError] = useState('')
 
   async function submit(e: FormEvent) {
@@ -548,7 +549,7 @@ function ChannelForm({
         {!channel && <p className="muted small">Lưu xong, bấm "Quét QR đăng nhập" trên thẻ kênh để gắn tài khoản Zalo.</p>}
         {error && <div className="form-error">{error}</div>}
         <div className="row end">
-          {channel && (
+          {channel && isSuper && (
             <button type="button" className="btn ghost" onClick={remove}>
               Xóa kênh
             </button>

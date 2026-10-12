@@ -1,10 +1,11 @@
+import "./logger-init.js";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { config } from "./config.js";
-import { ensureAdmin } from "./db.js";
+import { ensureAdmin, applySuperAdmins } from "./db.js";
 import { appRouter, publicRouter, errorHandler } from "./routes.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
@@ -12,6 +13,7 @@ import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 
 ensureAdmin();
+applySuperAdmins();
 
 const app = express();
 app.disable("x-powered-by");

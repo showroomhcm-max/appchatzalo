@@ -6,7 +6,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { all, get, run, tx, logEvent } from "./db.js";
-import { requireAdmin } from "./auth.js";
+import { requireAdmin, requireSuperAdmin } from "./auth.js";
 import { HttpError } from "./conversations.js";
 import { canUseChannel, departmentItemFilter, scopeOf } from "./access.js";
 import { zalo } from "./zalo.js";
@@ -102,7 +102,8 @@ settingsRouter.patch(
     }
     if (b.department_ids !== undefined) setLinks("department_channels", "channel_id", id, "department_id", ids(b.department_ids));
     if (b.user_ids !== undefined) setLinks("user_channels", "channel_id", id, "user_id", ids(b.user_ids));
-    if (b.active !== undefined) {
+    const wasActive = !!get<{ active: number }>("SELECT active FROM channels WHERE id = ?", id)?.active;
+    if (b.active !== undefined && !!b.active !== wasActive) {
       run("UPDATE channels SET active = ? WHERE id = ?", b.active ? 1 : 0, id);
       if (!b.active) await zalo.session(id).logout(false);
       else void zalo.session(id).init();
@@ -115,7 +116,7 @@ settingsRouter.patch(
 
 settingsRouter.delete(
   "/channels/:id",
-  requireAdmin,
+  requireSuperAdmin,
   h(async (req, res) => {
     const id = Number(req.params.id);
     const n = get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE channel_id = ?", id)!.n;

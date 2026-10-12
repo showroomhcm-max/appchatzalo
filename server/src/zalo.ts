@@ -114,13 +114,25 @@ class ChannelSession {
     run("UPDATE channels SET credentials = ? WHERE id = ?", JSON.stringify({ ...creds, savedAt: Date.now() }), this.channelId);
   }
 
-  /** Khởi động: đăng nhập lại bằng cookie đã lưu (nếu có). */
+  private initializing = false;
+
+  /** Khởi động: đăng nhập lại bằng cookie đã lưu (nếu có). Đang kết nối thì bỏ qua. */
   async init() {
     const row = this.row();
     if (!row?.credentials || !row.active) return;
+    if (this.initializing || this.connected || this.status.state === "qr" || this.status.state === "scanned") return;
+    this.initializing = true;
+    try {
+      await this.initInner(row.credentials);
+    } finally {
+      this.initializing = false;
+    }
+  }
+
+  private async initInner(credentials: string) {
     this.setStatus({ state: "connecting" }, true);
     try {
-      const api = await this.newClient().login(JSON.parse(row.credentials));
+      const api = await this.newClient().login(JSON.parse(credentials));
       await this.attach(api);
     } catch (e) {
       console.error(`[zalo#${this.channelId}] Đăng nhập lại bằng cookie thất bại:`, e);
@@ -211,6 +223,14 @@ class ChannelSession {
   }
 
   private async attach(api: API) {
+    // Phiên cũ (nếu còn) phải dừng hẳn trước khi gắn phiên mới, tránh 2 phiên cùng tài khoản đá nhau.
+    if (this.api && this.api !== api) {
+      try {
+        this.api.listener.stop();
+      } catch {
+        /* ignore */
+      }
+    }
     this.api = api;
     const ownId = api.getOwnId();
     let name = ownId;
