@@ -1266,6 +1266,8 @@ mark {
   background: var(--surface-subtle);
 }
 .page > * {
+  /* Không cho khối con bị co lại khi trang dài (thanh tab từng bị co về 0 và biến mất) */
+  flex-shrink: 0;
   width: 100%;
   max-width: 1200px;
   margin-left: auto;
@@ -2245,9 +2247,11 @@ mark {
 }
 .tabs {
   display: flex;
+  flex-shrink: 0;
   gap: 4px;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .tabs button {
   display: inline-flex;
