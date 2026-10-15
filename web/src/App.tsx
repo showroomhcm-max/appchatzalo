@@ -134,7 +134,7 @@ type Page = 'inbox' | 'channels' | 'monitor' | 'data' | 'settings'
 
 const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', monitor: 'Giám sát Zalo nhân viên', data: 'Dữ liệu', settings: 'Cài đặt' }
 
-type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null }
+type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null; findPhone?: string | null }
 
 function parseHash(): Route {
   const [, rawPage, id, msg] = window.location.hash.split('/')
@@ -146,6 +146,17 @@ function parseHash(): Route {
     zalo: { page: 'channels' },
   }
   if (legacy[rawPage]) return { page: 'inbox', convId: null, msgId: null, ...legacy[rawPage] }
+  // #/find/<sđt>: app khác (DVKT…) mở tìm khách theo số điện thoại
+  if (rawPage === 'find') {
+    let raw = id ?? ''
+    try {
+      raw = decodeURIComponent(raw)
+    } catch {
+      /* link hỏng: dùng nguyên chuỗi */
+    }
+    const phone = raw.replace(/[^\d+]/g, '').slice(0, 15)
+    return { page: 'inbox', convId: null, msgId: null, findPhone: phone.length >= 8 ? phone : null }
+  }
   const page = rawPage
   const valid: Page[] = ['inbox', 'channels', 'monitor', 'data', 'settings']
   // Hỗ trợ link từ web app khác: /?c=<threadId>
@@ -287,7 +298,7 @@ function Shell() {
           </div>
         )}
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}
-        {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} />}
+        {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} findPhone={route.findPhone} />}
         {route.page === 'channels' && <Channels />}
         {route.page === 'monitor' && allowed('monitor.view') && <Monitor channelId={route.monitorChannel ?? null} convId={route.monitorConv ?? null} />}
         {route.page === 'data' && canData && <Reports />}

@@ -210,6 +210,7 @@ export default function Integrations({ embedded = false }: { embedded?: boolean 
               ['POST', '/conversations/{id}/messages', 'Gửi tin: { text, agent_username? } hoặc multipart có files'],
               ['POST', '/conversations/{id}/notes', 'Thêm ghi chú nội bộ: { content }'],
               ['GET', '/stats?from=2026-10-01&to=2026-10-31', 'Thống kê hiệu suất nhân viên'],
+              ['GET', '/work-report?date=2026-10-15', 'Báo cáo công việc: số liệu chat từng nhân viên trong ngày (khớp theo email Odoo)'],
               ['GET', '/export?format=json|csv|txt|jsonl&from=&to=&agentId=', 'Xuất dữ liệu hội thoại'],
             ].map(([m, p, d]) => (
               <tr key={m + p}>

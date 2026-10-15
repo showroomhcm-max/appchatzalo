@@ -3253,3 +3253,17 @@ html.compact .stars.editable button { min-width: 44px; min-height: 44px; display
 html.compact:not(.touch) .msg-actions .icon-btn { min-width: 30px; min-height: 30px; }
 html.compact:not(.narrow) .conv-pane { width: 280px; }
 html.compact:not(.narrow) .msg-row { max-width: 85%; }
+
+/* ───────── Kết nối app DVKT (khung Thông tin) ───────── */
+.dvkt-panel { display: flex; flex-direction: column; gap: 4px; }
+.dvkt-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--mz-ink-100); min-width: 0; }
+.dvkt-item .row { gap: 8px; min-width: 0; }
+.dvkt-item .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dvkt-kind { flex: none; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; color: var(--mz-ink-600); background: var(--mz-ink-100); border-radius: 9999px; padding: 2px 8px; }
+.dvkt-issue { color: var(--mz-ink-700); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dvkt-links { display: flex; gap: 16px; }
+.dvkt-links a { display: inline-flex; align-items: center; gap: 4px; color: var(--mz-green-700); text-decoration: none; }
+.dvkt-links a:hover { text-decoration: underline; }
+html.compact .dvkt-links a { min-height: 36px; }
+.secret-box { word-break: break-all; padding: 8px 12px; background: var(--mz-white); border: 1px solid var(--mz-ink-200); border-radius: 8px; font-size: 13px; }
+.panel-head h2 { display: inline-flex; align-items: center; gap: 8px; }

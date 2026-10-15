@@ -42,6 +42,7 @@ import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
+import DvktPanel from './dvkt-panel'
 import { EmojiPicker, GroupMembers, InChatSearch, Lightbox, isImageMessage, loadMembers, receiptLabel, type GroupMember } from './chat-extras'
 import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
@@ -50,7 +51,7 @@ import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf }
 
 type Scope = 'mine' | 'unassigned' | 'all'
 
-export default function Inbox({ convId, focusMsgId }: { convId: string | null; focusMsgId: number | null }) {
+export default function Inbox({ convId, focusMsgId, findPhone }: { convId: string | null; focusMsgId: number | null; findPhone?: string | null }) {
   const { user, departments, tags, activeChannels, workingChannelIds, alerts } = useApp()
   const channels = activeChannels
   const [scope, setScope] = useState<Scope>(can(user, 'conversations.all') ? 'all' : 'mine')
@@ -93,6 +94,12 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   const [showInfo, setShowInfo] = useState(() => window.innerWidth > 1200)
   const searchInput = useRef<HTMLInputElement>(null)
   const searching = q.trim().length > 0
+  // Link từ app khác (DVKT: nút "Nhắn"): #/find/<sđt> → tìm sẵn khách theo số (hội thoại đã có, bạn Zalo, tra số)
+  useEffect(() => {
+    if (!findPhone) return
+    setQ(findPhone)
+    history.replaceState(null, '', '#/inbox')
+  }, [findPhone])
   const activeRef = useRef(convId)
   activeRef.current = convId
 
@@ -1942,6 +1949,8 @@ function InfoPanel({
           <span className="muted small">Chưa có đơn gắn với hội thoại. Đơn tự gắn theo số điện thoại khi kết nối Sapo hoặc web bán hàng.</span>
         )}
       </div>
+
+      <DvktPanel conv={conv} />
 
       <div className="info-section">
         <label className="field">

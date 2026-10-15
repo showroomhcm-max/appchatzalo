@@ -44,6 +44,8 @@ import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handove
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
+import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
+import { normalizeOrderPhone } from "./orders.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
@@ -947,6 +949,49 @@ appRouter.post("/orders/:id/link", requirePerm("conversations.assign"), (req, re
   res.json({ ok: true });
 });
 // ───────────── Lên đơn POS trên Odoo ─────────────
+// ───────────── App DVKT (dịch vụ kỹ thuật): vé / giao hàng / bảo hành của khách, chỉ đọc ─────────────
+appRouter.get("/dvkt/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicDvktConfig()));
+appRouter.put(
+  "/dvkt/config",
+  requirePerm("integrations.manage"),
+  h((req, res) => {
+    try {
+      res.json(saveDvktConfig(req.body, req.user!.id));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post("/dvkt/key", requirePerm("integrations.manage"), (req, res) => res.json(rotateDvktKey(req.user!.id)));
+appRouter.post(
+  "/dvkt/test",
+  requirePerm("integrations.manage"),
+  h(async (req, res) => {
+    try {
+      res.json(await testDvkt(req.body));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.get(
+  "/conversations/:id/dvkt",
+  h(async (req, res) => {
+    const conv = getConversation(req.params.id);
+    if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy hội thoại" });
+    if (!dvktConfig().enabled) return res.json({ enabled: false });
+    // Số của khách: số đã lưu với hội thoại, không có thì số khách gửi trong tin nhắn (cảnh báo đơn "rơi" ghi lại)
+    const signal = get<{ phone: string | null }>("SELECT phone FROM conversation_signals WHERE conversation_id = ?", conv.id);
+    const phone = normalizeOrderPhone(conv.phone) ?? normalizeOrderPhone(signal?.phone);
+    if (!phone) return res.json({ enabled: true, phone: null });
+    try {
+      res.json({ enabled: true, phone, data: await dvktCustomer(phone, { refresh: req.query.refresh === "1" }) });
+    } catch (e: any) {
+      res.json({ enabled: true, phone, error: e.message });
+    }
+  }),
+);
+
 appRouter.get("/odoo-pos/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicOdooPosConfig()));
 appRouter.put(
   "/odoo-pos/config",
@@ -1580,6 +1625,57 @@ publicRouter.post(
   }),
 );
 publicRouter.get("/stats", (req, res) => res.json(agentStats(exportFilter(req.query))));
+/**
+ * App báo cáo công việc: số liệu chat của từng nhân viên trong một ngày (?date=YYYY-MM-DD, giờ Việt Nam) hoặc ?from=&to= (tối đa 93 ngày).
+ * Nhân viên khớp theo email đăng nhập (tài khoản Odoo) hoặc odoo_uid. Nhân viên không có tin nào vẫn có dòng (số 0).
+ */
+publicRouter.get("/work-report", (req, res) => {
+  const date = req.query.date ? String(req.query.date) : undefined;
+  const from = parseDate(req.query.from ?? date);
+  const to = parseDate(req.query.to ?? date, true);
+  if (!from || !to || to < from) return res.status(400).json({ error: "Cần ?date=YYYY-MM-DD hoặc ?from=YYYY-MM-DD&to=YYYY-MM-DD" });
+  if (to - from > 93 * 86_400_000) return res.status(400).json({ error: "Khoảng thời gian tối đa 93 ngày" });
+  const stats = agentStats({ from, to });
+  const byAgent = new Map(stats.agents.filter((a) => a.agent_id !== null).map((a) => [a.agent_id, a]));
+  const notes = new Map(
+    all<{ user_id: number; n: number }>("SELECT user_id, COUNT(*) AS n FROM notes WHERE user_id IS NOT NULL AND created_at BETWEEN ? AND ? GROUP BY user_id", from, to).map((r) => [r.user_id, r.n]),
+  );
+  const users = all<{ id: number; username: string; display_name: string; odoo_uid: number | null; active: number }>(
+    "SELECT id, username, display_name, odoo_uid, active FROM users ORDER BY display_name",
+  );
+  const staff = users
+    .filter((u) => u.active || byAgent.has(u.id))
+    .map((u) => {
+      const a = byAgent.get(u.id);
+      return {
+        user_id: u.id,
+        email: u.username.includes("@") ? u.username : null,
+        username: u.username,
+        odoo_uid: u.odoo_uid,
+        name: u.display_name,
+        active: !!u.active,
+        messages_sent: a?.messages_sent ?? 0,
+        conversations: a?.conversations ?? 0,
+        responses: a?.responses ?? 0,
+        avg_response_sec: a?.avg_response_sec ?? null,
+        median_response_sec: a?.median_response_sec ?? null,
+        within_5min_pct: a?.within_5min_pct ?? null,
+        review_avg: a?.review_avg ?? null,
+        review_count: a?.review_count ?? 0,
+        notes: notes.get(u.id) ?? 0,
+      };
+    });
+  res.json({
+    from: new Date(from).toISOString(),
+    to: new Date(to).toISOString(),
+    customer_messages: stats.customer_messages,
+    conversations_active: stats.conversations_active,
+    waiting_reply_now: stats.waiting_reply,
+    staff,
+    // Tin gửi từ điện thoại / hệ thống (không gắn được nhân viên)
+    unattributed: stats.agents.filter((a) => a.agent_id === null).map((a) => ({ name: a.agent_name, messages_sent: a.messages_sent, conversations: a.conversations })),
+  });
+});
 publicRouter.get("/export", sendExport);
 
 export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {

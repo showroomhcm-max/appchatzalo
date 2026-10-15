@@ -16,13 +16,15 @@ import SapoSettings from './SapoSettings'
 import OdooPosSettings from './OdooPosSettings'
 import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
-import { ScrollText, ShieldCheck } from 'lucide-react'
+import { Link2, ScrollText, ShieldCheck } from 'lucide-react'
+import LinkedApps from './LinkedApps'
 
 export type SettingsTab =
   | 'channels'
   | 'apps'
   | 'integrations'
   | 'orders'
+  | 'linked'
   | 'alerts'
   | 'company'
   | 'logs'
@@ -42,6 +44,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
       { id: 'apps', label: 'App nền tảng', icon: <KeyRound size={18} />, perms: ['integrations.manage'] },
       { id: 'integrations', label: 'API & Webhook', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
       { id: 'orders', label: 'Đồng bộ đơn hàng', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
+      { id: 'linked', label: 'Kết nối app nội bộ', icon: <Link2 size={18} />, perms: ['integrations.manage'] },
     ],
   },
   {
@@ -178,6 +181,7 @@ export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
             <OdooPosSettings />
           </>
         )}
+        {tab === 'linked' && allowed('linked') && <LinkedApps />}
         {tab === 'alerts' && allowed('alerts') && <AlertsSettings />}
         {tab === 'company' && allowed('company') && <CompanyZalo />}
         {tab === 'logs' && allowed('logs') && <LogsTab />}

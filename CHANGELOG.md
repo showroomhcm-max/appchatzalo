@@ -7,6 +7,16 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.10.0 — 16/10/2026
+
+**Kết nối app Dịch vụ kỹ thuật (DVKT ver 3)**
+- Khung **Thông tin** của hội thoại có mục **Kỹ thuật (DVKT)**: vé dịch vụ kỹ thuật, đơn giao hàng / hỗ trợ kỹ thuật và phiếu bảo hành của khách (tìm theo số điện thoại đã lưu hoặc số khách gửi trong tin nhắn). Mỗi mục có giai đoạn, kỹ thuật viên phụ trách, dịch vụ đã làm, ngày hẹn bảo hành; nút mở trong app DVKT hoặc Odoo. Chỉ đọc.
+- Ngược lại, ở app DVKT (bản 3.20), cạnh nút gọi khách có nút **Nhắn**: mở Chat Siêu Tốc và tự tìm khách theo số (hội thoại đã có, bạn Zalo, tra số Zalo) qua link `#/find/<số điện thoại>`.
+- Cài đặt › Tích hợp › **Kết nối app nội bộ**: địa chỉ app DVKT, tạo khóa kết nối (hiện một lần để chép sang DVKT), kiểm tra kết nối, bật / tắt. Khóa chỉ gửi tới địa chỉ https đã lưu; tạo khóa mới thì khóa cũ hết hiệu lực.
+
+**API cho app báo cáo công việc**
+- `GET /api/v1/work-report?date=YYYY-MM-DD` (hoặc `from` / `to`, tối đa 93 ngày): số liệu chat của từng nhân viên theo giờ Việt Nam — số tin gửi, số hội thoại, thời gian phản hồi (trung bình, trung vị, % dưới 5 phút), đánh giá, ghi chú. Nhân viên khớp theo email đăng nhập Odoo / `odoo_uid`; người không có tin vẫn có dòng (số 0).
+
 ## v3.9.0 — 15/10/2026
 
 **Nhóm chat Zalo**
