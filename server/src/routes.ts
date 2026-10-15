@@ -652,6 +652,39 @@ appRouter.get(
     }
   }),
 );
+/** Zalo: thành viên của nhóm (hội thoại nhóm) */
+appRouter.get(
+  "/conversations/:id/members",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    if (conv.type !== 1) throw new HttpError(400, "Chỉ áp dụng cho hội thoại nhóm");
+    const s = zaloChannelFor(req, conv.channel_id);
+    try {
+      res.json(await s.groupMembers(conv.thread_id));
+    } catch (e: any) {
+      throw platformError(e);
+    }
+  }),
+);
+/** Zalo: thêm người vào nhóm */
+appRouter.post(
+  "/conversations/:id/members",
+  h(async (req, res) => {
+    const conv = visibleConversation(req, req.params.id);
+    if (conv.type !== 1) throw new HttpError(400, "Chỉ áp dụng cho hội thoại nhóm");
+    const s = zaloChannelFor(req, conv.channel_id);
+    const uids: string[] = Array.isArray(req.body?.uids) ? ([...new Set(req.body.uids.map(String))] as string[]).filter((u) => /^\d{5,25}$/.test(u)).slice(0, 50) : [];
+    if (!uids.length) throw new HttpError(400, "Chọn người cần thêm");
+    let r: { failed: string[] };
+    try {
+      r = await s.addToGroup(conv.thread_id, uids);
+    } catch (e: any) {
+      throw platformError(e);
+    }
+    logEvent(conv.id, req.user!.id, "zalo.group_add_members", { count: uids.length, failed: r.failed.length });
+    res.json({ added: uids.length - r.failed.length, failed: r.failed });
+  }),
+);
 /** Zalo: tất cả nhóm của kênh (tìm nhóm khi có nhiều nhóm), kèm hội thoại đã có trong app */
 appRouter.get(
   "/zalo/:channelId/groups",
@@ -1091,6 +1124,7 @@ appRouter.post(
       source: "web",
       quoteMessageId: num(req.body?.quote_message_id),
       mode: req.body?.mode === "private" ? "private" : "public",
+      mentions: parseMentions(req.body?.mentions, String(req.body?.text ?? "")),
     });
     res.json(messages);
   }),
@@ -1552,4 +1586,22 @@ export function errorHandler(err: any, _req: Request, res: Response, _next: Next
   const status = err instanceof HttpError ? err.status : err?.code === "LIMIT_FILE_SIZE" ? 413 : 500;
   if (status === 500) console.error(err);
   res.status(status).json({ error: err?.message ?? "Lỗi máy chủ" });
+}
+
+/** Nhắc tên trong nhóm: chỉ nhận vị trí nằm trong chữ đã gửi, tối đa 30 người. */
+function parseMentions(raw: unknown, text: string) {
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!Array.isArray(list)) return undefined;
+  const out = list
+    .map((m: any) => ({ pos: Number(m?.pos), len: Number(m?.len), uid: String(m?.uid ?? "") }))
+    .filter((m) => Number.isInteger(m.pos) && Number.isInteger(m.len) && m.pos >= 0 && m.len > 0 && m.pos + m.len <= text.length && /^\d{5,25}$/.test(m.uid))
+    .slice(0, 30);
+  return out.length ? out : undefined;
 }

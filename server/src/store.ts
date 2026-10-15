@@ -456,6 +456,31 @@ export function markUndone(channelId: number, threadId: string, zaloMsgId: strin
   bus.emit("message.updated", getMessage(row.id)!, getConversation(row.conversation_id)!);
 }
 
+/**
+ * Khách đã nhận / đã xem tin (Zalo). Lưu mốc thời gian của tin mới nhất được nhận / xem:
+ * mọi tin shop gửi trước mốc đó coi như đã nhận / đã xem.
+ */
+export function markReceipt(channelId: number, threadId: string, msgIds: string[], kind: "delivered" | "seen", seenCount?: number) {
+  const id = conversationKey(channelId, threadId);
+  const ids = msgIds.filter(Boolean);
+  if (!ids.length) return;
+  const row = get<{ ts: number }>(
+    `SELECT MAX(ts) AS ts FROM messages WHERE conversation_id = ? AND zalo_msg_id IN (${ids.map(() => "?").join(",")})`,
+    id,
+    ...ids,
+  );
+  if (!row?.ts) return;
+  const col = kind === "seen" ? "seen_ts" : "delivered_ts";
+  const r = run(`UPDATE conversations SET ${col} = ? WHERE id = ? AND COALESCE(${col}, 0) < ?`, row.ts, id, row.ts);
+  if (kind === "seen" && seenCount !== undefined) run("UPDATE conversations SET seen_count = ? WHERE id = ?", seenCount, id);
+  // Đã xem thì cũng là đã nhận
+  if (kind === "seen") run("UPDATE conversations SET delivered_ts = ? WHERE id = ? AND COALESCE(delivered_ts, 0) < ?", row.ts, id, row.ts);
+  if (r.changes) {
+    const conv = getConversation(id);
+    if (conv) bus.emit("conversation.updated", conv);
+  }
+}
+
 /** Tìm tin nhắn theo id Zalo trong một hội thoại. */
 export function findMessageByZaloId(conversationId: string, zaloMsgId: string) {
   return get<{ id: number }>("SELECT id FROM messages WHERE conversation_id = ? AND zalo_msg_id = ?", conversationId, zaloMsgId);

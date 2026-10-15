@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './styles.css'
 import App from './App'
 import { getToken, openAuthedLink } from './api'
+import { startLayout } from './layout'
+
+// Gắn lớp bố cục (máy tính / máy tính bảng / điện thoại) trước khi vẽ lần đầu
+startLayout()
 
 // Link tải file / kết nối (/api/...) cần đăng nhập: xin mã dùng một lần rồi mới mở
 document.addEventListener(

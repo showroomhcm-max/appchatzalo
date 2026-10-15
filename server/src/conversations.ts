@@ -122,6 +122,8 @@ export async function sendToConversation(opts: {
   quoteMessageId?: number | null;
   /** Bình luận Facebook: trả lời công khai hay nhắn riêng */
   mode?: "public" | "private";
+  /** Nhắc tên trong nhóm Zalo */
+  mentions?: { pos: number; len: number; uid: string }[];
 }) {
   const conv = getConversation(opts.conversationId);
   if (!conv) throw new HttpError(404, "Không tìm thấy hội thoại");
@@ -155,6 +157,7 @@ export async function sendToConversation(opts: {
       agentId: opts.agentId,
       source: opts.source,
       mode: opts.mode,
+      mentions: opts.mentions,
     })
     .catch((e: any) => {
       // Lỗi từ nền tảng (Facebook, TikTok…) trả về nguyên văn cho nhân viên đọc được

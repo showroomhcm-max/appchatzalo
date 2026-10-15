@@ -1,5 +1,6 @@
 import { Zalo, ThreadType, LoginQRCallbackEventType, type API, type Credentials, type Message, type Reaction } from "zca-js";
 import { all, get, logEvent, run } from "./db.js";
+import { markReceipt } from "./store.js";
 import { bus } from "./bus.js";
 import {
   conversationKey,
@@ -267,6 +268,30 @@ export class ChannelSession implements ChannelAdapter {
     listener.on("message", (m) => this.handleMessage(m, false));
     listener.on("old_messages", (msgs) => msgs.forEach((m) => this.handleMessage(m, true)));
     listener.on("reaction", (r) => this.handleReaction(r));
+    // Khách đang soạn tin (Zalo báo khoảng vài giây một lần khi khách gõ)
+    listener.on("typing", (t: any) => {
+      if (t?.isSelf) return;
+      bus.emit("zalo.typing", { channelId: this.channelId, threadId: String(t.threadId), uid: String(t.data?.uid ?? "") });
+    });
+    listener.on("delivered_messages", (list: any[]) => {
+      for (const d of list ?? []) {
+        if (d?.isSelf) continue;
+        markReceipt(this.channelId, String(d.threadId), [String(d.data?.msgId ?? ""), String(d.data?.realMsgId ?? "")], "delivered");
+      }
+    });
+    listener.on("seen_messages", (list: any[]) => {
+      for (const s of list ?? []) {
+        if (s?.isSelf) continue;
+        const isGroup = s.type === ThreadType.Group;
+        markReceipt(
+          this.channelId,
+          String(s.threadId),
+          [String(s.data?.msgId ?? ""), String(s.data?.realMsgId ?? "")],
+          "seen",
+          isGroup ? (s.data?.seenUids ?? []).length : undefined,
+        );
+      }
+    });
     // Lời mời kết bạn mới / được chấp nhận → báo giao diện
     listener.on("friend_event", (ev: any) => {
       try {
@@ -424,6 +449,38 @@ export class ChannelSession implements ChannelAdapter {
     list.sort((a, b) => a.name.localeCompare(b.name, "vi"));
     this.groupsCache = { at: Date.now(), list };
     return list;
+  }
+
+  /** Thành viên một nhóm Zalo (tên, ảnh, trưởng / phó nhóm). */
+  async groupMembers(groupId: string) {
+    const api = this.requireApi();
+    const info = (await api.getGroupInfo(groupId)).gridInfoMap?.[groupId] as any;
+    if (!info) throw new Error("Không đọc được thông tin nhóm");
+    const ids: string[] = (info.memVerList ?? []).map((v: string) => String(v).split("_")[0]).filter(Boolean);
+    const admins = new Set<string>([String(info.creatorId ?? ""), ...((info.adminIds ?? []) as string[]).map(String)]);
+    const members: { uid: string; name: string; avatar: string; role: "owner" | "admin" | "member" }[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const r = await api.getGroupMembersInfo(ids.slice(i, i + 50));
+      for (const id of ids.slice(i, i + 50)) {
+        const p = (r.profiles ?? {})[id] ?? (r.profiles ?? {})[`${id}_0`];
+        members.push({
+          uid: id,
+          name: p?.displayName || p?.zaloName || id,
+          avatar: p?.avatar ?? "",
+          role: id === String(info.creatorId) ? "owner" : admins.has(id) ? "admin" : "member",
+        });
+      }
+    }
+    const order = { owner: 0, admin: 1, member: 2 };
+    members.sort((a, b) => order[a.role] - order[b.role] || a.name.localeCompare(b.name, "vi"));
+    return { name: info.name as string, total: info.totalMember ?? members.length, members, selfId: this.ownId };
+  }
+
+  /** Thêm người vào nhóm Zalo. Trả danh sách người không thêm được (họ chặn được thêm vào nhóm…). */
+  async addToGroup(groupId: string, uids: string[]) {
+    const r = await this.requireApi().addUserToGroup(uids, groupId);
+    this.groupsCache = null;
+    return { failed: (r.errorMembers ?? []).map(String) };
   }
 
   /** Lời mời kết bạn đang chờ mình xác nhận. */
@@ -606,6 +663,7 @@ export class ChannelSession implements ChannelAdapter {
       agentId: opts.agentId,
       source: opts.source,
       quote: opts.quote,
+      mentions: opts.mentions,
     });
   }
 
@@ -619,6 +677,8 @@ export class ChannelSession implements ChannelAdapter {
     source: Source;
     /** Trả lời (trích dẫn) một tin đã lưu */
     quote?: StoredMessage | null;
+    /** Nhắc tên trong nhóm */
+    mentions?: { pos: number; len: number; uid: string }[];
   }) {
     const api = this.requireApi();
     const type = opts.isGroup ? ThreadType.Group : ThreadType.User;
@@ -639,6 +699,7 @@ export class ChannelSession implements ChannelAdapter {
               }
             : undefined,
         msg: opts.text ?? "",
+        mentions: opts.isGroup && opts.mentions?.length ? opts.mentions : undefined,
         attachments: opts.attachments?.length
           ? opts.attachments.map((a) => ({
               data: a.data,

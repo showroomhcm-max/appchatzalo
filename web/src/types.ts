@@ -64,6 +64,11 @@ export type Conversation = {
   platform?: Platform
   /** Đã xóa khỏi hộp thư (ẩn; có tin mới thì hiện lại) */
   deleted_at?: number | null
+  /** Zalo: khách đã nhận / đã xem tới tin gửi lúc này */
+  delivered_ts?: number | null
+  seen_ts?: number | null
+  /** Nhóm: số người đã xem tin mới nhất */
+  seen_count?: number | null
   /** chat = tin nhắn, comment = bình luận Facebook */
   kind?: 'chat' | 'comment'
   /** Bình luận: bài viết gốc */

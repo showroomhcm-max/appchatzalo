@@ -456,3 +456,11 @@ if (!(db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]
 if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((c) => c.name === "token_after")) {
   db.exec("ALTER TABLE users ADD COLUMN token_after INTEGER NOT NULL DEFAULT 0");
 }
+
+// ───────────── Trạng thái tin đã gửi (Zalo): khách đã nhận / đã xem tới tin nào ─────────────
+{
+  const cols = new Set((db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[]).map((c) => c.name));
+  if (!cols.has("delivered_ts")) db.exec("ALTER TABLE conversations ADD COLUMN delivered_ts INTEGER");
+  if (!cols.has("seen_ts")) db.exec("ALTER TABLE conversations ADD COLUMN seen_ts INTEGER");
+  if (!cols.has("seen_count")) db.exec("ALTER TABLE conversations ADD COLUMN seen_count INTEGER");
+}

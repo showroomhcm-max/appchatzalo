@@ -58,6 +58,8 @@ export type SendOptions = {
   quote?: StoredMessage | null;
   /** Bình luận Facebook: "public" = trả lời dưới bình luận, "private" = nhắn riêng qua Messenger */
   mode?: "public" | "private";
+  /** Nhắc tên trong nhóm Zalo (@Tên): vị trí, độ dài trong chữ và id người được nhắc */
+  mentions?: { pos: number; len: number; uid: string }[];
 };
 
 /** Những gì kênh làm được (giao diện ẩn nút không hỗ trợ). */

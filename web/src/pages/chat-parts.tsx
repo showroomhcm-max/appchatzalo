@@ -62,6 +62,8 @@ export function Bubble({
   readOnly = false,
   extraActions,
   onExtra,
+  onOpenImage,
+  receipt,
   onAction,
   onReact,
 }: {
@@ -78,6 +80,10 @@ export function Bubble({
   /** Thao tác riêng của nền tảng (VD bình luận Facebook: thích, ẩn, xóa) */
   extraActions?: { key: string; label: string; danger?: boolean }[]
   onExtra?: (key: string) => void
+  /** Bấm ảnh: mở trình xem ảnh toàn màn hình */
+  onOpenImage?: (m: Message) => void
+  /** Đã gửi / Đã nhận / Đã xem (chỉ truyền cho tin cuối của shop) */
+  receipt?: string | null
   onAction: (action: MessageAction, m: Message) => void
   onReact: (m: Message, code: string) => void
 }) {
@@ -90,22 +96,63 @@ export function Bubble({
   const isLink = (m.msg_type === 'chat.recommended' || m.msg_type === 'chat.link') && raw.href
   const actionable = !readOnly && !m.undone && !!m.zalo_msg_id
   const [menu, setMenu] = useState<'react' | 'more' | null>(null)
+  // Điện thoại / máy tính bảng: nhấn giữ tin nhắn để hiện thao tác (như Zalo)
+  const [touchOpen, setTouchOpen] = useState(false)
+  const pressTimer = useRef<number | undefined>(undefined)
   const rowRef = useRef<HTMLDivElement>(null)
 
   // Đóng menu khi bấm ra ngoài
   useEffect(() => {
-    if (!menu) return
-    const close = (e: MouseEvent) => {
-      if (!rowRef.current?.contains(e.target as Node)) setMenu(null)
+    if (!menu && !touchOpen) return
+    const close = (e: Event) => {
+      if (!rowRef.current?.contains(e.target as Node)) {
+        setMenu(null)
+        setTouchOpen(false)
+      }
     }
     document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [menu])
+    document.addEventListener('touchstart', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('touchstart', close)
+    }
+  }, [menu, touchOpen])
 
-  let body: React.ReactNode = <span className="msg-text">{m.text}</span>
+  const longPress = {
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType !== 'touch' || !actionable) return
+      window.clearTimeout(pressTimer.current)
+      pressTimer.current = window.setTimeout(() => {
+        setTouchOpen(true)
+        navigator.vibrate?.(15)
+      }, 450)
+    },
+    onPointerUp: () => window.clearTimeout(pressTimer.current),
+    onPointerMove: () => window.clearTimeout(pressTimer.current),
+    onPointerCancel: () => window.clearTimeout(pressTimer.current),
+    onContextMenu: (e: React.MouseEvent) => {
+      // Android: nhấn giữ sinh contextmenu → mở thao tác thay cho menu của trình duyệt
+      if (actionable && window.matchMedia('(hover: none)').matches) {
+        e.preventDefault()
+        setTouchOpen(true)
+      }
+    },
+  }
+
+  let body: React.ReactNode = <span className="msg-text">{linkify(m.text ?? '')}</span>
   if (isImage) {
     body = (
-      <a href={safeUrl(raw.href || raw.thumb)} target="_blank" rel="noreferrer" className="msg-image">
+      <a
+        href={safeUrl(raw.href || raw.thumb)}
+        target="_blank"
+        rel="noreferrer"
+        className="msg-image"
+        onClick={(e) => {
+          if (!onOpenImage) return
+          e.preventDefault()
+          onOpenImage(m)
+        }}
+      >
         <img src={raw.thumb || raw.href} alt={raw.title || 'Hình ảnh'} referrerPolicy="no-referrer" loading="lazy" />
       </a>
     )
@@ -146,14 +193,16 @@ export function Bubble({
 
   const act = (a: MessageAction) => {
     setMenu(null)
+    setTouchOpen(false)
     onAction(a, m)
   }
 
   return (
     <div
       ref={rowRef}
-      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu ? 'menu-open' : ''}`}
+      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu || touchOpen ? 'menu-open' : ''}`}
       data-mid={m.id}
+      {...longPress}
     >
       {!grouped && (out ? label : isGroup ? m.sender_name : null) && (
         <div className={`msg-sender ${out && !m.agent_id ? 'muted' : ''}`}>{out ? label : m.sender_name}</div>
@@ -285,7 +334,23 @@ export function Bubble({
           </div>
         )}
       </div>
+      {receipt && <div className="msg-receipt">{receipt}</div>}
     </div>
+  )
+}
+
+/** Biến đường link trong chữ thành link bấm được (chỉ http/https, như Zalo). */
+function linkify(text: string): React.ReactNode {
+  const parts = text.split(/(https?:\/\/[^\s<>"']+)/g)
+  if (parts.length === 1) return text
+  return parts.map((p, i) =>
+    i % 2 === 1 ? (
+      <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="msg-autolink" onClick={(e) => e.stopPropagation()}>
+        {p}
+      </a>
+    ) : (
+      p
+    ),
   )
 }
 

@@ -7,6 +7,29 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.9.0 — 15/10/2026
+
+**Nhóm chat Zalo**
+- Khung thông tin của hội thoại nhóm có mục **Thành viên** (tên, ảnh, trưởng / phó nhóm) và nút **Thêm** người vào nhóm (chọn từ bạn bè Zalo; người đã trong nhóm không hiện).
+- **Nhắc tên @** trong nhóm: gõ `@` là hiện danh sách thành viên, chọn tên → Zalo tô tên và báo cho người được nhắc.
+
+**Chat giống Zalo hơn**
+- **Đã gửi / Đã nhận / Đã xem** dưới tin cuối của shop (nhóm: "n người đã xem").
+- **"Khách đang soạn tin…"** khi khách đang gõ.
+- **Xem ảnh toàn màn hình**: bấm ảnh để mở, chuyển ảnh trước / sau (phím mũi tên hoặc vuốt ngang), tải ảnh gốc.
+- **Tìm trong hội thoại** (nút kính lúp ở đầu khung chat), bấm kết quả là nhảy tới tin đó.
+- **Bảng emoji** trong khung soạn tin; nút sticker đổi biểu tượng cho khỏi nhầm.
+- **Kéo thả ảnh / tệp** vào khung chat để gửi.
+- Vạch **"Tin nhắn mới"** ở chỗ bắt đầu tin chưa đọc; nút **xuống tin mới nhất** kèm số tin mới khi đang đọc tin cũ.
+- **Link trong tin nhắn tự bấm được**.
+- Điện thoại / máy tính bảng: **nhấn giữ tin nhắn** để hiện thao tác (trả lời, thả cảm xúc, chuyển tiếp, thu hồi…) như Zalo.
+
+**Giao diện điện thoại và máy tính bảng** (theo bộ khung SieuTocCorp/sieutoc-ui)
+- Nhận diện thiết bị theo cả số điểm chạm, không chỉ bề ngang: điện thoại nằm ngang (tới 960px) vẫn là điện thoại, iPad / máy cảm ứng tới 1400px là máy tính bảng, iPad gắn bàn phím không bị nhận nhầm là máy tính, máy gập mở ra không bị kẹt bố cục điện thoại.
+- **Điện thoại**: thanh **dưới đáy** kiểu Sapo (Hội thoại · Kênh · Giám sát · Thêm/Tài khoản); mở hội thoại thì khung chat chiếm trọn màn như Zalo (ẩn thanh trên + dưới); hộp thoại thành **tấm trượt từ đáy**; tấm "Thêm" có tài khoản, đăng xuất mọi thiết bị, trạng thái kênh; trang Giám sát mỗi lúc một cấp (nhân viên → khách → tin nhắn).
+- **Mọi nút bấm cao 44px** trên màn cảm ứng; ô nhập chữ 16px (iPhone không tự phóng to); chừa chỗ tai thỏ / thanh home của iPhone; tắt "kéo xuống để tải lại" của Chrome (tránh mất tin đang gõ).
+- **Máy tính bảng**: danh sách + khung chat cạnh nhau, khung thông tin khách nổi bên phải.
+
 ## v3.8.0 — 13/10/2026
 
 **Rà soát và tăng cường bảo mật**

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Eye, Flag, Search, ShieldAlert, Undo2, UsersRound } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, Flag, Search, ShieldAlert, Undo2, UsersRound } from 'lucide-react'
 import { api } from '../api'
 import { useSocketEvent } from '../store'
 import type { Conversation, Message, ZaloStatus } from '../types'
@@ -55,7 +55,8 @@ export default function Monitor({ channelId, convId }: { channelId: number | nul
   const current = accounts.find((a) => a.channel_id === channelId) ?? null
 
   return (
-    <div className="monitor">
+    // Điện thoại: mỗi lúc một cấp (nhân viên → khách → tin nhắn), có nút quay lại
+    <div className={`monitor ${convId ? 'lvl-msg' : channelId ? 'lvl-conv' : 'lvl-acc'}`}>
       <aside className="monitor-accounts">
         <div className="monitor-head">
           <h2>Giám sát Zalo nhân viên</h2>
@@ -235,6 +236,9 @@ function Transcript({ convId, holder }: { convId: string | null; holder: string 
   return (
     <section className="monitor-transcript">
       <header className="chat-head">
+        <a href={`#/monitor/${c.channel_id}`} className="icon-btn back-btn" aria-label="Quay lại danh sách khách">
+          <ArrowLeft size={18} />
+        </a>
         <Avatar name={c.name ?? c.id} src={c.avatar} size={40} />
         <div className="chat-title">
           <div className="chat-name">{c.name ?? c.thread_id}</div>

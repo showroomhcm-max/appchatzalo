@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   AlertTriangle,
+  ArrowDown,
+  Laugh,
   ClipboardList,
   ListChecks,
   MoreVertical,
@@ -23,7 +25,7 @@ import {
   Quote,
   Search,
   Send,
-  Smile,
+  Sticker as StickerIcon,
   Star,
   StickyNote,
   Tag,
@@ -40,6 +42,7 @@ import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
+import { EmojiPicker, GroupMembers, InChatSearch, Lightbox, isImageMessage, loadMembers, receiptLabel, type GroupMember } from './chat-extras'
 import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
@@ -81,7 +84,7 @@ export default function Inbox({ convId, focusMsgId }: { convId: string | null; f
   )
   const myAlerts = alerts.filter((a) => !workingChannelIds || (a.channel_id !== null && workingChannelIds.includes(a.channel_id)))
   // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
-  const [showTagFilter, setShowTagFilter] = useState(true)
+  const [showTagFilter, setShowTagFilter] = useState(() => !document.documentElement.classList.contains('narrow'))
   const [q, setQ] = useState('')
   const [list, setList] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
@@ -959,6 +962,17 @@ function ChatView({
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null)
   const [notesVersion, setNotesVersion] = useState(0)
   const [toast, setToast] = useState('')
+  // Như Zalo: xem ảnh toàn màn hình, tìm trong hội thoại, khách đang soạn tin, nút xuống tin mới nhất
+  const [lightbox, setLightbox] = useState<number | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [customerTyping, setCustomerTyping] = useState(false)
+  const typingTimer = useRef<number | undefined>(undefined)
+  const [atBottom, setAtBottom] = useState(true)
+  const [newCount, setNewCount] = useState(0)
+  const unreadAtOpen = useRef(initial?.unread_count ?? 0)
+  const [unreadFromId, setUnreadFromId] = useState<number | null>(null)
+  const [dropped, setDropped] = useState<File[] | null>(null)
+  const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
     if (!toast) return
@@ -1032,6 +1046,12 @@ function ChatView({
       if (!alive) return
       const idx = focusMsgId ? rows.findIndex((m) => m.id === focusMsgId) : -1
       stickBottom.current = idx < 0
+      // Vạch "Tin nhắn mới" trước tin chưa đọc đầu tiên (đếm từ cuối các tin của khách)
+      const unread = unreadAtOpen.current
+      if (unread > 0 && idx < 0) {
+        const inbound = rows.filter((r) => r.direction === 'in')
+        setUnreadFromId(inbound[Math.max(0, inbound.length - unread)]?.id ?? null)
+      }
       setMessages(rows)
       setHasOlder(idx >= 0 ? idx >= 40 : rows.length === 60)
       setFlashId(idx >= 0 ? focusMsgId : null)
@@ -1058,6 +1078,9 @@ function ChatView({
     if (message.conversation_id !== convId) return
     setConv(conversation)
     setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message].sort((a, b) => a.ts - b.ts || a.id - b.id)))
+    if (message.direction === 'in') setCustomerTyping(false)
+    // Đang đọc tin cũ (không ở cuối) → đếm tin mới cho nút "xuống tin mới nhất"
+    if (!stickBottom.current) setNewCount((n) => n + 1)
     if (message.direction === 'in' && document.visibilityState === 'visible') {
       void api(`/conversations/${encodeURIComponent(convId)}/read`, { method: 'POST' })
     }
@@ -1067,6 +1090,24 @@ function ChatView({
     setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)))
   })
   useSocketEvent<Conversation>('conversation:update', (c) => c.id === convId && setConv(c))
+  useSocketEvent<{ conversation_id: string }>('customer:typing', ({ conversation_id }) => {
+    if (conversation_id !== convId) return
+    setCustomerTyping(true)
+    window.clearTimeout(typingTimer.current)
+    typingTimer.current = window.setTimeout(() => setCustomerTyping(false), 6000)
+  })
+  useEffect(() => () => window.clearTimeout(typingTimer.current), [])
+
+  function scrollToBottom() {
+    const el = scroller.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    stickBottom.current = true
+    setNewCount(0)
+  }
+  const images = useMemo(() => messages.filter(isImageMessage), [messages])
+  const lastOutId = useMemo(() => [...messages].reverse().find((m) => m.direction === 'out' && !m.undone)?.id ?? null, [messages])
+  const showReceipts = platformOf(conv?.platform) === 'zalo'
   useSocketEvent<{ id: string }>('conversation:removed', ({ id }) => {
     if (id === convId) setError('Hội thoại đã được chuyển sang bộ phận khác, bạn không còn quyền xem.')
   })
@@ -1219,20 +1260,49 @@ function ChatView({
                 <Check size={16} /> Xong
               </button>
             )}
+            <button className={`icon-btn ${searchOpen ? 'on' : ''}`} onClick={() => setSearchOpen((v) => !v)} aria-label="Tìm trong hội thoại" title="Tìm trong hội thoại">
+              <Search size={18} />
+            </button>
             <button className={`icon-btn ${showInfo ? 'on' : ''}`} onClick={toggleInfo} aria-label="Thông tin khách hàng">
               <PanelRight size={18} />
             </button>
           </div>
         </header>
 
+        {searchOpen && (
+          <InChatSearch
+            convId={convId}
+            onClose={() => setSearchOpen(false)}
+            onJump={(id) => {
+              window.location.hash = `#/inbox/${encodeURIComponent(convId)}/${id}`
+            }}
+          />
+        )}
         <div
-          className="messages"
+          className={`messages ${dragging ? 'dragging' : ''}`}
           ref={scroller}
           onScroll={(e) => {
             const el = e.currentTarget
-            stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+            const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+            stickBottom.current = bottom
+            setAtBottom(bottom)
+            if (bottom) setNewCount(0)
+          }}
+          onDragOver={(e) => {
+            if (!caps.files || !e.dataTransfer.types.includes('Files')) return
+            e.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            if (!caps.files) return
+            e.preventDefault()
+            setDragging(false)
+            const files = Array.from(e.dataTransfer.files)
+            if (files.length) setDropped(files)
           }}
         >
+          {dragging && <div className="drop-hint">Thả ảnh / tệp vào đây để gửi</div>}
           {hasOlder && (
             <button className="btn ghost sm load-older" onClick={loadOlder}>
               Tải tin cũ hơn
@@ -1253,6 +1323,7 @@ function ChatView({
             return (
               <Fragment key={m.id}>
                 {newDay && <div className="day-sep">{dayLabel(m.ts)}</div>}
+                {m.id === unreadFromId && <div className="unread-sep">Tin nhắn mới</div>}
                 <Bubble
                   m={m}
                   grouped={!!grouped}
@@ -1262,6 +1333,8 @@ function ChatView({
                   caps={caps}
                   canReply={caps.quote || conv?.kind === 'comment'}
                   extraActions={conv?.kind === 'comment' && m.direction === 'in' ? COMMENT_ACTIONS : undefined}
+                  onOpenImage={(img) => setLightbox(images.findIndex((x) => x.id === img.id))}
+                  receipt={showReceipts && m.id === lastOutId ? receiptLabel(conv, m) : null}
                   onExtra={(key) => void commentAction(m, key)}
                   onAction={onMessageAction}
                   onReact={onReact}
@@ -1271,6 +1344,22 @@ function ChatView({
           })}
         </div>
 
+        {!atBottom && (
+          <button className="jump-bottom" onClick={scrollToBottom} aria-label="Xuống tin mới nhất">
+            <ArrowDown size={16} />
+            {newCount > 0 && <span>{newCount} tin mới</span>}
+          </button>
+        )}
+        {customerTyping && (
+          <div className="typing-bar customer">
+            <span className="dots">
+              <i />
+              <i />
+              <i />
+            </span>
+            {conv?.type === 1 ? 'Có người' : conv?.name ?? 'Khách'} đang soạn tin…
+          </div>
+        )}
         {typingOthers.length > 0 && (
           <div className="typing-bar">
             <span className="dots">
@@ -1287,10 +1376,13 @@ function ChatView({
           </div>
         )}
         {toast && <div className="toast">{toast}</div>}
+        {lightbox !== null && lightbox >= 0 && <Lightbox images={images} index={lightbox} onClose={() => setLightbox(null)} />}
         <Composer
           convId={convId}
           channelId={conv?.channel_id ?? null}
           conv={conv}
+          dropped={dropped}
+          onDroppedUsed={() => setDropped(null)}
           replyTo={replyTo}
           onClearReply={() => setReplyTo(null)}
         />
@@ -1305,12 +1397,16 @@ function Composer({
   convId,
   channelId,
   conv,
+  dropped,
+  onDroppedUsed,
   replyTo,
   onClearReply,
 }: {
   convId: string
   channelId: number | null
   conv: Conversation | null
+  dropped?: File[] | null
+  onDroppedUsed?: () => void
   replyTo: Message | null
   onClearReply: () => void
 }) {
@@ -1322,6 +1418,72 @@ function Composer({
   // Bình luận Facebook: trả lời công khai dưới bình luận hoặc nhắn riêng qua Messenger
   const [mode, setMode] = useState<'public' | 'private'>('public')
   useEffect(() => setMode('public'), [convId])
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  // Nhắc tên (@Tên) trong nhóm Zalo
+  const canMention = conv?.type === 1 && platform === 'zalo'
+  const [members, setMembers] = useState<GroupMember[]>([])
+  const [mentioned, setMentioned] = useState<{ uid: string; name: string }[]>([])
+  const [mentionQ, setMentionQ] = useState<string | null>(null)
+  useEffect(() => {
+    setMentioned([])
+    setMentionQ(null)
+    if (canMention) loadMembers(convId).then((d) => setMembers(d.members.filter((m) => m.uid !== d.selfId))).catch(() => setMembers([]))
+    else setMembers([])
+  }, [convId, canMention])
+  const mentionList = mentionQ === null ? [] : members.filter((m) => fold(m.name).includes(fold(mentionQ))).slice(0, 6)
+
+  /** Từ "@chữ" ngay trước con trỏ → mở gợi ý nhắc tên */
+  function detectMention(value: string, caret: number) {
+    if (!canMention) return setMentionQ(null)
+    const before = value.slice(0, caret)
+    const m = /(^|\s)@([^\s@]{0,30})$/.exec(before)
+    setMentionQ(m ? m[2] : null)
+  }
+  function pickMention(member: GroupMember) {
+    const el = textarea.current
+    const caret = el?.selectionStart ?? text.length
+    const before = text.slice(0, caret).replace(/@([^\s@]{0,30})$/, `@${member.name} `)
+    const next = before + text.slice(caret)
+    setText(next)
+    setMentioned((cur) => (cur.some((x) => x.uid === member.uid) ? cur : [...cur, { uid: member.uid, name: member.name }]))
+    setMentionQ(null)
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(before.length, before.length)
+    })
+  }
+  /** Vị trí từng "@Tên" trong chữ gửi đi (Zalo cần pos + len để tô tên và báo người được nhắc) */
+  function mentionsFor(value: string) {
+    const out: { pos: number; len: number; uid: string }[] = []
+    for (const m of mentioned) {
+      const tag = `@${m.name}`
+      let from = 0
+      let i: number
+      while ((i = value.indexOf(tag, from)) >= 0) {
+        if (!out.some((o) => o.pos === i)) out.push({ pos: i, len: tag.length, uid: m.uid })
+        from = i + tag.length
+      }
+    }
+    return out
+  }
+  function insertEmoji(e: string) {
+    const el = textarea.current
+    const start = el?.selectionStart ?? text.length
+    const end = el?.selectionEnd ?? text.length
+    const next = text.slice(0, start) + e + text.slice(end)
+    setText(next)
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(start + e.length, start + e.length)
+    })
+  }
+  // Ảnh / tệp kéo thả vào khung chat
+  useEffect(() => {
+    if (!dropped?.length) return
+    setFiles((cur) => [...cur, ...dropped].slice(0, 10))
+    onDroppedUsed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropped])
   const channelStatus = zaloStatuses.find((s) => s.channelId === channelId)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -1402,10 +1564,13 @@ function Composer({
       fd.append('text', text)
       if (replyTo) fd.append('quote_message_id', String(replyTo.id))
       if (isComment) fd.append('mode', mode)
+      const mentions = mentionsFor(text)
+      if (mentions.length) fd.append('mentions', JSON.stringify(mentions))
       files.forEach((f) => fd.append('files', f))
       await api(`/conversations/${encodeURIComponent(convId)}/messages`, { body: fd })
       setText('')
       setFiles([])
+      setMentioned([])
       onClearReply()
       typingOn.current = false
       socket?.emit('typing', false)
@@ -1428,6 +1593,15 @@ function Composer({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionList.length && (e.key === 'Enter' || e.key === 'Tab')) {
+      e.preventDefault()
+      pickMention(mentionList[0])
+      return
+    }
+    if (e.key === 'Escape' && mentionQ !== null) {
+      setMentionQ(null)
+      return
+    }
     if (e.key === 'Escape' && replyTo) {
       onClearReply()
       return
@@ -1459,6 +1633,22 @@ function Composer({
 
   return (
     <div className="composer">
+      {mentionList.length > 0 && (
+        <div className="template-picker mention-picker" role="listbox" aria-label="Nhắc tên thành viên">
+          {mentionList.map((m) => (
+            <button
+              key={m.uid}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                pickMention(m)
+              }}
+            >
+              <Avatar name={m.name} src={m.avatar} size={24} /> <span>{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {emojiOpen && <EmojiPicker onPick={insertEmoji} onClose={() => setEmojiOpen(false)} />}
       {suggestions.length > 0 && (
         <div className="template-picker">
           {suggestions.map((t, i) => (
@@ -1526,9 +1716,19 @@ function Composer({
           title="Sticker"
           disabled={disabled}
         >
-          <Smile size={20} />
+          <StickerIcon size={20} />
         </button>
         )}
+        <button
+          className={`icon-btn ${emojiOpen ? 'on' : ''}`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setEmojiOpen((v) => !v)}
+          aria-label="Chèn emoji"
+          title="Emoji"
+          disabled={disabled}
+        >
+          <Laugh size={20} />
+        </button>
         {platform === 'zalo_oa' && (
           <button
             className="icon-btn"
@@ -1576,6 +1776,7 @@ function Composer({
           onChange={(e) => {
             setText(e.target.value)
             setPickerIndex(0)
+            detectMention(e.target.value, e.target.selectionStart ?? e.target.value.length)
             signalTyping()
           }}
           onKeyDown={onKeyDown}
@@ -1678,6 +1879,8 @@ function InfoPanel({
           {conv.department_name ? ` · ${conv.department_name}` : ''}
         </span>
       </div>
+
+      {conv.type === 1 && platformOf(conv.platform) === 'zalo' && <GroupMembers conv={conv} />}
 
       {convAlerts.length > 0 && (
         <div className="info-section alert-box">

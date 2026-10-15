@@ -123,6 +123,10 @@ export function setupRealtime(server: HttpServer) {
   // Cảnh báo / đơn hàng: báo giao diện tải lại (dữ liệu tải qua API theo đúng phạm vi người xem)
   bus.on("alerts.changed", () => io.to("agents").emit("alerts:changed"));
   bus.on("monitor.flagged", () => io.to("agents").emit("monitor:changed"));
+  bus.on("zalo.typing", (ev) => {
+    const conv = getConversation(`${ev.channelId}_${ev.threadId}`);
+    if (conv) emitForConversation("customer:typing", conv, { conversation_id: conv.id, uid: ev.uid });
+  });
   bus.on("zalo.friend", (ev) => {
     for (const socket of io.of("/").sockets.values()) {
       if (canUseChannel(scopeFor(socket), ev.channelId)) socket.emit("zalo:friend", ev);

@@ -2025,7 +2025,7 @@ mark {
   word-break: break-word;
   min-width: 0;
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .log-line {
     grid-template-columns: 1fr;
     gap: 0;
@@ -2386,7 +2386,7 @@ mark {
     box-shadow: var(--shadow-lg);
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .shell {
     flex-direction: column-reverse;
   }
@@ -2582,7 +2582,7 @@ input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 1
   color: var(--mz-green-900);
 }
 .banner .btn.ghost { margin-left: auto; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .grid-3 { grid-template-columns: 1fr; }
 }
 
@@ -2736,7 +2736,7 @@ details.notice[open] > summary { margin-bottom: 12px; }
 @media (max-width: 960px) {
   .channel-board.two { grid-template-columns: 1fr; }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .topbar { padding: 0 12px; }
   .topbar-title { font-size: 14px; }
   .search-box { min-width: 0; width: 100%; }
@@ -2903,7 +2903,7 @@ details.notice[open] > summary { margin-bottom: 12px; }
 .timeline-item::before { content: ''; position: absolute; left: -6px; top: 11px; width: 10px; height: 10px; border-radius: 50%; background: var(--mz-green-600); }
 .timeline-item.bad::before { background: var(--mz-danger); }
 .sidenav-brand svg, .brand-mark svg { display: block; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .account-grid { grid-template-columns: 1fr; }
   .account-facts { grid-template-columns: 1fr; }
 }
@@ -2946,7 +2946,7 @@ details.notice[open] > summary { margin-bottom: 12px; }
   .monitor-accounts { width: 220px; }
   .monitor-convs { width: 300px; }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) {
   .monitor { flex-direction: column; overflow-y: auto; }
   .monitor-accounts, .monitor-convs { width: auto; border-right: 0; border-bottom: 1px solid var(--mz-ink-200); max-height: 45vh; }
   .monitor-transcript { min-height: 60vh; }
@@ -2996,7 +2996,7 @@ details.notice[open] > summary { margin-bottom: 12px; }
 .menu-sub-wrap { position: relative; }
 .menu-chev { margin-left: auto; color: var(--mz-ink-500); }
 .conv-menu.sub { position: absolute; left: calc(100% - 4px); top: -4px; max-height: 50vh; }
-@media (max-width: 760px) { .conv-menu.sub { position: static; box-shadow: none; border: 0; padding-left: 16px; } }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 960px) and (max-height: 500px) { .conv-menu.sub { position: static; box-shadow: none; border: 0; padding-left: 16px; } }
 .bulk-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--mz-green-50); border-bottom: 1px solid var(--mz-green-200); }
 .list-msg { margin: 8px 12px 0; }
 .tag-filter { display: flex; flex-direction: column; gap: 6px; }
@@ -3033,3 +3033,223 @@ details.notice[open] > summary { margin-bottom: 12px; }
 .group-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .group-row .grow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.me { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 50%; }
+
+/* ───────────── Chat giống Zalo (v3.9) ───────────── */
+.chat-pane { position: relative; }
+.msg-receipt { font-size: 11.5px; color: var(--mz-ink-500); text-align: right; margin: 2px 6px 0 0; }
+.msg-row.in .msg-receipt { text-align: left; }
+.msg-autolink { color: var(--mz-info); text-decoration: underline; word-break: break-all; }
+.msg-row.out .msg-autolink { color: inherit; }
+.unread-sep { display: flex; align-items: center; gap: 10px; margin: 12px 0; font-size: 12px; font-weight: 600; color: var(--mz-danger); }
+.unread-sep::before, .unread-sep::after { content: ''; flex: 1; height: 1px; background: #f3b8b1; }
+.jump-bottom {
+  position: absolute;
+  right: 20px;
+  bottom: 96px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--mz-ink-200);
+  background: #fff;
+  color: var(--mz-green-800);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(13, 31, 22, 0.16);
+  cursor: pointer;
+}
+.typing-bar.customer { color: var(--mz-green-700); }
+.messages.dragging { outline: 2px dashed var(--mz-green-600); outline-offset: -8px; }
+.drop-hint { position: sticky; top: 8px; z-index: 4; margin: 0 auto 8px; width: max-content; max-width: 90%; padding: 8px 14px; border-radius: 9999px; background: var(--mz-green-700); color: #fff; font-size: 13px; font-weight: 600; }
+.inchat-search { background: #fff; border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.inchat-results { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; }
+.inchat-results button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px; border: 0; border-bottom: 1px solid var(--mz-ink-100); background: none; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.inchat-results button:hover { background: var(--mz-green-50); }
+.inchat-results mark { background: var(--mz-lime-200); color: inherit; border-radius: 2px; }
+.emoji-picker {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: 16px;
+  z-index: 6;
+  width: min(360px, calc(100% - 32px));
+  max-height: 240px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 2px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+.emoji-picker button { font-size: 22px; height: 40px; border: 0; background: none; border-radius: 8px; cursor: pointer; }
+.emoji-picker button:hover { background: var(--mz-ink-100); }
+.mention-picker button { align-items: center; }
+.member-list { display: flex; flex-direction: column; gap: 2px; }
+.member-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 14px; }
+.member-row .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(8, 14, 11, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: pan-y;
+}
+.lightbox img { max-width: 94vw; max-height: calc(100dvh - 120px); object-fit: contain; user-select: none; }
+.lightbox-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 10px) 12px 10px 16px; color: #fff; font-size: 14px; background: linear-gradient(rgba(0, 0, 0, 0.5), transparent); }
+.lightbox-bar .icon-btn { color: #fff; }
+.lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, 0.14); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.lightbox-nav.prev { left: 16px; }
+.lightbox-nav.next { right: 16px; }
+@media (hover: none) {
+  /* Cảm ứng: thao tác tin nhắn chỉ hiện khi nhấn giữ (như Zalo), không bày sẵn cạnh mọi tin */
+  .msg-actions { opacity: 0; pointer-events: none; }
+  .msg-row.menu-open .msg-actions { opacity: 1; pointer-events: auto; }
+  .lightbox-nav { display: none; }
+}
+
+/* ═════════════ Điện thoại / máy tính bảng (theo bộ khung SieuTocCorp/sieutoc-ui) ═════════════
+   Lớp do layout.ts gắn lên <html>: compact = máy tính bảng + điện thoại, narrow = điện thoại, thap = màn thấp. */
+
+/* Tắt "kéo xuống để tải lại" của Chrome Android: tải lại giữa chừng là mất tin đang gõ dở */
+html { overscroll-behavior-y: contain; -webkit-text-size-adjust: 100%; }
+@supports (height: 100dvh) { #root { height: 100dvh; } }
+.conv-list, .messages, .settings-content, .page, .monitor-list, .board-list, .friend-pick, .group-list, .info-pane, .modal, .inchat-results { overscroll-behavior: contain; }
+.bottom-bar { display: none; }
+
+/* ── Vùng chạm 44px trên màn cảm ứng (dùng min-height, không sửa padding) ── */
+html.compact .btn,
+html.compact .icon-btn,
+html.compact .select,
+html.compact select,
+html.compact .field input,
+html.compact .field textarea,
+html.compact .seg button,
+html.compact .settings-item,
+html.compact .conv-menu button,
+html.compact .platform-tabs button,
+html.compact .picker-btn,
+html.compact .picker-item,
+html.compact .group-row,
+html.compact .link-btn { min-height: 44px; }
+html.compact .icon-btn { min-width: 44px; }
+html.compact input[type='checkbox'],
+html.compact input[type='radio'] { width: 22px; height: 22px; }
+html.compact .search-box input { min-height: 42px; }
+/* Máy tính bảng: thông tin khách nổi bên phải thay vì chiếm một cột */
+html.compact .info-pane { position: fixed; right: 0; top: 0; bottom: 0; z-index: 30; box-shadow: var(--shadow-lg); width: min(380px, 100%); }
+html.compact:not(.narrow) .conv-pane { width: 300px; }
+html.compact:not(.narrow) .settings-nav { width: 220px; }
+
+/* ── Điện thoại ── */
+html.narrow .sidenav { display: none; }
+html.narrow .shell { flex-direction: column; }
+html.narrow .main { min-height: 0; }
+html.narrow .bottom-bar {
+  display: grid;
+  flex: none;
+  background: #fff;
+  border-top: 1px solid var(--mz-ink-200);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -2px 12px rgba(13, 31, 22, 0.06);
+  z-index: 20;
+}
+.bb-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  min-width: 0;
+  color: var(--mz-ink-500);
+  text-decoration: none;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.bb-item.on { color: var(--mz-green-700); }
+.bb-ic { position: relative; display: grid; place-items: center; }
+.bb-ic .nav-badge { top: -6px; right: -14px; }
+.bb-tx { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+html.narrow .topbar { height: calc(48px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; }
+/* Màn chi tiết (đang mở hội thoại): chat chiếm trọn màn như Zalo, ẩn thanh trên + thanh dưới */
+html.narrow .shell.detail .bottom-bar,
+html.narrow .shell.detail .topbar { display: none; }
+html.narrow .shell.detail .chat-head { padding-top: calc(8px + env(safe-area-inset-top)); }
+html.narrow .shell.detail .composer { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+/* Đầu khung chat gọn: các nút thao tác nằm trên một hàng cuộn ngang */
+html.narrow .chat-actions { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 2px; scrollbar-width: none; }
+html.narrow .chat-actions::-webkit-scrollbar { display: none; }
+html.narrow .chat-actions > * { flex: none; }
+html.narrow .info-pane { width: 100%; padding-top: env(safe-area-inset-top); }
+html.narrow .jump-bottom { right: 12px; bottom: 84px; }
+/* Chữ ô nhập ≥ 16px: nhỏ hơn là iPhone tự phóng to cả trang khi bấm vào */
+html.narrow input,
+html.narrow textarea,
+html.narrow select { font-size: 16px; }
+/* Hộp thoại thành tấm trượt từ đáy */
+html.narrow .modal-backdrop { place-items: end stretch; padding: 0; }
+html.narrow .modal,
+html.narrow .modal.wide { max-width: none; max-height: 92dvh; border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+html.narrow .picker-pop { position: fixed; left: 8px; right: 8px; top: calc(52px + env(safe-area-inset-top)); width: auto; }
+html.narrow .conv-menu { left: 8px !important; right: 8px; min-width: 0; }
+html.narrow .emoji-picker { left: 8px; width: calc(100% - 16px); }
+html.narrow .lightbox img { max-width: 100vw; }
+/* Màn thấp (điện thoại nằm ngang): bóp chiều cao các dải trên / dưới */
+html.thap .topbar { height: 40px; }
+html.thap .bb-item { min-height: 44px; flex-direction: row; gap: 6px; }
+html.thap .chat-head { padding-top: 4px; padding-bottom: 4px; }
+
+/* ── Tấm trượt "Thêm / Tài khoản" ── */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(8, 14, 11, 0.45); display: flex; align-items: flex-end; }
+.sheet { width: 100%; max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain; background: #fff; border-radius: 16px 16px 0 0; padding: 4px 12px calc(12px + env(safe-area-inset-bottom)); }
+.sheet-grip { width: 40px; height: 4px; border-radius: 2px; background: var(--mz-ink-300); margin: 8px auto 10px; }
+.sheet-group { display: flex; flex-direction: column; border-bottom: 1px solid var(--mz-ink-100); padding: 4px 0; }
+.sheet-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 8px; text-decoration: none; color: var(--mz-ink-800); background: none; border: 0; font: inherit; font-size: 15px; text-align: left; width: 100%; border-radius: 10px; cursor: pointer; }
+.sheet-row:active { background: var(--mz-ink-50); }
+.sheet-row.static { cursor: default; }
+.sheet-row .grow { display: flex; flex-direction: column; min-width: 0; }
+.sheet-row.danger { color: var(--mz-danger); }
+.sheet-ic { width: 24px; display: grid; place-items: center; color: var(--mz-ink-600); flex: none; }
+.sheet-foot { text-align: center; padding-top: 10px; }
+/* Giám sát trên điện thoại: mỗi lúc một cấp */
+html.narrow .monitor { flex-direction: column; overflow: hidden; }
+html.narrow .monitor > * { width: auto; max-height: none; border-right: 0; flex: 1; min-height: 0; }
+html.narrow .monitor.lvl-acc .monitor-convs,
+html.narrow .monitor.lvl-acc .monitor-transcript,
+html.narrow .monitor.lvl-conv .monitor-accounts,
+html.narrow .monitor.lvl-conv .monitor-transcript,
+html.narrow .monitor.lvl-msg .monitor-accounts,
+html.narrow .monitor.lvl-msg .monitor-convs { display: none; }
+html.narrow .monitor-accounts { overflow-y: auto; }
+/* Cảm ứng: nút thao tác tin nhắn không chiếm chỗ khi đang ẩn (bong bóng không bị bóp hẹp) */
+@media (hover: none) {
+  .msg-actions { display: none; }
+  .msg-row.menu-open .msg-actions { display: flex; }
+}
+html.touch .msg-actions { display: none; }
+html.touch .msg-row.menu-open .msg-actions { display: flex; }
+/* Điện thoại: tên màn đã ở thanh trên, không lặp lại trong danh sách */
+html.narrow .conv-title-row h2 { visibility: hidden; width: 0; flex: 1; }
+/* Nút ⋯ trên từng hội thoại: nhẹ nhàng trên cảm ứng (nhấn giữ hội thoại cũng mở menu) */
+html.touch .conv-more { opacity: 1; position: static; background: none; box-shadow: none; color: var(--mz-ink-400); align-self: flex-start; }
+html.narrow .composer-row { gap: 2px; }
+html.compact .tag-option { min-height: 40px; padding-left: 14px; padding-right: 14px; }
+html.compact .stars.editable button { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; }
+/* Dùng chuột (không cảm ứng): nút thao tác tin giữ cỡ nhỏ kể cả khi cửa sổ hẹp — không bóp bong bóng */
+html.compact:not(.touch) .msg-actions .icon-btn { min-width: 30px; min-height: 30px; }
+html.compact:not(.narrow) .conv-pane { width: 280px; }
+html.compact:not(.narrow) .msg-row { max-width: 85%; }

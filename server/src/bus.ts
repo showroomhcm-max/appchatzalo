@@ -17,6 +17,8 @@ export type BusEvents = {
   "alerts.changed": [];
   /** Đơn hàng mới / cập nhật (Sapo, API) */
   "order.updated": [order: any];
+  /** Zalo: khách đang soạn tin */
+  "zalo.typing": [event: { channelId: number; threadId: string; uid: string }];
   /** Zalo cá nhân: lời mời kết bạn mới / đã thành bạn */
   "zalo.friend": [event: { channelId: number; type: "request" | "added"; uid: string }];
   /** Giám sát Zalo nhân viên: có tin bị gắn cờ */

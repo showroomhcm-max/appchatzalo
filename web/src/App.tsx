@@ -13,6 +13,7 @@ import { Avatar, Modal } from './components'
 import { UpdateBanner, VersionTag } from './version'
 import ChannelPicker from './ChannelPicker'
 import { APP_NAME, MzMark } from './Logo'
+import { BottomBar, MoreSheet, type NavItem } from './MobileNav'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -168,6 +169,7 @@ function Shell() {
   const zaloStatuses = workingChannelIds ? allStatuses.filter((s) => workingChannelIds.includes(s.channelId)) : allStatuses
   const [route, setRoute] = useState(parseHash)
   const [pwOpen, setPwOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const { can: allowed } = useApp()
   const canData = allowed('data.view') || allowed('data.export')
   const canSettings = (['channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
@@ -193,9 +195,17 @@ function Shell() {
 
   const offline = zaloStatuses.filter((s) => s.state !== 'connected')
   const zaloOk = zaloStatuses.length > 0 && offline.length === 0
+  // Thanh dưới đáy (điện thoại): tên ngắn cho từng màn
+  const SHORT: Record<string, string> = { inbox: 'Hội thoại', channels: 'Kênh', monitor: 'Giám sát', data: 'Dữ liệu', settings: 'Cài đặt' }
+  const mobileItems: NavItem[] = nav
+    .filter((n) => n.show !== false)
+    .map((n) => ({ id: n.id, label: n.label, short: SHORT[n.id] ?? n.label, icon: n.icon, badge: n.id === 'inbox' ? alertCount : undefined }))
+  // Màn chi tiết (đang mở một hội thoại): ẩn thanh trên + thanh dưới cho khung chat chiếm trọn màn như Zalo
+  const detail = (route.page === 'inbox' && !!route.convId) || (route.page === 'monitor' && !!route.monitorConv)
+  useEffect(() => setMoreOpen(false), [route.page, route.convId])
 
   return (
-    <div className="shell">
+    <div className={`shell ${detail ? 'detail' : ''}`}>
       <aside className="sidenav">
         <div className="sidenav-brand" title={`${APP_NAME} · MemoryZone`}>
           <MzMark size={30} />
@@ -288,6 +298,8 @@ function Shell() {
           </div>
         )}
       </main>
+      <BottomBar items={mobileItems} active={route.page} onMore={() => setMoreOpen((v) => !v)} moreOpen={moreOpen} />
+      {moreOpen && <MoreSheet items={mobileItems} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
     </div>
   )
