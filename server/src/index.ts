@@ -8,6 +8,7 @@ import { localOnly, securityHeaders, uploadHeaders } from "./security.js";
 import { config } from "./config.js";
 import { ensureAdmin, applySuperAdmins } from "./db.js";
 import { appRouter, publicRouter, errorHandler } from "./routes.js";
+import { linkRouter } from "./report-link.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { startAlerts } from "./alerts.js";
@@ -44,6 +45,8 @@ app.get("/api/version", (_req, res) => {
 app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false, dotfiles: "deny", setHeaders: uploadHeaders }));
 app.use("/api/oauth", oauthRouter);
 app.use("/api/v1", publicRouter);
+// App báo cáo công việc CSKH (khóa kết nối riêng, chỉ các đường /api/link/*)
+app.use("/api/link", linkRouter);
 app.use("/api", appRouter);
 app.use("/api", errorHandler);
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Database, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
+import { ClipboardList, Database, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
@@ -134,7 +134,7 @@ type Page = 'inbox' | 'channels' | 'monitor' | 'data' | 'settings'
 
 const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', monitor: 'Giám sát Zalo nhân viên', data: 'Dữ liệu', settings: 'Cài đặt' }
 
-type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null; findPhone?: string | null }
+type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null; findPhone?: string | null; sso?: 'baocao' | null }
 
 function parseHash(): Route {
   const [, rawPage, id, msg] = window.location.hash.split('/')
@@ -146,6 +146,8 @@ function parseHash(): Route {
     zalo: { page: 'channels' },
   }
   if (legacy[rawPage]) return { page: 'inbox', convId: null, msgId: null, ...legacy[rawPage] }
+  // #/sso/baocao: app Báo cáo công việc CSKH xin đăng nhập một chạm
+  if (rawPage === 'sso' && id === 'baocao') return { page: 'inbox', convId: null, msgId: null, sso: 'baocao' }
   // #/find/<sđt>: app khác (DVKT…) mở tìm khách theo số điện thoại
   if (rawPage === 'find') {
     let raw = id ?? ''
@@ -215,6 +217,28 @@ function Shell() {
   const detail = (route.page === 'inbox' && !!route.convId) || (route.page === 'monitor' && !!route.monitorConv)
   useEffect(() => setMoreOpen(false), [route.page, route.convId])
 
+  // App Báo cáo công việc CSKH: hiện mục menu khi đã bật kết nối; #/sso/baocao → ký vé đăng nhập rồi chuyển sang app đó
+  const [reportUrl, setReportUrl] = useState<string | null>(null)
+  const [ssoMsg, setSsoMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  useEffect(() => {
+    api<{ enabled: boolean; url: string | null }>('/report-link/status')
+      .then((r) => setReportUrl(r.enabled ? r.url : null))
+      .catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (route.sso !== 'baocao') return
+    setSsoMsg({ ok: true, text: 'Đang mở app Báo cáo công việc…' })
+    api<{ url: string }>('/report-link/sso', { method: 'POST' })
+      .then((r) => {
+        if (!/^https:\/\/|^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(r.url)) throw new Error('Địa chỉ app báo cáo không hợp lệ')
+        window.location.replace(r.url)
+      })
+      .catch((e) => {
+        setSsoMsg({ ok: false, text: e.message })
+        history.replaceState(null, '', '#/inbox')
+      })
+  }, [route.sso])
+
   return (
     <div className={`shell ${detail ? 'detail' : ''}`}>
       <aside className="sidenav">
@@ -242,6 +266,14 @@ function Shell() {
               </a>
             ))}
         </nav>
+        {reportUrl && (
+          <nav className="sidenav-extra">
+            <a href="#/sso/baocao" target="_blank" rel="noopener" className="nav-item" title="Báo cáo công việc CSKH" aria-label="Báo cáo công việc CSKH">
+              <ClipboardList size={20} />
+              <span className="nav-label">Báo cáo công việc</span>
+            </a>
+          </nav>
+        )}
         <div className="sidenav-foot">
           <a
             href="#/channels"
@@ -287,6 +319,7 @@ function Shell() {
           <ChannelPicker />
         </header>
         <UpdateBanner />
+        {ssoMsg && <div className={`banner ${ssoMsg.ok ? 'info' : 'warn'} inline`}>{ssoMsg.text}</div>}
         {route.page !== 'channels' && (offline.length > 0 || (allowed('channels.manage') && zaloStatuses.length === 0)) && (
           <div className="banner warn">
             {zaloStatuses.length === 0
@@ -310,7 +343,7 @@ function Shell() {
         )}
       </main>
       <BottomBar items={mobileItems} active={route.page} onMore={() => setMoreOpen((v) => !v)} moreOpen={moreOpen} />
-      {moreOpen && <MoreSheet items={mobileItems} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
+      {moreOpen && <MoreSheet items={mobileItems} reportUrl={reportUrl} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
     </div>
   )

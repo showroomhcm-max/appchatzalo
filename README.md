@@ -55,6 +55,7 @@ Hướng dẫn tạo app Zalo OA / Facebook / TikTok: [docs/ket-noi-facebook-tik
 - Link tìm khách theo số điện thoại (từ v3.10.0): `https://<domain>/#/find/<số điện thoại>`.
 - **App DVKT ver 3** (từ v3.10.0, cần DVKT bản 3.20): khung Thông tin hiện vé DVKT / giao hàng / hỗ trợ KT / bảo hành của khách; DVKT có nút "Nhắn" mở hội thoại. Bật ở Cài đặt › Kết nối app nội bộ: tạo khóa → ở `D:\APPDVKT\cloudflare` chạy `npx wrangler secret put CHAT_SIEUTOC_KEY` (dán khóa) và `npx wrangler deploy` → Kiểm tra kết nối → Bật.
 - `GET /api/v1/work-report?date=YYYY-MM-DD` (từ v3.10.0): số liệu chat từng nhân viên trong ngày cho app báo cáo công việc.
+- **App Báo cáo công việc CSKH** (từ v3.11.0, thư mục `D:\APPBAOCAOCSKH`): đăng nhập một chạm từ menu, số liệu chat tự điền. Cách triển khai xem README của app đó.
 - Tài liệu API chi tiết có trong trang **Tích hợp** của app.
 
 ## Chạy trên máy (dev)

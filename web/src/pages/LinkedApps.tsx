@@ -1,37 +1,68 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { ClipboardList, Copy, KeyRound, PlugZap, Save, Wrench } from 'lucide-react'
 import { api } from '../api'
 import { Badge } from '../components'
 
-type DvktCfg = { enabled: boolean; url: string; hasKey: boolean; keyHint: string; keyCreatedAt: number | null }
+type LinkCfg = { enabled: boolean; url: string; hasKey: boolean; keyHint: string; keyCreatedAt: number | null }
+type TestResult = { ok: boolean; ms: number; chat_reachable?: boolean | null; chat_error?: string | null }
 
-/** Cài đặt › Kết nối app nội bộ: app DVKT (dịch vụ kỹ thuật) + app báo cáo công việc. */
+/** Cài đặt › Kết nối app nội bộ: app DVKT (dịch vụ kỹ thuật) + app Báo cáo công việc CSKH. */
 export default function LinkedApps() {
   return (
     <>
-      <DvktSettings />
-      <WorkReportCard />
+      <KeyedAppSettings
+        base="/report-link"
+        icon={<ClipboardList size={18} />}
+        title="App Báo cáo công việc CSKH"
+        placeholder="https://baocaocskh.sieutoc.com"
+        secretName="CHAT_LINK_KEY"
+        folder="D:\APPBAOCAOCSKH"
+        version="1.0"
+        description={
+          <>
+            Nhân viên bấm <b>Báo cáo công việc</b> trên menu là vào thẳng app báo cáo, không phải đăng nhập lại. Số liệu chat của từng người (tin đã
+            gửi, hội thoại, thời gian phản hồi, đánh giá, đơn POS lên từ chat, cảnh báo đơn "rơi" đã xử lý) tự điền vào báo cáo ngày. Nhân viên ghi
+            thêm việc đã làm, đơn chốt, khó khăn, kế hoạch; quản lý (người có quyền xem Dữ liệu) duyệt và xem tổng hợp theo tuần / tháng.
+          </>
+        }
+      />
+      <KeyedAppSettings
+        base="/dvkt"
+        icon={<Wrench size={18} />}
+        title="App Dịch vụ kỹ thuật (DVKT)"
+        placeholder="https://dvktkythuat.sieutoc.com"
+        secretName="CHAT_SIEUTOC_KEY"
+        folder="D:\APPDVKT\cloudflare"
+        version="3.20"
+        description={
+          <>
+            Đang chat với khách, khung <b>Thông tin</b> hiện vé dịch vụ kỹ thuật, đơn giao hàng / hỗ trợ kỹ thuật và phiếu bảo hành của khách (tìm
+            theo số điện thoại): giai đoạn, kỹ thuật viên phụ trách, dịch vụ đã làm. Chỉ đọc, không sửa gì bên DVKT hay Odoo. Ngược lại, ở app DVKT
+            cạnh nút gọi khách có nút <b>Nhắn</b> mở thẳng hội thoại của khách trong Chat Siêu Tốc.
+          </>
+        }
+      />
     </>
   )
 }
 
-function DvktSettings() {
-  const [cfg, setCfg] = useState<DvktCfg | null>(null)
+function KeyedAppSettings(p: { base: string; icon: ReactNode; title: string; placeholder: string; secretName: string; folder: string; version: string; description: ReactNode }) {
+  const [cfg, setCfg] = useState<LinkCfg | null>(null)
   const [url, setUrl] = useState('')
   const [newKey, setNewKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState('')
 
-  const apply = (c: DvktCfg) => {
+  const apply = (c: LinkCfg) => {
     setCfg(c)
     setUrl(c.url)
   }
   useEffect(() => {
-    api<DvktCfg>('/dvkt/config')
+    api<LinkCfg>(`${p.base}/config`)
       .then(apply)
       .catch((e) => setMsg({ ok: false, text: e.message }))
-  }, [])
+  }, [p.base])
 
   async function run(kind: string, fn: () => Promise<string>) {
     setBusy(kind)
@@ -47,18 +78,18 @@ function DvktSettings() {
 
   const save = (enabled?: boolean) =>
     run('save', async () => {
-      apply(await api<DvktCfg>('/dvkt/config', { method: 'PUT', body: { url, ...(enabled !== undefined ? { enabled } : {}) } }))
-      return enabled === undefined ? 'Đã lưu' : enabled ? 'Đã bật kết nối DVKT' : 'Đã tắt kết nối DVKT'
+      apply(await api<LinkCfg>(`${p.base}/config`, { method: 'PUT', body: { url, ...(enabled !== undefined ? { enabled } : {}) } }))
+      return enabled === undefined ? 'Đã lưu' : enabled ? 'Đã bật kết nối' : 'Đã tắt kết nối'
     })
 
   const rotate = () => {
-    if (cfg?.hasKey && !confirm('Tạo khóa mới thì khóa cũ hết hiệu lực ngay — app DVKT sẽ báo sai khóa cho tới khi đặt khóa mới vào. Tiếp tục?')) return
+    if (cfg?.hasKey && !confirm('Tạo khóa mới thì khóa cũ hết hiệu lực ngay — app kia sẽ báo sai khóa cho tới khi đặt khóa mới vào. Tiếp tục?')) return
     void run('key', async () => {
-      const r = await api<{ key: string; config: DvktCfg }>('/dvkt/key', { method: 'POST' })
+      const r = await api<{ key: string; config: LinkCfg }>(`${p.base}/key`, { method: 'POST' })
       apply(r.config)
       setNewKey(r.key)
       setCopied(false)
-      return 'Đã tạo khóa mới. Chép khóa sang app DVKT theo hướng dẫn bên dưới.'
+      return 'Đã tạo khóa mới. Chép khóa sang app kia theo hướng dẫn bên dưới.'
     })
   }
 
@@ -68,19 +99,15 @@ function DvktSettings() {
     <div className="card settings-panel stack">
       <div className="row wrap panel-head">
         <h2 className="grow">
-          <Wrench size={18} /> App Dịch vụ kỹ thuật (DVKT)
+          {p.icon} {p.title}
         </h2>
         {cfg.enabled ? <Badge tone="green">Đang bật</Badge> : <Badge tone="warning">Chưa bật</Badge>}
       </div>
-      <p className="muted">
-        Đang chat với khách, khung <b>Thông tin</b> hiện vé dịch vụ kỹ thuật, đơn giao hàng / hỗ trợ kỹ thuật và phiếu bảo hành của khách (tìm theo
-        số điện thoại): giai đoạn, kỹ thuật viên phụ trách, dịch vụ đã làm. Chỉ đọc, không sửa gì bên DVKT hay Odoo. Ngược lại, ở app DVKT cạnh nút gọi
-        khách có nút <b>Nhắn</b> mở thẳng hội thoại của khách trong Chat Siêu Tốc.
-      </p>
+      <p className="muted">{p.description}</p>
 
       <label className="field">
-        <span>Địa chỉ app DVKT</span>
-        <input name="dvkt-url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://dvktkythuat.sieutoc.com" />
+        <span>Địa chỉ app</span>
+        <input name={`${p.base.slice(1)}-url`} autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={p.placeholder} />
       </label>
 
       <div className="field">
@@ -119,11 +146,10 @@ function DvktSettings() {
           </div>
           <ol className="small steps">
             <li>
-              Mở cửa sổ lệnh ở thư mục <code>D:\APPDVKT\cloudflare</code>, chạy <code>npx wrangler secret put CHAT_SIEUTOC_KEY</code>, dán khóa vừa chép rồi
-              Enter.
+              Mở cửa sổ lệnh ở thư mục <code>{p.folder}</code>, chạy <code>npx wrangler secret put {p.secretName}</code>, dán khóa vừa chép rồi Enter.
             </li>
             <li>
-              Cập nhật app DVKT lên bản có kết nối (v3.20): <code>npx wrangler deploy</code>.
+              Cập nhật app lên bản có kết nối ({p.version}): <code>npx wrangler deploy</code>.
             </li>
             <li>
               Quay lại đây bấm <b>Kiểm tra kết nối</b>, được thì bấm <b>Bật kết nối</b>.
@@ -143,8 +169,9 @@ function DvktSettings() {
           disabled={!!busy || !cfg.hasKey}
           onClick={() =>
             run('test', async () => {
-              const r = await api<{ ok: boolean; ms: number }>('/dvkt/test', { body: { url } })
-              return `Kết nối được app DVKT (${r.ms} ms)`
+              const r = await api<TestResult>(`${p.base}/test`, { body: { url } })
+              if (r.chat_reachable === false) throw new Error(`App nhận khóa (${r.ms} ms) nhưng chưa gọi ngược được Chat Siêu Tốc: ${r.chat_error ?? 'lỗi không rõ'}`)
+              return `Kết nối được (${r.ms} ms)`
             })
           }
         >
@@ -168,25 +195,6 @@ function DvktSettings() {
           </button>
         )}
       </div>
-    </div>
-  )
-}
-
-/** App báo cáo công việc: chưa có địa chỉ / mã nguồn — hiện cách app đó lấy số liệu CSKH qua API. */
-function WorkReportCard() {
-  return (
-    <div className="card settings-panel stack">
-      <div className="row wrap panel-head">
-        <h2 className="grow">
-          <ClipboardList size={18} /> App báo cáo công việc
-        </h2>
-        <Badge tone="neutral">Chờ thông tin app</Badge>
-      </div>
-      <p className="muted">
-        App báo cáo công việc lấy số liệu chat của từng nhân viên theo ngày (số hội thoại xử lý, tin đã gửi, thời gian phản hồi, đánh giá) qua API của
-        Chat Siêu Tốc: <code>GET /api/v1/work-report?date=2026-10-15</code>, kèm khóa tạo ở mục <b>API &amp; Webhook</b>. Nhân viên khớp theo email
-        đăng nhập Odoo.
-      </p>
     </div>
   )
 }

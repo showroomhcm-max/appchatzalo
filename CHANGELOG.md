@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.11.0 — 16/10/2026
+
+**Kết nối app Báo cáo công việc CSKH** (app mới, thư mục `D:\APPBAOCAOCSKH`, Cloudflare Workers + D1)
+- Menu có mục **Báo cáo công việc** (khi đã bật kết nối): bấm là vào thẳng app báo cáo, không đăng nhập lại (vé ký HMAC, sống 2 phút, dùng 1 lần). Người xem được Dữ liệu vào app với vai trò quản lý.
+- App báo cáo tự lấy số liệu chat của từng nhân viên: tin đã gửi, hội thoại, thời gian phản hồi, % trả lời trong 5 phút, đánh giá, **đơn POS lên từ chat** (số đơn, tiền), **cảnh báo đơn "rơi"** đã xử lý / còn mở.
+- Cài đặt › Kết nối app nội bộ: mục **App Báo cáo công việc CSKH** (địa chỉ, tạo khóa, kiểm tra kết nối hai chiều, bật / tắt), dùng chung khung với mục DVKT.
+- Khóa kết nối chỉ mở các đường `/api/link/*` (số liệu báo cáo), không dùng được cho API `/api/v1`.
+- `GET /api/v1/work-report` có thêm cột `pos_orders`, `pos_total`, `alerts_resolved`, `alerts_open`.
+
 ## v3.10.0 — 16/10/2026
 
 **Kết nối app Dịch vụ kỹ thuật (DVKT ver 3)**

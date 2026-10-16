@@ -46,6 +46,8 @@ import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdo
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
+import { workReport } from "./work-report.js";
+import { publicReportLinkConfig, reportLinkConfig, rotateReportLinkKey, saveReportLinkConfig, signSso, testReportLink } from "./report-link.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
 
@@ -949,6 +951,46 @@ appRouter.post("/orders/:id/link", requirePerm("conversations.assign"), (req, re
   res.json({ ok: true });
 });
 // ───────────── Lên đơn POS trên Odoo ─────────────
+// ───────────── App Báo cáo công việc CSKH: đăng nhập một chạm + cấu hình kết nối ─────────────
+appRouter.get("/report-link/status", (_req, res) => {
+  const c = reportLinkConfig();
+  res.json({ enabled: c.enabled, url: c.enabled ? c.url : null });
+});
+appRouter.post(
+  "/report-link/sso",
+  h((req, res) => {
+    try {
+      res.json(signSso(req.user!));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.get("/report-link/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicReportLinkConfig()));
+appRouter.put(
+  "/report-link/config",
+  requirePerm("integrations.manage"),
+  h((req, res) => {
+    try {
+      res.json(saveReportLinkConfig(req.body, req.user!.id));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post("/report-link/key", requirePerm("integrations.manage"), (req, res) => res.json(rotateReportLinkKey(req.user!.id)));
+appRouter.post(
+  "/report-link/test",
+  requirePerm("integrations.manage"),
+  h(async (req, res) => {
+    try {
+      res.json(await testReportLink(req.body));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+
 // ───────────── App DVKT (dịch vụ kỹ thuật): vé / giao hàng / bảo hành của khách, chỉ đọc ─────────────
 appRouter.get("/dvkt/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicDvktConfig()));
 appRouter.put(
@@ -1634,47 +1676,11 @@ publicRouter.get("/work-report", (req, res) => {
   const from = parseDate(req.query.from ?? date);
   const to = parseDate(req.query.to ?? date, true);
   if (!from || !to || to < from) return res.status(400).json({ error: "Cần ?date=YYYY-MM-DD hoặc ?from=YYYY-MM-DD&to=YYYY-MM-DD" });
-  if (to - from > 93 * 86_400_000) return res.status(400).json({ error: "Khoảng thời gian tối đa 93 ngày" });
-  const stats = agentStats({ from, to });
-  const byAgent = new Map(stats.agents.filter((a) => a.agent_id !== null).map((a) => [a.agent_id, a]));
-  const notes = new Map(
-    all<{ user_id: number; n: number }>("SELECT user_id, COUNT(*) AS n FROM notes WHERE user_id IS NOT NULL AND created_at BETWEEN ? AND ? GROUP BY user_id", from, to).map((r) => [r.user_id, r.n]),
-  );
-  const users = all<{ id: number; username: string; display_name: string; odoo_uid: number | null; active: number }>(
-    "SELECT id, username, display_name, odoo_uid, active FROM users ORDER BY display_name",
-  );
-  const staff = users
-    .filter((u) => u.active || byAgent.has(u.id))
-    .map((u) => {
-      const a = byAgent.get(u.id);
-      return {
-        user_id: u.id,
-        email: u.username.includes("@") ? u.username : null,
-        username: u.username,
-        odoo_uid: u.odoo_uid,
-        name: u.display_name,
-        active: !!u.active,
-        messages_sent: a?.messages_sent ?? 0,
-        conversations: a?.conversations ?? 0,
-        responses: a?.responses ?? 0,
-        avg_response_sec: a?.avg_response_sec ?? null,
-        median_response_sec: a?.median_response_sec ?? null,
-        within_5min_pct: a?.within_5min_pct ?? null,
-        review_avg: a?.review_avg ?? null,
-        review_count: a?.review_count ?? 0,
-        notes: notes.get(u.id) ?? 0,
-      };
-    });
-  res.json({
-    from: new Date(from).toISOString(),
-    to: new Date(to).toISOString(),
-    customer_messages: stats.customer_messages,
-    conversations_active: stats.conversations_active,
-    waiting_reply_now: stats.waiting_reply,
-    staff,
-    // Tin gửi từ điện thoại / hệ thống (không gắn được nhân viên)
-    unattributed: stats.agents.filter((a) => a.agent_id === null).map((a) => ({ name: a.agent_name, messages_sent: a.messages_sent, conversations: a.conversations })),
-  });
+  try {
+    res.json(workReport(from, to));
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
 publicRouter.get("/export", sendExport);
 
