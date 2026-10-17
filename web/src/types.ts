@@ -43,6 +43,10 @@ export type Conversation = {
   id: string
   channel_id: number
   channel_name: string | null
+  /** monitor = Zalo nhân viên đang giám sát (chỉ xem nếu không phải người giữ máy) */
+  channel_mode?: 'shared' | 'monitor' | null
+  /** Nhân viên giữ SĐT / Zalo của kênh (Zalo nhân viên) */
+  holder_name?: string | null
   thread_id: string
   department_id: number | null
   department_name: string | null

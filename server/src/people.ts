@@ -3,7 +3,7 @@ import { bus } from "./bus.js";
 import { conversationKey, ensureConversation, getConversation, updateConversationProfile } from "./store.js";
 import { zalo, type ZaloPerson } from "./zalo.js";
 import { HttpError } from "./conversations.js";
-import { canSeeConversation, canUseChannel, conversationFilter, type Scope } from "./access.js";
+import { canSeeConversation, canUseChannel, conversationFilter, type Scope, isOthersMonitorChannel } from "./access.js";
 import { fold, likePattern } from "./text.js";
 
 /** "0909 123 456", "+84909123456", "84909123456" → "0909123456". Không phải số điện thoại → null. */
@@ -48,14 +48,16 @@ function channelName(id: number) {
 }
 
 /** Kênh dùng để tìm bạn bè / tra số: kênh được chọn, hoặc kênh đầu tiên đang kết nối mà người này dùng được. */
-export function pickChannel(access: Scope, requested?: number) {
+export function pickChannel(access: Scope, requested?: number, userId: number | null = null) {
+  // Zalo nhân viên đang giám sát chỉ người giữ máy được dùng (tra số, mở chat)
+  const othersMonitor = (id: number) => isOthersMonitorChannel(id, userId ?? 0);
   if (requested) {
-    if (!canUseChannel(access, requested)) throw new HttpError(403, "Bạn không có quyền dùng kênh này");
+    if (!canUseChannel(access, requested) || othersMonitor(requested)) throw new HttpError(403, "Bạn không có quyền dùng kênh này");
     return get<{ platform: string }>("SELECT platform FROM channels WHERE id = ?", requested)?.platform === "zalo" ? requested : null;
   }
   // Tìm bạn bè / tra số điện thoại chỉ làm được qua kênh Zalo
   const ids = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND platform = 'zalo' ORDER BY id").map((r) => r.id);
-  const usable = ids.filter((id) => canUseChannel(access, id));
+  const usable = ids.filter((id) => canUseChannel(access, id) && !othersMonitor(id));
   return usable.find((id) => zalo.session(id).connected) ?? usable[0] ?? null;
 }
 
@@ -63,7 +65,7 @@ export function pickChannel(access: Scope, requested?: number) {
  * Tìm "Liên hệ" như ô tìm kiếm của Zalo: hội thoại đã có, bạn bè Zalo, và tra số điện thoại
  * (tự động khi gõ đủ số di động 10 số, có cache để không tốn lượt tra).
  */
-export async function searchContacts(rawQuery: string, opts: { access: Scope; channelId?: number }) {
+export async function searchContacts(rawQuery: string, opts: { access: Scope; channelId?: number; userId?: number | null }) {
   const q = rawQuery.trim();
   const empty = { contacts: [] as ContactResult[], phone_lookup: false, phone_error: null as string | null, channel_id: null };
   if (!q) return empty;
@@ -100,7 +102,7 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
   }));
   let phoneError: string | null = null;
 
-  const channelId = pickChannel(opts.access, opts.channelId);
+  const channelId = pickChannel(opts.access, opts.channelId, opts.userId ?? null);
   if (channelId && zalo.session(channelId).connected) {
     const seen = new Set(contacts.filter((c) => c.channel_id === channelId).map((c) => c.uid));
     // Tra số khi đã gõ đủ số di động Việt Nam (10 số bắt đầu bằng 0).
@@ -241,7 +243,7 @@ export function openConversationWith(
 ) {
   const uid = String(person.uid ?? "").trim();
   if (!/^\d{5,25}$/.test(uid)) throw new HttpError(400, "ID người dùng Zalo không hợp lệ");
-  const channelId = pickChannel(access, person.channel_id ? Number(person.channel_id) : undefined);
+  const channelId = pickChannel(access, person.channel_id ? Number(person.channel_id) : undefined, byUserId);
   if (!channelId) throw new HttpError(400, "Chưa có kênh Zalo nào để nhắn tin");
 
   const { id, created } = ensureConversation(channelId, uid, person.is_group ? 1 : 0, { name: person.name ?? null, avatar: person.avatar ?? null });

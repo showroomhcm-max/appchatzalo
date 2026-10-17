@@ -43,6 +43,7 @@ import TagPicker from './TagPicker'
 import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
 import DvktPanel from './dvkt-panel'
+import { AiPanel } from './monitor-ai'
 import { EmojiPicker, GroupMembers, InChatSearch, Lightbox, isImageMessage, loadMembers, receiptLabel, type GroupMember } from './chat-extras'
 import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
@@ -87,6 +88,10 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
   // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
   const [showTagFilter, setShowTagFilter] = useState(() => !document.documentElement.classList.contains('narrow'))
   const [q, setQ] = useState('')
+  // Zalo nhân viên mà người này được xem (không giữ máy)
+  const canWatch = can(user, 'monitor.view')
+  const watchKey = allChannels.filter((c) => c.mode === 'monitor' && c.holder_id !== user.id).map((c) => c.id).join(',')
+  const watchIds = useMemo(() => new Set(watchKey ? watchKey.split(',').map(Number) : []), [watchKey])
   const [list, setList] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [hasMore, setHasMore] = useState(false)
@@ -135,8 +140,10 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
       if (status === 'deleted') params.set('deleted', '1')
       else if (status !== 'all' && status !== 'active') params.set('status', status)
       if (channelFilter) params.set('channelId', channelFilter)
-      // Chỉ các kênh đang tick chọn ở trang Kênh Chat
+      // Chỉ các kênh đang tick chọn ở ô chọn kênh (góc trên)
       if (workingChannelIds) params.set('channelIds', workingChannelIds.join(','))
+      // Zalo nhân viên (giám sát): hiện cùng hộp thư khi chọn "tất cả" hoặc có tick kênh đó
+      if (canWatch && (!workingChannelIds || workingChannelIds.some((id) => watchIds.has(id)))) params.set('includeMonitor', '1')
       if (deptFilter) params.set('departmentId', deptFilter)
       if (tagFilters.length) {
         params.set('tags', tagFilters.join(','))
@@ -151,7 +158,7 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
       setList((prev) => (before ? [...prev, ...filtered.filter((r) => !prev.some((p) => p.id === r.id))] : filtered))
       setLoading(false)
     },
-    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, workingChannelIds, alertOnly, typeFilter],
+    [scope, status, channelFilter, deptFilter, tagFilters, tagMode, workingChannelIds, alertOnly, typeFilter, canWatch, watchIds],
   )
 
   useEffect(() => {
@@ -901,7 +908,7 @@ function ConvItem({
           {c.unread_count > 0 && <span className="unread-count">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
         </div>
         <div className="conv-meta">
-          {c.assigned_name ? (
+          {c.channel_mode === 'monitor' ? null : c.assigned_name ? (
             <Badge tone={c.assigned_to === user.id ? 'green' : 'neutral'}>
               <UserRound size={12} /> {c.assigned_to === user.id ? 'Bạn' : c.assigned_name}
             </Badge>
@@ -910,6 +917,11 @@ function ConvItem({
           )}
           {waiting && <Badge tone="info">Chờ trả lời</Badge>}
           {c.kind === 'comment' && <Badge tone="lime">Bình luận</Badge>}
+          {c.channel_mode === 'monitor' && (
+            <Badge tone="warning">
+              <Eye size={12} /> Zalo NV{c.holder_name ? ` · ${c.holder_name}` : ''}
+            </Badge>
+          )}
           {convAlerts.map((a) => (
             <Badge key={a.id} tone="danger">
               <AlertTriangle size={12} /> {a.label}
@@ -957,6 +969,8 @@ function ChatView({
   const { user, users, presence, socket, departments, channels } = useApp()
   const [conv, setConv] = useState<Conversation | null>(initial)
   const caps = channels.find((ch) => ch.id === conv?.channel_id)?.capabilities ?? PLATFORM_CAPS[platformOf(conv?.platform)]
+  // Zalo nhân viên đang giám sát, người xem không giữ máy → chỉ xem
+  const watchOnly = conv?.channel_mode === 'monitor' && channels.find((ch) => ch.id === conv?.channel_id)?.holder_id !== user.id
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [hasOlder, setHasOlder] = useState(false)
@@ -1213,6 +1227,9 @@ function ChatView({
             )}
           </div>
           <div className="chat-actions">
+            {/* Zalo nhân viên (chỉ xem): không nhận việc / chuyển bộ phận / đổi trạng thái */}
+            {!watchOnly && (
+              <>
             {!conv?.assigned_to ? (
               <button className="btn primary sm" onClick={() => patch({ assigned_to: user.id })}>
                 <Hand size={16} /> Nhận hội thoại
@@ -1267,6 +1284,8 @@ function ChatView({
                 <Check size={16} /> Xong
               </button>
             )}
+              </>
+            )}
             <button className={`icon-btn ${searchOpen ? 'on' : ''}`} onClick={() => setSearchOpen((v) => !v)} aria-label="Tìm trong hội thoại" title="Tìm trong hội thoại">
               <Search size={18} />
             </button>
@@ -1280,6 +1299,14 @@ function ChatView({
           <InChatSearch
             convId={convId}
             onClose={() => setSearchOpen(false)}
+            onJump={(id) => {
+              window.location.hash = `#/inbox/${encodeURIComponent(convId)}/${id}`
+            }}
+          />
+        )}
+        {watchOnly && conv && (
+          <AiPanel
+            convId={conv.id}
             onJump={(id) => {
               window.location.hash = `#/inbox/${encodeURIComponent(convId)}/${id}`
             }}
@@ -1336,9 +1363,10 @@ function ChatView({
                   grouped={!!grouped}
                   isGroup={conv?.type === 1}
                   flash={m.id === flashId}
-                  canUndo={can(user, 'messages.undo_any') || m.agent_id === user.id}
+                  canUndo={!watchOnly && (can(user, 'messages.undo_any') || m.agent_id === user.id)}
                   caps={caps}
-                  canReply={caps.quote || conv?.kind === 'comment'}
+                  readOnly={watchOnly}
+                  canReply={!watchOnly && (caps.quote || conv?.kind === 'comment')}
                   extraActions={conv?.kind === 'comment' && m.direction === 'in' ? COMMENT_ACTIONS : undefined}
                   onOpenImage={(img) => setLightbox(images.findIndex((x) => x.id === img.id))}
                   receipt={showReceipts && m.id === lastOutId ? receiptLabel(conv, m) : null}
@@ -1384,15 +1412,27 @@ function ChatView({
         )}
         {toast && <div className="toast">{toast}</div>}
         {lightbox !== null && lightbox >= 0 && <Lightbox images={images} index={lightbox} onClose={() => setLightbox(null)} />}
-        <Composer
-          convId={convId}
-          channelId={conv?.channel_id ?? null}
-          conv={conv}
-          dropped={dropped}
-          onDroppedUsed={() => setDropped(null)}
-          replyTo={replyTo}
-          onClearReply={() => setReplyTo(null)}
-        />
+        {watchOnly ? (
+          <div className="watch-only-bar">
+            <Eye size={16} />
+            <span className="grow">
+              Zalo nhân viên{conv?.holder_name ? ` ${conv.holder_name}` : ''} — chỉ xem, không gửi tin thay nhân viên. Mỗi lần mở xem được ghi nhật ký.
+            </span>
+            <a className="btn ghost sm" href={`#/monitor/${conv?.channel_id}/${encodeURIComponent(convId)}`}>
+              Mở trong Giám sát
+            </a>
+          </div>
+        ) : (
+          <Composer
+            convId={convId}
+            channelId={conv?.channel_id ?? null}
+            conv={conv}
+            dropped={dropped}
+            onDroppedUsed={() => setDropped(null)}
+            replyTo={replyTo}
+            onClearReply={() => setReplyTo(null)}
+          />
+        )}
       </section>
       {showInfo && conv && <InfoPanel key={notesVersion} conv={conv} onPatch={patch} onClose={toggleInfo} />}
       {forwardMsg && conv && <ForwardModal message={forwardMsg} from={conv} onClose={() => setForwardMsg(null)} />}
@@ -1924,7 +1964,7 @@ function InfoPanel({
           <span className="grow">
             <ShoppingBag size={14} /> Đơn hàng
           </span>
-          {allowed('orders.create') && (
+          {allowed('orders.create') && conv.channel_mode !== 'monitor' && (
             <button className="btn primary sm" onClick={() => setPosOpen(true)}>
               Lên đơn POS
             </button>

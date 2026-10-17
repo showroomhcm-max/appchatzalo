@@ -10,8 +10,9 @@ import { fold } from './util'
  * Hộp thư chỉ hiện hội thoại của các kênh đã chọn.
  */
 export default function ChannelPicker() {
-  const { chatChannels, workingChannelIds, setWorkingChannels, zaloStatuses } = useApp()
-  const list = chatChannels.filter((c) => c.active)
+  const { viewChannels, workingChannelIds, setWorkingChannels, zaloStatuses, user } = useApp()
+  const list = viewChannels.filter((c) => c.active || c.mode === 'monitor')
+  const isWatch = (c: { mode?: string; holder_id?: number | null }) => c.mode === 'monitor' && c.holder_id !== user.id
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<number[]>([])
   const [q, setQ] = useState('')
@@ -89,11 +90,12 @@ export default function ChannelPicker() {
             Tất cả kênh
           </label>
           <div className="picker-list">
-            {PLATFORM_ORDER.filter((p) => shown.some((c) => platformOf(c.platform) === p)).map((p) => (
-              <div key={p}>
-                <div className="board-group-title">{PLATFORM_LABEL[p]}</div>
-                {shown
-                  .filter((c) => platformOf(c.platform) === p)
+            {[...PLATFORM_ORDER.map((p) => ({ key: p as string, title: PLATFORM_LABEL[p], items: shown.filter((c) => !isWatch(c) && platformOf(c.platform) === p) })), { key: 'watch', title: 'Zalo nhân viên (chỉ xem)', items: shown.filter(isWatch) }]
+              .filter((g) => g.items.length)
+              .map((g) => (
+              <div key={g.key}>
+                <div className="board-group-title">{g.title}</div>
+                {g.items
                   .map((c) => {
                     const st = zaloStatuses.find((s) => s.channelId === c.id) ?? c.status
                     return (

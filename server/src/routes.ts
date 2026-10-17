@@ -32,7 +32,7 @@ import {
   updateConversation,
 } from "./conversations.js";
 import { setReaction } from "./store.js";
-import { agentStats, buildConversations, toCsv, toJsonl, toTxt, type ExportFilter } from "./analytics.js";
+import { agentStats, buildConversations, toCsv, toJsonl, toTxt, toXlsx, type ExportFilter } from "./analytics.js";
 import { WEBHOOK_EVENTS, dispatch } from "./webhooks.js";
 import { bus } from "./bus.js";
 import { openConversationWith, searchContacts, searchMessages } from "./people.js";
@@ -43,7 +43,7 @@ import { createMonitorAccount, monitorAccounts, monitorConfig, monitorConversati
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
-import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
+import { canSeeConversation, canUseChannel, departmentItemFilter, isOthersMonitorChannel, scopeOf, type Scope } from "./access.js";
 import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
@@ -80,11 +80,14 @@ function exportFilter(q: Request["query"]): ExportFilter {
     channelId: num(q.channelId),
     departmentId: num(q.departmentId),
     textOnly: q.textOnly === "1" || q.textOnly === "true",
+    type: q.type === "0" || q.type === "1" ? Number(q.type) : undefined,
   };
 }
 
-function sendExport(req: Request, res: Response) {
+async function sendExport(req: Request, res: Response) {
   const filter = exportFilter(req.query);
+  // Zalo nhân viên (giám sát): chỉ người có quyền Giám sát xuất được, và phải chọn gồm; API key: gồm trừ khi includeMonitor=0
+  filter.excludeMonitor = req.user ? !(req.query.includeMonitor === "1" && can(req.user, "monitor.view")) : req.query.includeMonitor === "0";
   const format = String(req.query.format ?? "json");
   const convs = buildConversations(filter);
   const stamp = new Date().toISOString().slice(0, 10);
@@ -97,6 +100,13 @@ function sendExport(req: Request, res: Response) {
   if (format === "csv") return attach("csv", "text/csv", toCsv(convs));
   if (format === "txt") return attach("txt", "text/plain", toTxt(convs));
   if (format === "jsonl") return attach("jsonl", "application/x-ndjson", toJsonl(convs));
+  if (format === "xlsx") {
+    const wb = await toXlsx(convs);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="tong-hop-khach-hang-nhom-${stamp}.xlsx"`);
+    await wb.xlsx.write(res);
+    return res.end();
+  }
   return attach("json", "application/json", JSON.stringify({ filter, count: convs.length, conversations: convs }, null, 2));
 }
 
@@ -294,7 +304,8 @@ appRouter.put(
     let ids: number[] | null = null;
     if (Array.isArray(raw)) {
       ids = [...new Set(raw.map(Number).filter((n) => n > 0))];
-      const bad = ids.filter((id) => !canUseChannel(scope, id));
+      const monitorIds = can(req.user, "monitor.view") ? new Set(all<{ id: number }>("SELECT id FROM channels WHERE mode = 'monitor'").map((r) => r.id)) : new Set<number>();
+      const bad = ids.filter((id) => !canUseChannel(scope, id) && !monitorIds.has(id));
       if (bad.length) throw new HttpError(403, "Bạn không có quyền vào kênh đã chọn");
     }
     run("UPDATE users SET working_channels = ? WHERE id = ?", ids && ids.length ? JSON.stringify(ids) : null, req.user!.id);
@@ -517,7 +528,7 @@ function visibleConversation(req: Request, id: string) {
 appRouter.get(
   "/search/contacts",
   h(async (req, res) =>
-    res.json(await searchContacts(String(req.query.q ?? ""), { access: scopeOf(req.user!), channelId: num(req.query.channelId) })),
+    res.json(await searchContacts(String(req.query.q ?? ""), { access: scopeOf(req.user!), channelId: num(req.query.channelId), userId: req.user!.id })),
   ),
 );
 appRouter.get("/search/messages", (req, res) =>
@@ -561,6 +572,7 @@ appRouter.get("/conversations", (req, res) =>
       alert: req.query.alert === "1",
       deleted: req.query.deleted === "1" && can(req.user, "conversations.delete"),
       pinnedBy: req.query.pinned === "1" ? req.user!.id : undefined,
+      includeMonitor: req.query.includeMonitor === "1" && can(req.user, "monitor.view"),
     }),
   ),
 );
@@ -572,6 +584,7 @@ appRouter.get("/conversations-pinned", (req, res) =>
 // ───────────── Tính năng riêng từng nền tảng ─────────────
 function zaloChannelFor(req: Request, channelId: number) {
   if (!canUseChannel(scopeOf(req.user!), channelId)) throw new HttpError(403, "Bạn không có quyền dùng kênh này");
+  if (isOthersMonitorChannel(channelId, req.user!.id)) throw new HttpError(403, "Zalo nhân viên đang giám sát: chỉ xem, không thao tác thay nhân viên");
   try {
     return zalo.zaloSession(channelId);
   } catch {
@@ -587,7 +600,7 @@ appRouter.get(
     const scope = scopeOf(req.user!);
     const out: any[] = [];
     for (const ch of all<{ id: number; name: string }>("SELECT id, name FROM channels WHERE platform = 'zalo' AND active = 1 AND mode = 'shared'")) {
-      if (!canUseChannel(scope, ch.id)) continue;
+      if (!canUseChannel(scope, ch.id) || isOthersMonitorChannel(ch.id, req.user!.id)) continue;
       const s = zalo.zaloSession(ch.id);
       if (!s.connected) continue;
       try {
@@ -1283,7 +1296,11 @@ appRouter.post(
 appRouter.get(
   "/conversations/:id/messages",
   h((req, res) => {
-    visibleConversation(req, req.params.id);
+    const conv = visibleConversation(req, req.params.id) as any;
+    if (!req.query.before && conv?.channel_mode === "monitor") {
+      const holder = get<{ holder_id: number | null }>("SELECT holder_id FROM channel_assets WHERE channel_id = ?", conv.channel_id)?.holder_id;
+      if (holder !== req.user!.id) logEvent(conv.id, req.user!.id, "monitor.viewed", { channel: conv.channel_id, from: "inbox" });
+    }
     res.json(
       listMessages(req.params.id, { before: num(req.query.before), limit: num(req.query.limit), around: num(req.query.around) }),
     );
@@ -1492,7 +1509,7 @@ appRouter.get("/reports/monitor", requirePerm("monitor.view"), (req, res) => {
   const r = dashRange(req.query);
   res.json(monitorOverview(r.from, r.to, num(req.query.channelId)));
 });
-appRouter.get("/export", requirePerm("data.export"), (req, res) => sendExport(req, res));
+appRouter.get("/export", requirePerm("data.export"), h((req, res) => sendExport(req, res)));
 
 // Tích hợp: API key + webhook (chỉ admin)
 appRouter.get("/api-keys", requirePerm("integrations.manage"), (_req, res) =>
@@ -1789,7 +1806,7 @@ publicRouter.get("/work-report", (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
-publicRouter.get("/export", sendExport);
+publicRouter.get("/export", h((req, res) => sendExport(req, res)));
 
 export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
   const status = err instanceof HttpError ? err.status : err?.code === "LIMIT_FILE_SIZE" ? 413 : 500;

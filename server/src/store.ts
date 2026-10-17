@@ -109,8 +109,9 @@ function parseConv(row: Row | undefined): Conversation | undefined {
 }
 
 const CONV_SELECT = `
-  SELECT c.*, u.display_name AS assigned_name, ch.name AS channel_name, ch.platform AS platform,
-         d.name AS department_name, d.color AS department_color
+  SELECT c.*, u.display_name AS assigned_name, ch.name AS channel_name, ch.platform AS platform, ch.mode AS channel_mode,
+         d.name AS department_name, d.color AS department_color,
+         (SELECT hu.display_name FROM channel_assets ca JOIN users hu ON hu.id = ca.holder_id WHERE ca.channel_id = c.channel_id) AS holder_name
   FROM conversations c
   LEFT JOIN users u ON u.id = c.assigned_to
   LEFT JOIN channels ch ON ch.id = c.channel_id

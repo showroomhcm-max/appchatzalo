@@ -7,6 +7,19 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.15.0 — 17/10/2026
+
+**Zalo nhân viên hiện ngay trong Hội thoại**
+- Người có quyền Giám sát thấy hội thoại Zalo nhân viên trong hộp thư Hội thoại như một kênh, xem cùng lúc với kênh CSKH. Ô chọn kênh ở góc trên có nhóm **Zalo nhân viên (chỉ xem)**, chọn nhiều kênh cùng lúc (vd: chỉ Zalo SR + Zalo của 2 nhân viên).
+- Hội thoại Zalo nhân viên có nhãn **Zalo NV · tên nhân viên**; mở ra là **chỉ xem**: không ô soạn tin, không nhận việc / đổi trạng thái / lên đơn, có khung **Phân tích AI** và nút mở trong trang Giám sát. Mỗi lần mở xem được ghi nhật ký như trang Giám sát.
+- Chặn dùng Zalo của nhân viên để tra số, kết bạn, xem bạn bè, tạo nhóm… nếu không phải người giữ máy (kể cả Super Admin).
+
+**Xuất tin nhắn theo khách hàng và nhóm chat**
+- Mọi file xuất có trường **Loại chat: Khách 1-1 / Nhóm**, cùng kênh, loại kênh (CSKH chung / Zalo nhân viên), SĐT khách, **người gửi** (tên thành viên trong nhóm).
+- Lọc **Chỉ khách chat 1-1 / Chỉ nhóm chat**; TXT chia 2 phần **Khách chat 1-1** và **Nhóm chat** (nhóm có danh sách thành viên đã nhắn).
+- File mới **Tổng hợp theo khách hàng & nhóm (Excel)**: trang Khách 1-1 (mỗi khách một dòng: SĐT, mã KH, kênh, số tin khách / shop, lần đầu / cuối, nhân viên, trạng thái, tag, đánh giá, tóm tắt AI), trang Nhóm chat (số người nhắn, thành viên), trang Tin nhắn có cột Loại chat để lọc.
+- Ô **Gồm Zalo nhân viên (giám sát)** khi xuất. Sửa lỗi cũ: người chỉ có quyền Xuất dữ liệu trước đây xuất được cả tin Zalo nhân viên — nay chỉ người có quyền Giám sát mới xuất được.
+
 ## v3.14.0 — 17/10/2026
 
 **Mục Báo cáo (thay cho Dữ liệu): biểu đồ + báo cáo ở một chỗ**

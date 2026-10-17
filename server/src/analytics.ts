@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { all, type Row } from "./db.js";
 
 export type ExportFilter = {
@@ -9,6 +10,10 @@ export type ExportFilter = {
   departmentId?: number;
   /** Bỏ qua tin hệ thống/sticker khi xuất cho training. */
   textOnly?: boolean;
+  /** 0 = khách chat 1-1, 1 = nhóm chat */
+  type?: number;
+  /** Bỏ Zalo nhân viên đang giám sát (người xuất không có quyền Giám sát) */
+  excludeMonitor?: boolean;
 };
 
 type Msg = {
@@ -53,6 +58,11 @@ function loadMessages(f: ExportFilter): Msg[] {
     where.push("m.conversation_id IN (SELECT id FROM conversations WHERE department_id = ?)");
     params.push(f.departmentId);
   }
+  if (f.type === 0 || f.type === 1) {
+    where.push("m.conversation_id IN (SELECT id FROM conversations WHERE type = ?)");
+    params.push(f.type);
+  }
+  if (f.excludeMonitor) where.push("m.conversation_id NOT IN (SELECT c.id FROM conversations c JOIN channels ch ON ch.id = c.channel_id WHERE ch.mode = 'monitor')");
   if (f.agentId) {
     // Lấy trọn các hội thoại mà nhân viên này có tham gia trả lời trong khoảng thời gian.
     const r = rangeWhere(f, "m2");
@@ -92,8 +102,13 @@ export function buildConversations(f: ExportFilter) {
   const placeholders = convIds.map(() => "?").join(",");
   const convs = new Map(
     all(
-      `SELECT c.id, c.name, c.type, c.status, c.tags, c.external_ref, u.display_name AS assigned_name
-       FROM conversations c LEFT JOIN users u ON u.id = c.assigned_to WHERE c.id IN (${placeholders})`,
+      `SELECT c.id, c.name, c.type, c.status, c.tags, c.external_ref, c.phone, u.display_name AS assigned_name,
+              ch.name AS channel_name, ch.platform, ch.mode AS channel_mode, hu.display_name AS holder_name,
+              x.summary AS ai_summary, x.quality_score AS ai_score, x.risk AS ai_risk, x.outcome AS ai_outcome
+       FROM conversations c LEFT JOIN users u ON u.id = c.assigned_to LEFT JOIN channels ch ON ch.id = c.channel_id
+       LEFT JOIN channel_assets ca ON ca.channel_id = c.channel_id LEFT JOIN users hu ON hu.id = ca.holder_id
+       LEFT JOIN ai_conv_analysis x ON x.conversation_id = c.id
+       WHERE c.id IN (${placeholders})`,
       ...convIds,
     ).map((c) => [c.id, c]),
   );
@@ -113,11 +128,25 @@ export function buildConversations(f: ExportFilter) {
     const c = convs.get(id) as Row;
     const list = msgs.filter((m) => m.conversation_id === id);
     const customerName = c?.name ?? id;
+    const isGroup = c?.type === 1;
     return {
       conversation_id: id,
       customer_name: customerName,
       external_ref: c?.external_ref ?? null,
-      is_group: c?.type === 1,
+      is_group: isGroup,
+      /** "Khách 1-1" hoặc "Nhóm" */
+      chat_type: isGroup ? "Nhóm" : "Khách 1-1",
+      customer_phone: c?.phone ?? null,
+      channel: c?.channel_name ?? null,
+      platform: c?.platform ?? null,
+      /** "CSKH chung" hoặc "Zalo nhân viên" (giám sát) */
+      channel_kind: c?.channel_mode === "monitor" ? "Zalo nhân viên" : "CSKH chung",
+      holder: c?.channel_mode === "monitor" ? c?.holder_name ?? null : null,
+      msg_in: list.filter((m) => m.direction === "in").length,
+      msg_out: list.filter((m) => m.direction === "out").length,
+      /** Nhóm: các thành viên (phía khách) đã nhắn */
+      participants: isGroup ? [...new Set(list.filter((m) => m.direction === "in" && m.sender_name).map((m) => m.sender_name as string))] : [],
+      ai: c?.ai_summary ? { summary: c.ai_summary, score: c.ai_score, risk: c.ai_risk, outcome: c.ai_outcome } : null,
       status: c?.status,
       tags: JSON.parse(c?.tags ?? "[]"),
       assigned_to: c?.assigned_name ?? null,
@@ -127,7 +156,9 @@ export function buildConversations(f: ExportFilter) {
       messages: list.map((m) => ({
         time: new Date(m.ts).toISOString(),
         role: speaker(m),
-        speaker: speakerLabel(m, customerName),
+        direction: m.direction,
+        sender: m.direction === "in" ? m.sender_name || customerName : m.agent_name || (c?.channel_mode === "monitor" ? c?.holder_name : null) || "Shop",
+        speaker: isGroup && m.direction === "in" ? `Thành viên (${m.sender_name || "?"})` : speakerLabel(m, customerName),
         agent: m.agent_name,
         type: m.msg_type,
         text: m.text ?? "",
@@ -153,12 +184,12 @@ function csvCell(v: unknown) {
 }
 
 export function toCsv(convs: ReturnType<typeof buildConversations>) {
-  const header = ["conversation_id", "khach_hang", "thoi_gian", "vai_tro", "nguoi_noi", "nhan_vien", "loai", "noi_dung"];
+  const header = ["conversation_id", "loai_chat", "khach_hang_hoac_nhom", "sdt_khach", "kenh", "loai_kenh", "thoi_gian", "vai_tro", "nguoi_gui", "nguoi_noi", "nhan_vien", "loai_tin", "noi_dung"];
   const lines = [header.join(",")];
   for (const c of convs) {
     for (const m of c.messages) {
       lines.push(
-        [c.conversation_id, c.customer_name, vnTime(m.time), m.role, m.speaker, m.agent ?? "", m.type ?? "", m.text]
+        [c.conversation_id, c.chat_type, c.customer_name, c.customer_phone ?? "", c.channel ?? "", c.channel_kind, vnTime(m.time), m.role, m.sender, m.speaker, m.agent ?? "", m.type ?? "", m.text]
           .map(csvCell)
           .join(","),
       );
@@ -169,11 +200,12 @@ export function toCsv(convs: ReturnType<typeof buildConversations>) {
 }
 
 export function toTxt(convs: ReturnType<typeof buildConversations>) {
-  return convs
-    .map((c) => {
+  const block = (c: ReturnType<typeof buildConversations>[number]) => {
       const head = [
-        `=== Hội thoại với ${c.customer_name} (${c.conversation_id}) ===`,
-        `Nhân viên tham gia: ${c.agents.join(", ") || "—"} | Trạng thái: ${c.status} | Nhãn: ${c.tags.join(", ") || "—"}`,
+        `=== ${c.is_group ? "Nhóm" : "Khách"}: ${c.customer_name}${c.customer_phone ? ` · ${c.customer_phone}` : ""} (${c.conversation_id}) ===`,
+        `Loại: ${c.chat_type}${c.is_group ? ` (${c.participants.length} thành viên đã nhắn: ${c.participants.join(", ") || "—"})` : ""} | Kênh: ${c.channel ?? "—"} (${c.channel_kind}${c.holder ? ` · ${c.holder}` : ""})`,
+        `Tin khách: ${c.msg_in} | Tin shop: ${c.msg_out} | Nhân viên tham gia: ${c.agents.join(", ") || "—"} | Trạng thái: ${c.status} | Nhãn: ${c.tags.join(", ") || "—"}`,
+        ...(c.ai ? [`AI: ${c.ai.summary}${c.ai.score ? ` (điểm ${c.ai.score}/10)` : ""}`] : []),
         `Thời gian: ${vnTime(c.started_at)} → ${vnTime(c.ended_at)} (giờ VN)`,
       ];
       const body = c.messages.map((m) => `[${vnTime(m.time)}] ${m.speaker}: ${m.text}`);
@@ -182,8 +214,13 @@ export function toTxt(convs: ReturnType<typeof buildConversations>) {
         ...c.reviews.map((r) => `  [Đánh giá] ${r.score}/5 cho ${r.agent ?? "—"} bởi ${r.reviewer}: ${r.comment ?? ""}`),
       ];
       return [...head, "", ...body, ...(extra.length ? ["", ...extra] : [])].join("\n");
-    })
-    .join("\n\n");
+  };
+  const singles = convs.filter((c) => !c.is_group);
+  const groups = convs.filter((c) => c.is_group);
+  const parts: string[] = [];
+  if (singles.length) parts.push(`################ KHÁCH CHAT 1-1 (${singles.length}) ################`, ...singles.map(block));
+  if (groups.length) parts.push(`################ NHÓM CHAT (${groups.length}) ################`, ...groups.map(block));
+  return parts.join("\n\n");
 }
 
 /**
@@ -202,6 +239,8 @@ export function toJsonl(convs: ReturnType<typeof buildConversations>) {
       }
       return JSON.stringify({
         conversation_id: c.conversation_id,
+        chat_type: c.chat_type,
+        is_group: c.is_group,
         agents: c.agents,
         tags: c.tags,
         review_score: c.reviews.length ? c.reviews[c.reviews.length - 1].score : null,
@@ -296,4 +335,81 @@ export function agentStats(f: ExportFilter) {
     waiting_reply: waiting,
     agents,
   };
+}
+
+
+/**
+ * Excel "Tổng hợp theo khách hàng & nhóm chat": trang Khách 1-1 (mỗi khách một dòng), trang Nhóm chat (mỗi nhóm một dòng),
+ * trang Tin nhắn (mỗi tin một dòng, có cột Loại chat để lọc).
+ */
+export async function toXlsx(convs: ReturnType<typeof buildConversations>) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Chat Siêu Tốc";
+  const add = (name: string, cols: { header: string; key: string; width: number; wrap?: boolean }[], rows: Record<string, unknown>[]) => {
+    const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = cols.map(({ header, key, width }) => ({ header, key, width }));
+    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0A804A" } };
+    ws.getRow(1).alignment = { vertical: "middle", wrapText: true };
+    rows.forEach((r) => ws.addRow(r));
+    cols.forEach((c) => (ws.getColumn(c.key).alignment = { vertical: "top", wrapText: !!c.wrap }));
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+  };
+  const common = (c: ReturnType<typeof buildConversations>[number]) => ({
+    channel: c.channel ?? "",
+    kind: c.channel_kind + (c.holder ? ` · ${c.holder}` : ""),
+    msg_in: c.msg_in,
+    msg_out: c.msg_out,
+    first: vnTime(c.started_at),
+    last: vnTime(c.ended_at),
+    agents: c.agents.join(", "),
+    status: c.status ?? "",
+    tags: c.tags.join(", "),
+    review: c.reviews.length ? `${c.reviews[c.reviews.length - 1].score}/5` : "",
+    ai: c.ai ? `${c.ai.summary}${c.ai.score ? ` (điểm ${c.ai.score}/10)` : ""}` : "",
+    id: c.conversation_id,
+  });
+  const tail = [
+    { header: "Kênh", key: "channel", width: 18 },
+    { header: "Loại kênh", key: "kind", width: 22 },
+    { header: "Tin khách", key: "msg_in", width: 10 },
+    { header: "Tin shop", key: "msg_out", width: 10 },
+    { header: "Lần đầu (giờ VN)", key: "first", width: 19 },
+    { header: "Lần cuối (giờ VN)", key: "last", width: 19 },
+    { header: "Nhân viên tham gia", key: "agents", width: 24, wrap: true },
+    { header: "Trạng thái", key: "status", width: 11 },
+    { header: "Tag", key: "tags", width: 22, wrap: true },
+    { header: "Đánh giá", key: "review", width: 9 },
+    { header: "Tóm tắt AI", key: "ai", width: 50, wrap: true },
+    { header: "Mã hội thoại", key: "id", width: 22 },
+  ];
+  const singles = convs.filter((c) => !c.is_group).sort((a, b) => (a.ended_at < b.ended_at ? 1 : -1));
+  const groups = convs.filter((c) => c.is_group).sort((a, b) => (a.ended_at < b.ended_at ? 1 : -1));
+  add(
+    "Khách 1-1",
+    [{ header: "Khách hàng", key: "name", width: 26 }, { header: "SĐT", key: "phone", width: 13 }, { header: "Mã KH", key: "ref", width: 12 }, ...tail],
+    singles.map((c) => ({ name: c.customer_name, phone: c.customer_phone ?? "", ref: c.external_ref ?? "", ...common(c) })),
+  );
+  add(
+    "Nhóm chat",
+    [{ header: "Nhóm", key: "name", width: 28 }, { header: "Số người nhắn", key: "count", width: 12 }, { header: "Thành viên đã nhắn", key: "members", width: 40, wrap: true }, ...tail],
+    groups.map((c) => ({ name: c.customer_name, count: c.participants.length, members: c.participants.join(", "), ...common(c) })),
+  );
+  add(
+    "Tin nhắn",
+    [
+      { header: "Loại chat", key: "type", width: 11 },
+      { header: "Khách / nhóm", key: "name", width: 26 },
+      { header: "Kênh", key: "channel", width: 18 },
+      { header: "Thời gian (giờ VN)", key: "time", width: 19 },
+      { header: "Bên", key: "side", width: 9 },
+      { header: "Người gửi", key: "sender", width: 22 },
+      { header: "Nội dung", key: "text", width: 70, wrap: true },
+      { header: "Loại tin", key: "msgType", width: 14 },
+    ],
+    [...singles, ...groups].flatMap((c) =>
+      c.messages.map((m) => ({ type: c.chat_type, name: c.customer_name, channel: c.channel ?? "", time: vnTime(m.time), side: m.direction === "in" ? "Khách" : "Shop", sender: m.sender ?? "", text: m.text, msgType: m.type ?? "" })),
+    ),
+  );
+  return wb;
 }

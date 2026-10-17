@@ -24,6 +24,8 @@ type Ctx = {
   activeChannels: Channel[]
   /** Kênh dùng để chat (bỏ Zalo nhân viên đang giám sát, trừ khi chính mình giữ máy) */
   chatChannels: Channel[]
+  /** Kênh xem được ở Hội thoại (gồm Zalo nhân viên nếu có quyền Giám sát) */
+  viewChannels: Channel[]
   socket: Socket | null
   socketConnected: boolean
   logout: () => void
@@ -149,6 +151,8 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
           (c) => c.mode !== 'monitor' || c.holder_id === user.id,
         ),
         chatChannels: channels.filter((c) => c.mode !== 'monitor' || c.holder_id === user.id),
+        // Ô chọn kênh ở Hội thoại: thêm Zalo nhân viên (chỉ xem) cho người có quyền Giám sát
+        viewChannels: channels.filter((c) => c.mode !== 'monitor' || c.holder_id === user.id || can(user, 'monitor.view')),
         socket,
         socketConnected,
         logout,

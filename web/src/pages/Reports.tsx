@@ -468,6 +468,8 @@ function ExportTab(p: RangeProps) {
   const canMonitor = can(user, 'monitor.view')
   const [agentId, setAgentId] = useState<string>(canView ? '' : String(user.id))
   const [textOnly, setTextOnly] = useState(true)
+  const [chatType, setChatType] = useState('')
+  const [withStaffZalo, setWithStaffZalo] = useState(canMonitor)
   const [reportApp, setReportApp] = useState<string | null>(null)
   useEffect(() => {
     api<{ enabled: boolean; url: string | null }>('/report-link/status')
@@ -475,7 +477,17 @@ function ExportTab(p: RangeProps) {
       .catch(() => {})
   }, [])
   const link = (format: string) =>
-    exportUrl({ format, from: p.from, to: p.to, agentId: agentId || undefined, channelId: p.channelId || undefined, departmentId: p.departmentId || undefined, textOnly: textOnly ? '1' : undefined })
+    exportUrl({
+      format,
+      from: p.from,
+      to: p.to,
+      agentId: agentId || undefined,
+      channelId: p.channelId || undefined,
+      departmentId: p.departmentId || undefined,
+      textOnly: textOnly ? '1' : undefined,
+      type: chatType || undefined,
+      includeMonitor: canMonitor && withStaffZalo ? '1' : undefined,
+    })
   return (
     <>
       {(canMonitor || reportApp) && (
@@ -522,14 +534,34 @@ function ExportTab(p: RangeProps) {
                 </select>
               </label>
             )}
+            <label className="field">
+              <span>Loại hội thoại</span>
+              <select className="select" value={chatType} onChange={(e) => setChatType(e.target.value)}>
+                <option value="">Khách 1-1 và nhóm chat</option>
+                <option value="0">Chỉ khách chat 1-1</option>
+                <option value="1">Chỉ nhóm chat</option>
+              </select>
+            </label>
             <label className="check">
               <input type="checkbox" checked={textOnly} onChange={(e) => setTextOnly(e.target.checked)} />
               Chỉ lấy tin nhắn chữ (bỏ sticker, ảnh, file)
             </label>
+            {canMonitor && (
+              <label className="check">
+                <input type="checkbox" checked={withStaffZalo} onChange={(e) => setWithStaffZalo(e.target.checked)} />
+                Gồm Zalo nhân viên (giám sát)
+              </label>
+            )}
           </div>
           <div className="export-grid">
-            <ExportCard href={link('txt')} icon={<FileText size={22} />} title="Kịch bản đọc (TXT)" desc="Hội thoại dạng đối thoại kèm tên nhân viên, ghi chú và đánh giá. Phù hợp để in ra hoặc đưa vào buổi training." />
-            <ExportCard href={link('csv')} icon={<FileSpreadsheet size={22} />} title="Bảng tính (CSV)" desc="Mỗi dòng một tin nhắn: thời gian, vai trò, nhân viên, nội dung. Mở bằng Excel/Google Sheets để lọc, chấm điểm." />
+            <ExportCard
+              href={link('xlsx')}
+              icon={<FileSpreadsheet size={22} />}
+              title="Tổng hợp theo khách hàng & nhóm (Excel)"
+              desc="Trang Khách 1-1 (mỗi khách một dòng: SĐT, kênh, số tin, lần đầu / cuối, nhân viên, tag, tóm tắt AI), trang Nhóm chat (thành viên đã nhắn), trang Tin nhắn có cột Loại chat để lọc."
+            />
+            <ExportCard href={link('txt')} icon={<FileText size={22} />} title="Kịch bản đọc (TXT)" desc="Chia 2 phần Khách chat 1-1 / Nhóm chat; mỗi hội thoại có loại chat, kênh, SĐT, nhân viên, ghi chú, đánh giá. Phù hợp để in ra hoặc training." />
+            <ExportCard href={link('csv')} icon={<FileSpreadsheet size={22} />} title="Bảng tính (CSV)" desc="Mỗi dòng một tin nhắn: loại chat (Khách 1-1 / Nhóm), khách hoặc nhóm, SĐT, kênh, người gửi, nhân viên, nội dung." />
             <ExportCard href={link('jsonl')} icon={<MessageCircleReply size={22} />} title="Dữ liệu AI (JSONL)" desc="Mỗi dòng một hội thoại dạng user/assistant. Dùng để huấn luyện chatbot hoặc làm bộ mẫu câu tư vấn." />
             <ExportCard href={link('json')} icon={<FileJson size={22} />} title="Đầy đủ (JSON)" desc="Toàn bộ dữ liệu có cấu trúc: hội thoại, tin nhắn, nhãn, ghi chú, đánh giá. Dùng cho web app khác." />
           </div>
