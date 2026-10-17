@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Bot, CheckCircle2, PlugZap, RefreshCw, Save, Sparkles, ThumbsUp } from 'lucide-react'
-import { api } from '../api'
+import { AlertTriangle, Bot, CheckCircle2, FileSpreadsheet, PlugZap, RefreshCw, Save, Sparkles, ThumbsUp } from 'lucide-react'
+import { api, openAuthedLink } from '../api'
 import { useSocketEvent } from '../store'
-import { Badge } from '../components'
+import { Badge, Modal } from '../components'
 import { fullTime } from '../util'
 
 export type Analysis = {
@@ -420,5 +420,89 @@ export function AiSettings() {
         )}
       </div>
     </div>
+  )
+}
+
+/** Nút "Xuất báo cáo" trang Giám sát: Excel theo khoảng ngày, một hoặc mọi nhân viên. */
+export function MonitorReportButton({ accounts, current }: { accounts: { channel_id: number; name: string; holder_name: string | null }[]; current: number | null }) {
+  const [open, setOpen] = useState(false)
+  const today = vnToday()
+  const [from, setFrom] = useState(today.slice(0, 8) + '01')
+  const [to, setTo] = useState(today)
+  const [ch, setCh] = useState<string>(current ? String(current) : '')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setCh(current ? String(current) : ''), [current])
+
+  async function download() {
+    setErr('')
+    if (!from || !to || from > to) return setErr('Chọn khoảng ngày hợp lệ')
+    setBusy(true)
+    try {
+      await openAuthedLink(`/api/monitor/report.xlsx?from=${from}&to=${to}${ch ? `&channelId=${ch}` : ''}`)
+      setOpen(false)
+    } catch (e: any) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const quick: [string, string, string][] = [
+    ['Hôm nay', today, today],
+    ['7 ngày', new Date(Date.parse(today) - 6 * 864e5).toISOString().slice(0, 10), today],
+    ['Tháng này', today.slice(0, 8) + '01', today],
+  ]
+  return (
+    <>
+      <button className="btn outline sm" onClick={() => setOpen(true)}>
+        <FileSpreadsheet size={14} /> Xuất báo cáo
+      </button>
+      {open && (
+        <Modal title="Xuất báo cáo giám sát" onClose={() => setOpen(false)}>
+          <div className="stack">
+            <p className="small muted">
+              File Excel gồm 3 trang: Tổng hợp theo ngày (số khách, tin, thu hồi, cờ, điểm và tổng hợp AI), Tin cần chú ý, Hội thoại (kết quả + tóm tắt AI).
+            </p>
+            <div className="row wrap">
+              {quick.map(([l, a, b]) => (
+                <button key={l} className={`btn ${from === a && to === b ? 'primary' : 'outline'} sm`} onClick={() => (setFrom(a), setTo(b))}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div className="grid-2">
+              <label className="field">
+                <span>Từ ngày</span>
+                <input type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>Đến ngày</span>
+                <input type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Nhân viên</span>
+              <select className="select" value={ch} onChange={(e) => setCh(e.target.value)}>
+                <option value="">Tất cả nhân viên</option>
+                {accounts.map((a) => (
+                  <option key={a.channel_id} value={a.channel_id}>
+                    {a.holder_name ?? a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {err && <div className="form-error">{err}</div>}
+            <div className="row end">
+              <button className="btn ghost" onClick={() => setOpen(false)}>
+                Hủy
+              </button>
+              <button className="btn primary" onClick={download} disabled={busy}>
+                <FileSpreadsheet size={16} /> {busy ? 'Đang tạo…' : 'Tải Excel'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }

@@ -49,27 +49,53 @@ export function saveMonitorConfig(input: any, userId: number) {
 
 export const isMonitorChannel = (channelId: number) => get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", channelId)?.mode === "monitor";
 
+/**
+ * Số chính thức của công ty: dãy số trong câu trả lời mẫu (số tài khoản công ty, hotline, Zalo tư vấn…).
+ * Nhân viên gửi đúng các số này thì không gắn cờ. Điện thoại so 9 số cuối.
+ */
+let officialCache: { at: number; nums: Set<string> } | null = null;
+export function officialNumbers() {
+  if (officialCache && Date.now() - officialCache.at < 60_000) return officialCache.nums;
+  const nums = new Set<string>();
+  for (const t of all<{ content: string }>("SELECT content FROM templates")) {
+    const compact = t.content.replace(/(\d)[\s.\-]+(?=\d)/g, "$1");
+    for (const m of compact.matchAll(/(?<!\d)\d{6,16}(?!\d)/g)) {
+      nums.add(m[0]);
+      if (/^(?:84|0)[35789]\d{8}$/.test(m[0])) nums.add(m[0].slice(-9));
+    }
+  }
+  officialCache = { at: Date.now(), nums };
+  return nums;
+}
+
 /** Lý do gắn cờ một tin (rỗng = bình thường). */
-export function flagReasons(text: string, direction: "in" | "out", ownPhone: string | null, cfg = monitorConfig()) {
+export function flagReasons(text: string, direction: "in" | "out", ownPhone: string | null, cfg = monitorConfig(), official = officialNumbers()) {
   const reasons: string[] = [];
   if (direction === "in" && !cfg.checkCustomer) return reasons;
   const t = fold(text);
   const kw = cfg.keywords.find((k) => t.includes(fold(k)));
   if (kw) reasons.push(`Từ khóa "${kw}"`);
   if (direction === "out") {
-    const compact = text.replace(/(\d)[\s.\-]+(?=\d)/g, "$1");
+    // Bỏ số tiền trước khi dò số tài khoản / điện thoại: 25.990.000, 25,990,000đ, 1990000 vnd, 25tr, giá 1990000
+    const noMoney = text
+      .replace(/\d{1,3}(?:[.,]\d{3})+(?:\s*(?:đ|₫|vnd|vnđ|d)\b)?/gi, " ")
+      .replace(/\d+\s*(?:đ|₫|vnd|vnđ|k|tr|triệu|trieu|nghìn|ngàn)(?![a-zà-ỹ])/gi, " ")
+      .replace(/(giá|gia|tổng|tong|còn|con)\s*:?\s*\d+/gi, " ");
+    const compact = noMoney.replace(/(\d)[\s.\-]+(?=\d)/g, "$1");
     if (cfg.otherPhone) {
       const own = (ownPhone ?? "").replace(/\D/g, "").slice(-9);
-      for (const m of compact.matchAll(/(?:\+?84|0)([35789]\d{8})(?!\d)/g)) {
-        if (!own || m[1] !== own) {
+      for (const m of compact.matchAll(/(?<!\d)(?:\+?84|0)([35789]\d{8})(?!\d)/g)) {
+        if ((!own || m[1] !== own) && !official.has(m[1])) {
           reasons.push(`Gửi số điện thoại khác: 0${m[1]}`);
           break;
         }
       }
     }
     // Số tài khoản: có chữ "stk / tk / số tài khoản" kèm số, hoặc dãy 8–16 chữ số không phải số điện thoại
-    const noPhones = compact.replace(/(?:\+?84|0)[35789]\d{8}(?!\d)/g, " ");
-    if (cfg.bank && (/\b(stk|tk|so tai khoan|tai khoan)\b\D{0,20}\d{6,}/.test(t) || /(?<!\d)\d{8,16}(?!\d)/.test(noPhones))) {
+    const noPhones = compact.replace(/(?<!\d)(?:\+?84|0)[35789]\d{8}(?!\d)/g, " ");
+    const nums = [...noPhones.matchAll(/(?<!\d)\d{6,16}(?!\d)/g)].map((m) => m[0]).filter((n) => !official.has(n));
+    const bankWord = /\b(stk|tk|so tai khoan|tai khoan)\b/.test(t);
+    if (cfg.bank && nums.some((n) => n.length >= 8 || bankWord)) {
       reasons.push("Có thể là số tài khoản");
     }
   }

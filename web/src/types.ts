@@ -124,7 +124,23 @@ export type Review = {
   agent: string | null
   created_at: number
 }
-export type Template = { id: number; shortcut: string; content: string; created_by: number | null; department_ids: number[] }
+export type Template = {
+  id: number
+  shortcut: string
+  content: string
+  created_by: number | null
+  department_ids: number[]
+  /** Form CTLM: ảnh / tệp đính kèm (link gốc + bản đã tải về /uploads/templates/…) */
+  image_url?: string | null
+  image_file?: string | null
+  file_url?: string | null
+  file_file?: string | null
+  file_name?: string | null
+  ask_address?: boolean
+  updated_at?: number | null
+  updated_label?: string | null
+  updated_by_name?: string | null
+}
 
 export type Channel = {
   id: number

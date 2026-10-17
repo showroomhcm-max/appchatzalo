@@ -464,3 +464,27 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
   if (!cols.has("seen_ts")) db.exec("ALTER TABLE conversations ADD COLUMN seen_ts INTEGER");
   if (!cols.has("seen_count")) db.exec("ALTER TABLE conversations ADD COLUMN seen_count INTEGER");
 }
+
+// ───────────── Tin nhắn mẫu theo form CTLM (ảnh / tệp đính kèm, xin địa chỉ, người cập nhật) + tag có người cập nhật ─────────────
+{
+  const t = new Set((db.prepare("PRAGMA table_info(templates)").all() as { name: string }[]).map((c) => c.name));
+  for (const [col, def] of [
+    ["image_url", "TEXT"],
+    ["image_file", "TEXT"],
+    ["file_url", "TEXT"],
+    ["file_file", "TEXT"],
+    ["file_name", "TEXT"],
+    ["ask_address", "INTEGER NOT NULL DEFAULT 0"],
+    ["updated_by", "INTEGER"],
+    ["updated_at", "INTEGER"],
+    ["updated_label", "TEXT"],
+  ])
+    if (!t.has(col)) db.exec(`ALTER TABLE templates ADD COLUMN ${col} ${def}`);
+  const g = new Set((db.prepare("PRAGMA table_info(tags)").all() as { name: string }[]).map((c) => c.name));
+  for (const [col, def] of [
+    ["updated_by", "INTEGER"],
+    ["updated_at", "INTEGER"],
+    ["updated_label", "TEXT"],
+  ])
+    if (!g.has(col)) db.exec(`ALTER TABLE tags ADD COLUMN ${col} ${def}`);
+}

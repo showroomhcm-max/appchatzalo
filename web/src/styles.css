@@ -3287,3 +3287,9 @@ html.compact .dvkt-links a { min-height: 36px; }
 .stack-sm { display: flex; flex-direction: column; gap: 6px; }
 .ai-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .flag-detail { color: var(--mz-ink-700); }
+
+/* Câu trả lời mẫu: ảnh / tệp đính kèm */
+.tpl-attach { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tpl-attach img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--mz-ink-200); display: block; }
+
+.monitor-actions { padding: 0 12px 8px; display: flex; gap: 8px; }

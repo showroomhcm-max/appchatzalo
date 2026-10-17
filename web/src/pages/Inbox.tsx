@@ -1560,6 +1560,16 @@ function Composer({
     setText(t.content)
     setPickerIndex(0)
     textarea.current?.focus()
+    // Mẫu có ảnh / tệp đính kèm (form CTLM) → gắn sẵn vào tin, nhân viên bỏ được nếu không cần
+    const attach = [t.image_file ? { url: t.image_file, name: `${t.shortcut}${t.image_file.slice(t.image_file.lastIndexOf('.'))}` } : null, t.file_file ? { url: t.file_file, name: t.file_name ?? t.shortcut } : null].filter(
+      (x): x is { url: string; name: string } => !!x && x.url.startsWith('/uploads/templates/'),
+    )
+    for (const a of attach) {
+      fetch(a.url)
+        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('Không tải được tệp mẫu'))))
+        .then((b) => setFiles((cur) => (cur.some((f) => f.name === a.name) ? cur : [...cur, new File([b], a.name, { type: b.type })].slice(0, 10))))
+        .catch((e) => setError(e.message))
+    }
   }
 
   async function send() {
@@ -1668,6 +1678,7 @@ function Composer({
               }}
             >
               <b>/{t.shortcut}</b> <span>{t.content}</span>
+              {(t.image_file || t.file_file) && <Paperclip size={12} className="inline-icon" aria-label="Có đính kèm" />}
             </button>
           ))}
         </div>

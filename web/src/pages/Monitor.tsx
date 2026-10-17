@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, Flag, Search, ShieldAlert, Sparkles, Undo2, UsersRound } from 'lucide-react'
-import { AiPanel, DigestView, RISK } from './monitor-ai'
+import { AiPanel, DigestView, MonitorReportButton, RISK } from './monitor-ai'
 import { api } from '../api'
 import { useSocketEvent } from '../store'
 import type { Conversation, Message, ZaloStatus } from '../types'
@@ -67,6 +67,9 @@ export default function Monitor({ channelId, convId }: { channelId: number | nul
           <a className="small" href="#/settings/company">
             Thêm / cài đặt
           </a>
+        </div>
+        <div className="monitor-actions">
+          <MonitorReportButton accounts={accounts} current={channelId} />
         </div>
         <a href="#/monitor" className={`monitor-account ${!channelId ? 'on' : ''}`}>
           <Flag size={18} />

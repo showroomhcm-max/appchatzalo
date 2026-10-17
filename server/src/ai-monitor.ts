@@ -189,6 +189,16 @@ export async function testAi(input?: any) {
   return { ok: !!r.ok, ms: Date.now() - t0, model: cur.scanModel };
 }
 
+/** Thông tin chính thức của công ty lấy từ câu trả lời mẫu (tài khoản, địa chỉ, hotline…) — nhân viên gửi đúng các thông tin này là bình thường. */
+function officialInfo() {
+  const rows = all<{ shortcut: string; content: string }>("SELECT shortcut, content FROM templates ORDER BY shortcut").filter((t) =>
+    /tài khoản|stk|ngân hàng|vietinbank|vietcombank|địa chỉ|zalo|hotline|điện thoại|mst|mã số thuế|\d{8,}/i.test(t.content),
+  );
+  if (!rows.length) return "";
+  const text = rows.map((t) => `- /${t.shortcut}: ${t.content.replace(/\s+/g, " ").slice(0, 300)}`).join("\n").slice(0, 2500);
+  return `\n\nThông tin chính thức của công ty (từ câu trả lời mẫu; nhân viên gửi đúng các số tài khoản, địa chỉ, số điện thoại này là đúng quy định, không gắn cờ):\n${text}`;
+}
+
 // ───────── Phân tích một hội thoại ─────────
 export const ISSUE_TYPES: Record<string, string> = {
   chuyen_khoan_rieng: "Thu tiền / chuyển khoản riêng",
@@ -309,7 +319,7 @@ export async function analyzeConversation(conversationId: string, opts: { force?
   if (!opts.force && prev && prev.last_message_id >= t.lastId) return getAnalysis(conversationId);
   running.add(conversationId);
   try {
-    const rules = cfg.rules.trim() ? `\n\nQuy định riêng của công ty (áp dụng khi chấm):\n${cfg.rules.trim()}` : "";
+    const rules = (cfg.rules.trim() ? `\n\nQuy định riêng của công ty (áp dụng khi chấm):\n${cfg.rules.trim()}` : "") + officialInfo();
     const user = `Nhân viên: ${conv.holder ?? "(chưa rõ)"}\nKhách / nhóm: ${conv.name ?? "(chưa rõ tên)"}${conv.type === 1 ? " (nhóm chat)" : ""}\n${
       prev?.summary ? `Tóm tắt lần phân tích trước: ${prev.summary}\n` : ""
     }\nĐoạn chat (giờ Việt Nam):\n<doan_chat>\n${t.text}\n</doan_chat>`;

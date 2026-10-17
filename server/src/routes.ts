@@ -48,6 +48,7 @@ import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, pub
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
 import { workReport } from "./work-report.js";
+import { ReportRangeError, monitorReport } from "./monitor-report.js";
 import { publicReportLinkConfig, reportLinkConfig, rotateReportLinkKey, saveReportLinkConfig, signSso, testReportLink } from "./report-link.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } });
@@ -934,6 +935,30 @@ appRouter.post("/monitor/flags/:id/review", requirePerm("monitor.view"), (req, r
   res.json({ ok: true });
 });
 appRouter.get("/monitor/config", requirePerm("monitor.view"), (_req, res) => res.json(monitorConfig()));
+// Báo cáo giám sát (Excel): ?from=YYYY-MM-DD&to=YYYY-MM-DD[&channelId=]
+appRouter.get(
+  "/monitor/report.xlsx",
+  requirePerm("monitor.view"),
+  h(async (req, res) => {
+    const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+    const from = typeof req.query.from === "string" ? req.query.from : today;
+    const to = typeof req.query.to === "string" ? req.query.to : from;
+    const channelId = num(req.query.channelId);
+    let r;
+    try {
+      r = await monitorReport(from, to, channelId);
+    } catch (e: any) {
+      if (e instanceof ReportRangeError) throw new HttpError(400, e.message);
+      throw e;
+    }
+    logEvent(null, req.user!.id, "monitor.exported", { from, to, channel: channelId ?? null, ...r.counts });
+    const name = `Bao cao giam sat ${from.split("-").reverse().join("-")}${to !== from ? ` den ${to.split("-").reverse().join("-")}` : ""}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+    await r.wb.xlsx.write(res);
+    res.end();
+  }),
+);
 
 // ───────────── Trợ lý AI giám sát ─────────────
 appRouter.get("/ai/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicAiConfig()));

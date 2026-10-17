@@ -58,7 +58,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
   {
     title: 'Quản lý hội thoại',
     items: [
-      { id: 'templates', label: 'Tin nhắn mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
+      { id: 'templates', label: 'Câu trả lời mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
       { id: 'tags', label: 'Tag hội thoại', icon: <TagIcon size={18} />, perms: ['tags.manage'] },
       { id: 'departments', label: 'Bộ phận (phân chia hội thoại)', icon: <Building2 size={18} />, perms: ['departments.manage'] },
     ],
@@ -412,7 +412,7 @@ function DepartmentForm({ dept, onClose, onSaved }: { dept: Department | null; o
 
 // ───────────── Xuất / nhập Excel ─────────────
 
-type ImportResult = { created: number; updated: number; skipped: { row: number; reason: string }[] }
+type ImportResult = { created: number; updated: number; merged?: number; renamed?: { row: number; from: string; to: string }[]; warnings?: { row: number; reason: string }[]; skipped: { row: number; reason: string }[] }
 
 function ExcelBar({ kind, onImported }: { kind: 'tags' | 'templates'; onImported: () => void }) {
   const input = useRef<HTMLInputElement>(null)
@@ -456,13 +456,18 @@ function ExcelBar({ kind, onImported }: { kind: 'tags' | 'templates'; onImported
             if (f) void upload(f)
           }}
         />
-        <span className="muted small">Mẹo: bấm "Xuất Excel" để lấy file mẫu đúng cột, sửa xong nhập lại.</span>
+        <span className="muted small">
+          {kind === 'templates'
+            ? 'Nhập được file "Danh sách CTLM" xuất từ trang Pancake / Sapo (Từ viết tắt, Nội dung, Ảnh đính kèm, Tệp đính kèm, Xin địa chỉ, Cập nhật).'
+            : 'Mẹo: bấm "Xuất Excel" để lấy file mẫu đúng cột, sửa xong nhập lại.'}
+        </span>
       </div>
       {error && <div className="form-error">{error}</div>}
       {result && (
         <div className={`banner ${result.skipped.length ? 'warn' : 'info'} inline import-result`}>
           <span>
             Đã thêm {result.created}, cập nhật {result.updated}
+            {result.merged ? `, gộp ${result.merged} dòng trùng` : ''}
             {result.skipped.length ? `, bỏ qua ${result.skipped.length} dòng:` : '.'}
           </span>
           {result.skipped.length > 0 && (
@@ -470,6 +475,24 @@ function ExcelBar({ kind, onImported }: { kind: 'tags' | 'templates'; onImported
               {result.skipped.slice(0, 10).map((s) => (
                 <li key={s.row}>
                   Dòng {s.row}: {s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!!result.renamed?.length && (
+            <ul>
+              {result.renamed.map((r) => (
+                <li key={`r${r.row}`}>
+                  Dòng {r.row}: /{r.from} trùng nhưng khác nội dung → đặt tên /{r.to}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!!result.warnings?.length && (
+            <ul>
+              {result.warnings.slice(0, 10).map((w, i) => (
+                <li key={`w${i}`}>
+                  Dòng {w.row}: {w.reason} (vẫn lưu nội dung)
                 </li>
               ))}
             </ul>
@@ -628,7 +651,7 @@ function TemplatesTab() {
   return (
     <div className="card">
       <div className="row wrap">
-        <h3 className="grow">Tin nhắn mẫu ({list.length})</h3>
+        <h3 className="grow">Câu trả lời mẫu ({list.length})</h3>
         <button className="btn primary sm" onClick={() => setEditing('new')}>
           <Plus size={14} /> Thêm mẫu
         </button>
@@ -641,9 +664,11 @@ function TemplatesTab() {
         <table className="table">
           <thead>
             <tr>
-              <th>Phím tắt</th>
+              <th>Từ viết tắt</th>
               <th>Nội dung</th>
+              <th>Đính kèm</th>
               <th>Bộ phận dùng</th>
+              <th>Cập nhật</th>
               <th />
             </tr>
           </thead>
@@ -655,8 +680,28 @@ function TemplatesTab() {
                 </td>
                 <td className="pre-wrap">{t.content}</td>
                 <td>
+                  <div className="tpl-attach">
+                    {t.image_file ? (
+                      <a href={t.image_file} target="_blank" rel="noopener noreferrer">
+                        <img src={t.image_file} alt={`Ảnh mẫu /${t.shortcut}`} />
+                      </a>
+                    ) : t.image_url ? (
+                      <span className="small warn-text">Ảnh chưa tải được</span>
+                    ) : null}
+                    {t.file_file ? (
+                      <a className="small" href={t.file_file} target="_blank" rel="noopener noreferrer">
+                        {t.file_name ?? 'Tệp'}
+                      </a>
+                    ) : t.file_url ? (
+                      <span className="small warn-text">Tệp chưa tải được</span>
+                    ) : null}
+                    {t.ask_address && <span className="badge info">Xin địa chỉ</span>}
+                  </div>
+                </td>
+                <td>
                   <DeptChips ids={t.department_ids} />
                 </td>
+                <td className="small muted pre-wrap">{t.updated_label ?? [t.updated_by_name, t.updated_at ? new Date(t.updated_at).toLocaleDateString('vi-VN') : ''].filter(Boolean).join('\n')}</td>
                 <td className="right">
                   <button className="icon-btn sm" onClick={() => setEditing(t)} aria-label={`Sửa mẫu ${t.shortcut}`}>
                     <Pencil size={14} />
@@ -666,7 +711,7 @@ function TemplatesTab() {
             ))}
             {!list.length && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={6} className="muted">
                   Chưa có tin nhắn mẫu.
                 </td>
               </tr>
@@ -692,18 +737,25 @@ function TemplateForm({ template, onClose, onSaved }: { template: Template | nul
   const [shortcut, setShortcut] = useState(template?.shortcut ?? '')
   const [content, setContent] = useState(template?.content ?? '')
   const [deptIds, setDeptIds] = useState<number[]>(template?.department_ids ?? [])
+  const [imageUrl, setImageUrl] = useState(template?.image_url ?? '')
+  const [fileUrl, setFileUrl] = useState(template?.file_url ?? '')
+  const [askAddress, setAskAddress] = useState(!!template?.ask_address)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    const body = { shortcut, content, department_ids: deptIds }
+    setBusy(true)
+    const body = { shortcut, content, department_ids: deptIds, image_url: imageUrl, file_url: fileUrl, ask_address: askAddress }
     try {
-      if (template) await api(`/templates/${template.id}`, { method: 'PATCH', body })
-      else await api('/templates', { body })
+      const r = template ? await api<{ warnings?: string[] }>(`/templates/${template.id}`, { method: 'PATCH', body }) : await api<{ warnings?: string[] }>('/templates', { body })
+      if (r.warnings?.length) alert(`Đã lưu, nhưng: ${r.warnings.join('; ')}`)
       onSaved()
     } catch (err: any) {
       setError(err.message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -729,6 +781,22 @@ function TemplateForm({ template, onClose, onSaved }: { template: Template | nul
             placeholder="VD: Dạ MemoryZone xin chào bạn, bạn cần tư vấn sản phẩm nào ạ?"
           />
         </label>
+        <div className="grid-2">
+          <label className="field">
+            <span>Ảnh đính kèm (link)</span>
+            <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/anh.jpg" inputMode="url" />
+            <span className="muted small">Chọn mẫu là ảnh tự gắn vào tin. JPG / PNG / WEBP / GIF, tối đa 10 MB.</span>
+          </label>
+          <label className="field">
+            <span>Tệp đính kèm (link)</span>
+            <input value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} placeholder="https://…/bang-gia.pdf" inputMode="url" />
+            <span className="muted small">PDF, Word, Excel, PowerPoint, ZIP…, tối đa 10 MB.</span>
+          </label>
+        </div>
+        <label className="check">
+          <input type="checkbox" checked={askAddress} onChange={(e) => setAskAddress(e.target.checked)} />
+          Mẫu xin địa chỉ / thông tin giao hàng
+        </label>
         <DeptPicker value={deptIds} onChange={setDeptIds} hint="Không chọn bộ phận nào = mọi bộ phận đều dùng được." />
         {error && <div className="form-error">{error}</div>}
         <div className="row end">
@@ -741,8 +809,8 @@ function TemplateForm({ template, onClose, onSaved }: { template: Template | nul
           <button type="button" className="btn ghost" onClick={onClose}>
             Hủy
           </button>
-          <button className="btn primary" disabled={!shortcut.trim() || !content.trim()}>
-            Lưu
+          <button className="btn primary" disabled={busy || !shortcut.trim() || !content.trim()}>
+            {busy ? 'Đang lưu…' : 'Lưu'}
           </button>
         </div>
       </form>

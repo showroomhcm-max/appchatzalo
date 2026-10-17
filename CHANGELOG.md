@@ -7,6 +7,23 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.13.0 — 17/10/2026
+
+**Câu trả lời mẫu theo form "Danh sách CTLM"** (giống file xuất từ trang Pancake / Sapo)
+- Xuất / nhập Excel đúng các cột: Từ viết tắt, Nội dung, Ảnh đính kèm, Tệp đính kèm, Xin địa chỉ, Cập nhật (+ Bộ phận). Nhận cột theo tên tiêu đề nên đổi thứ tự cột vẫn nhập đúng; file cũ 3 cột vẫn nhập được.
+- Ảnh / tệp đính kèm: app tải về từ link (chặn link trỏ vào mạng nội bộ, tối đa 10 MB). Gõ /từ-viết-tắt chọn mẫu là ảnh / tệp tự gắn vào tin, bỏ được nếu không cần.
+- Cột Cập nhật giữ nguyên người và ngày từ file; sửa trong app thì ghi tên người sửa. Dòng trùng từ viết tắt cùng nội dung được gộp; khác nội dung được đặt tên mới (vd: ck-2) và báo lại.
+- Màn Cài đặt › Câu trả lời mẫu có cột Đính kèm (ảnh thu nhỏ, tệp, nhãn Xin địa chỉ) và Cập nhật; form sửa có link ảnh, link tệp, ô Xin địa chỉ.
+- Tag xuất / nhập cùng kiểu (Tên tag, Màu, Bộ phận, Cập nhật).
+
+**Báo cáo giám sát Zalo nhân viên (Excel)**
+- Nút **Xuất báo cáo** trên trang Giám sát: chọn hôm nay / 7 ngày / tháng này / khoảng tùy chọn, một hoặc mọi nhân viên.
+- 3 trang: **Tổng hợp theo ngày** (số khách, tin khách / nhân viên, tin thu hồi, cờ quy tắc / AI, hội thoại rủi ro cao, điểm AI, tổng quan + việc cần chú ý + góp ý huấn luyện của AI), **Tin cần chú ý** (thời gian, khách, nguồn AI / quy tắc, mức, nội dung, thu hồi, giải thích, đã xem chưa), **Hội thoại** (kết quả, điểm, rủi ro, nhu cầu, tóm tắt, vấn đề do AI chấm). Mỗi lần xuất được ghi nhật ký.
+
+**Gắn cờ giám sát chính xác hơn**
+- Số tài khoản, hotline, Zalo có trong câu trả lời mẫu được coi là thông tin chính thức: nhân viên gửi đúng các số này không bị gắn cờ; AI cũng được cho biết các thông tin này.
+- Không còn gắn cờ nhầm số tiền (25.990.000đ, 1,990,000 vnd, "giá 1990000") là số tài khoản; số tài khoản có dãy giống số điện thoại không còn bị báo nhầm là "số điện thoại khác".
+
 ## v3.12.0 — 17/10/2026
 
 **Trợ lý AI giám sát Zalo nhân viên** (Claude, Anthropic)
