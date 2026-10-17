@@ -3270,3 +3270,20 @@ html.compact .dvkt-links a { min-height: 36px; }
 
 /* Mục "Báo cáo công việc" (mở app khác) dưới các mục chính */
 .sidenav nav.sidenav-extra { flex: none; }
+
+/* ───────── Trợ lý AI giám sát ───────── */
+.ai-panel { border-bottom: 1px solid var(--mz-ink-200); background: var(--mz-green-50); padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; max-height: 42vh; overflow-y: auto; flex: none; }
+.ai-panel.risk-medium { background: #fdf6ea; }
+.ai-panel.risk-high { background: #fdeeec; }
+.ai-title { font: inherit; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--mz-green-800); cursor: pointer; padding: 0; }
+.ai-body { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.ai-issue { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--radius); background: #fff; border: 1px solid var(--mz-ink-200); }
+.ai-issue.sev-high { border-color: #f3b4ab; }
+.ai-issue.sev-medium { border-color: #f4dcae; }
+.ai-issue blockquote { margin: 0; padding-left: 10px; border-left: 3px solid var(--mz-ink-200); color: var(--mz-ink-700); font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.ai-good { color: var(--mz-green-800); display: flex; gap: 6px; align-items: flex-start; }
+.digest { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.digest p { margin: 0; }
+.stack-sm { display: flex; flex-direction: column; gap: 6px; }
+.ai-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.flag-detail { color: var(--mz-ink-700); }

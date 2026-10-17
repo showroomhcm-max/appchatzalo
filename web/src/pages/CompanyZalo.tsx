@@ -5,6 +5,7 @@ import { useApp, useSocketEvent } from '../store'
 import type { ZaloStatus } from '../types'
 import { Avatar, Badge, Modal } from '../components'
 import { fullTime } from '../util'
+import { AiSettings } from './monitor-ai'
 
 type Account = {
   channel_id: number
@@ -216,6 +217,7 @@ export default function CompanyZalo() {
         })}
       </div>
 
+      <AiSettings />
       <KeywordSettings />
 
       <div className="card notice">

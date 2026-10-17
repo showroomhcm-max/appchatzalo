@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.12.0 — 17/10/2026
+
+**Trợ lý AI giám sát Zalo nhân viên** (Claude, Anthropic)
+- AI tự đọc các hội thoại Zalo nhân viên có tin mới (sau khi ngừng nhắn vài phút): tóm tắt, nhu cầu khách, kết quả (đang tư vấn / đã chốt / khách bỏ đi…), chấm chất lượng tư vấn 1–10, mức rủi ro.
+- Tìm dấu hiệu theo ngữ cảnh chứ không chỉ từ khóa: thu tiền / chuyển khoản riêng, kéo khách ra ngoài, giá ngoài chính sách, thái độ, thông tin / cam kết sai, lộ thông tin, bỏ lỡ khách, thu hồi tin đáng ngờ. Mỗi vấn đề có trích nguyên văn tin làm bằng chứng và nút **Xem tin**. Vấn đề mức vừa / cao vào **Tin cần chú ý** (biểu tượng lấp lánh), xếp mức cao lên đầu.
+- Trang Giám sát: khung **Phân tích AI** trên đầu mỗi hội thoại (nút Phân tích lại), nhãn rủi ro trong danh sách khách, tab **Tổng hợp AI** cho từng nhân viên theo ngày: tổng quan, điểm, việc cần chú ý, điểm làm tốt, góp ý huấn luyện. Tự tổng hợp lúc 20:00 (đổi được) hoặc bấm Tổng hợp ngay.
+- Cài đặt › Zalo nhân viên (giám sát) › **Trợ lý AI**: khóa API Claude, chọn model quét (mặc định Haiku 5.5) và model tổng hợp (mặc định Sonnet 5.5), chu kỳ quét, giờ tổng hợp, giới hạn lượt gọi mỗi ngày, **quy định riêng của công ty** để AI chấm theo. Hiện số lượt / token đã dùng trong ngày.
+- Chỉ đọc hội thoại ở kênh giám sát; nội dung chat là dữ liệu, lời trong tin nhắn không đổi được cách AI chấm. Cờ từ khóa cũ vẫn chạy song song.
+
 ## v3.11.0 — 16/10/2026
 
 **Kết nối app Báo cáo công việc CSKH** (app mới, thư mục `D:\APPBAOCAOCSKH`, Cloudflare Workers + D1)

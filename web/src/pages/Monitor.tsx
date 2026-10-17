@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useState } from 'react'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, Flag, Search, ShieldAlert, Undo2, UsersRound } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, Eye, Flag, Search, ShieldAlert, Sparkles, Undo2, UsersRound } from 'lucide-react'
+import { AiPanel, DigestView, RISK } from './monitor-ai'
 import { api } from '../api'
 import { useSocketEvent } from '../store'
 import type { Conversation, Message, ZaloStatus } from '../types'
@@ -32,8 +33,11 @@ type MConv = {
   last_direction: 'in' | 'out' | null
   open_flags: number
   undone: number
+  ai_risk: 'none' | 'low' | 'medium' | 'high' | null
+  ai_score: number | null
+  ai_summary: string | null
 }
-type FlagRow = { id: number; reason: string; created_at: number; conversation_id: string; channel_id: number; message_id: number; text: string; direction: 'in' | 'out'; conversation_name: string | null; channel_name: string }
+type FlagRow = { id: number; reason: string; created_at: number; conversation_id: string; channel_id: number; message_id: number; text: string; direction: 'in' | 'out'; conversation_name: string | null; channel_name: string; source: 'rule' | 'ai'; severity: 'low' | 'medium' | 'high' | null; detail: string | null }
 
 const NO_CAPS = { stickers: false, reactions: false, undo: false, forward: false, quote: false, files: false, contacts: false }
 
@@ -102,7 +106,7 @@ export default function Monitor({ channelId, convId }: { channelId: number | nul
 function AccountView({ account: a, convId }: { account: Account; convId: string | null }) {
   const [q, setQ] = useState('')
   const [convs, setConvs] = useState<MConv[]>([])
-  const [tab, setTab] = useState<'chats' | 'flags'>('chats')
+  const [tab, setTab] = useState<'chats' | 'flags' | 'ai'>('chats')
   const load = () => api<MConv[]>(`/monitor/accounts/${a.channel_id}/conversations${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`).then(setConvs)
   useEffect(() => {
     const t = window.setTimeout(() => void load(), q ? 300 : 0)
@@ -146,6 +150,9 @@ function AccountView({ account: a, convId }: { account: Account; convId: string 
           <button className={tab === 'flags' ? 'on' : ''} onClick={() => setTab('flags')}>
             Cần chú ý ({a.open_flags})
           </button>
+          <button className={tab === 'ai' ? 'on' : ''} onClick={() => setTab('ai')}>
+            <Sparkles size={14} /> Tổng hợp AI
+          </button>
         </div>
         {tab === 'chats' ? (
           <>
@@ -171,8 +178,13 @@ function AccountView({ account: a, convId }: { account: Account; convId: string 
                         {c.last_message_preview ?? ''}
                       </span>
                     </div>
-                    {(c.open_flags > 0 || c.undone > 0) && (
+                    {(c.open_flags > 0 || c.undone > 0 || (c.ai_risk && c.ai_risk !== 'none')) && (
                       <div className="conv-meta">
+                        {c.ai_risk && c.ai_risk !== 'none' && (
+                          <Badge tone={RISK[c.ai_risk].tone}>
+                            <Sparkles size={12} /> {RISK[c.ai_risk].label}
+                          </Badge>
+                        )}
                         {c.open_flags > 0 && (
                           <Badge tone="danger">
                             <Flag size={12} /> {c.open_flags} cần chú ý
@@ -191,8 +203,10 @@ function AccountView({ account: a, convId }: { account: Account; convId: string 
               {!convs.length && <div className="muted small pad">Chưa có hội thoại.</div>}
             </div>
           </>
-        ) : (
+        ) : tab === 'flags' ? (
           <FlagsView channelId={a.channel_id} compact />
+        ) : (
+          <DigestView channelId={a.channel_id} holder={a.holder_name ?? a.name} />
         )}
       </section>
       <Transcript convId={convId} holder={a.holder_name} />
@@ -203,6 +217,13 @@ function AccountView({ account: a, convId }: { account: Account; convId: string 
 function Transcript({ convId, holder }: { convId: string | null; holder: string | null }) {
   const [data, setData] = useState<{ conversation: Conversation; messages: Message[] } | null>(null)
   const [error, setError] = useState('')
+  const [flashId, setFlashId] = useState<number | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const jump = (id: number) => {
+    setFlashId(id)
+    scroller.current?.querySelector(`[data-mid="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    window.setTimeout(() => setFlashId(null), 2500)
+  }
   const load = () =>
     convId
       ? api<{ conversation: Conversation; messages: Message[] }>(`/monitor/conversations/${encodeURIComponent(convId)}/messages`)
@@ -247,7 +268,8 @@ function Transcript({ convId, holder }: { convId: string | null; holder: string 
           </div>
         </div>
       </header>
-      <div className="messages">
+      <AiPanel convId={c.id} onJump={jump} />
+      <div className="messages" ref={scroller}>
         {!data.messages.length && <div className="muted pad center">Chưa có tin nhắn được lưu.</div>}
         {data.messages.map((m, i) => {
           const prev = data.messages[i - 1]
@@ -259,7 +281,7 @@ function Transcript({ convId, holder }: { convId: string | null; holder: string 
                 m={{ ...m, holder_name: m.direction === 'out' && !m.agent_name ? m.holder_name ?? holder : m.holder_name }}
                 grouped={false}
                 isGroup={c.type === 1}
-                flash={false}
+                flash={m.id === flashId}
                 canUndo={false}
                 caps={NO_CAPS}
                 canReply={false}
@@ -304,8 +326,8 @@ function FlagsView({ channelId, compact }: { channelId: number | null; compact?:
       {flags.map((f) => (
         <div key={f.id} className="flag-item">
           <div className="row wrap">
-            <Badge tone="danger">
-              <AlertTriangle size={12} /> {f.reason}
+            <Badge tone={f.severity === 'medium' ? 'warning' : 'danger'}>
+              {f.source === 'ai' ? <Sparkles size={12} /> : <AlertTriangle size={12} />} {f.reason}
             </Badge>
             <span className="small muted grow">
               {!compact && `${f.channel_name} · `}
@@ -315,6 +337,7 @@ function FlagsView({ channelId, compact }: { channelId: number | null; compact?:
           <div className={`flag-text ${f.direction}`}>
             <b>{f.direction === 'out' ? 'Nhân viên' : 'Khách'}:</b> {f.text}
           </div>
+          {f.detail && <div className="small flag-detail">{f.detail}</div>}
           <div className="row">
             <a className="btn ghost sm" href={`#/monitor/${f.channel_id}/${encodeURIComponent(f.conversation_id)}`}>
               <Eye size={14} /> Xem hội thoại
@@ -332,7 +355,7 @@ function FlagsView({ channelId, compact }: { channelId: number | null; compact?:
     <section className="monitor-flags">
       <h2>Tin cần chú ý</h2>
       <p className="muted small">
-        Tin có từ khóa đáng ngờ, nhân viên gửi số điện thoại khác hoặc số tài khoản. Từ khóa chỉnh ở Cài đặt › Zalo nhân viên.
+        Tin có dấu hiệu đáng ngờ do AI phát hiện (biểu tượng lấp lánh) hoặc do quy tắc: từ khóa, số điện thoại khác, số tài khoản. Chỉnh ở Cài đặt › Zalo nhân viên.
       </p>
       {list}
     </section>

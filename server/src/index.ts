@@ -15,6 +15,7 @@ import { startAlerts } from "./alerts.js";
 import { startAccountWatch } from "./company-accounts.js";
 import { startPosSync } from "./odoo-pos.js";
 import { startMonitor } from "./monitor.js";
+import { startAiMonitor } from "./ai-monitor.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
@@ -63,6 +64,7 @@ startAlerts();
 startAccountWatch();
 startPosSync();
 startMonitor();
+startAiMonitor();
 
 server.listen(config.port, () => {
   console.log(`[server] Chat Siêu Tốc chạy tại http://localhost:${config.port}`);

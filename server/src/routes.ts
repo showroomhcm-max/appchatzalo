@@ -44,6 +44,7 @@ import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handove
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, scopeOf, type Scope } from "./access.js";
+import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
 import { workReport } from "./work-report.js";
@@ -933,6 +934,71 @@ appRouter.post("/monitor/flags/:id/review", requirePerm("monitor.view"), (req, r
   res.json({ ok: true });
 });
 appRouter.get("/monitor/config", requirePerm("monitor.view"), (_req, res) => res.json(monitorConfig()));
+
+// ───────────── Trợ lý AI giám sát ─────────────
+appRouter.get("/ai/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicAiConfig()));
+appRouter.put(
+  "/ai/config",
+  requirePerm("integrations.manage"),
+  h((req, res) => {
+    try {
+      res.json(saveAiConfig(req.body, req.user!.id));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.post(
+  "/ai/test",
+  requirePerm("integrations.manage"),
+  h(async (req, res) => {
+    try {
+      res.json(await testAi(req.body));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+appRouter.get("/ai/status", requirePerm("monitor.view"), (_req, res) => {
+  const c = aiConfig();
+  res.json({ enabled: c.enabled && !!c.apiKey, digestHour: c.digestHour });
+});
+const monitorConv = (id: string) => {
+  const conv = getConversation(id);
+  const mode = conv ? get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", conv.channel_id)?.mode : null;
+  if (!conv || mode !== "monitor") throw new HttpError(404, "Không tìm thấy hội thoại giám sát");
+  return conv;
+};
+appRouter.get("/monitor/conversations/:id/ai", requirePerm("monitor.view"), (req, res) => res.json(getAnalysis(monitorConv(req.params.id).id)));
+appRouter.post(
+  "/monitor/conversations/:id/ai",
+  requirePerm("monitor.view"),
+  h(async (req, res) => {
+    const conv = monitorConv(req.params.id);
+    try {
+      res.json(await analyzeConversation(conv.id, { force: true }));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
+const vnToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+appRouter.get("/monitor/accounts/:id/digest", requirePerm("monitor.view"), (req, res) =>
+  res.json(getDigest(Number(req.params.id), typeof req.query.date === "string" ? req.query.date : vnToday())),
+);
+appRouter.post(
+  "/monitor/accounts/:id/digest",
+  requirePerm("monitor.view"),
+  h(async (req, res) => {
+    const date = typeof req.body?.date === "string" ? req.body.date : vnToday();
+    if (date > vnToday()) throw new HttpError(400, "Chưa tới ngày này");
+    try {
+      res.json(await buildDigest(Number(req.params.id), date, { analyzeFirst: true }));
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
+  }),
+);
 appRouter.put("/monitor/config", requirePerm("channels.manage"), (req, res) => res.json(saveMonitorConfig(req.body, req.user!.id)));
 
 // ───────────── Đơn hàng (Sapo / API) ─────────────

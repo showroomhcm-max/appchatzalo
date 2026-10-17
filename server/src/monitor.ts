@@ -167,8 +167,10 @@ export function monitorConversations(channelId: number, q?: string) {
   return all<any>(
     `SELECT c.id, c.thread_id, c.type, c.name, c.avatar, c.phone, c.last_message_at, c.last_message_preview, c.last_direction,
             (SELECT COUNT(*) FROM monitor_flags f WHERE f.conversation_id = c.id AND f.reviewed_at IS NULL) AS open_flags,
-            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.undone = 1) AS undone
+            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.undone = 1) AS undone,
+            ai.risk AS ai_risk, ai.quality_score AS ai_score, ai.summary AS ai_summary
      FROM conversations c
+     LEFT JOIN ai_conv_analysis ai ON ai.conversation_id = c.id
      WHERE c.channel_id = ? ${like ? "AND (fold(c.name) LIKE ? OR c.phone LIKE ? OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND fold(m.text) LIKE ?))" : ""}
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC LIMIT 300`,
     channelId,
@@ -178,7 +180,7 @@ export function monitorConversations(channelId: number, q?: string) {
 
 export function monitorFlags(channelId?: number, includeReviewed = false) {
   return all<any>(
-    `SELECT f.id, f.reason, f.created_at, f.reviewed_at, f.conversation_id, f.channel_id, f.message_id,
+    `SELECT f.id, f.reason, f.created_at, f.reviewed_at, f.conversation_id, f.channel_id, f.message_id, f.source, f.severity, f.detail,
             m.text, m.direction, m.ts, m.undone, c.name AS conversation_name, ch.name AS channel_name, ru.display_name AS reviewed_by_name
      FROM monitor_flags f
      JOIN messages m ON m.id = f.message_id
@@ -186,7 +188,7 @@ export function monitorFlags(channelId?: number, includeReviewed = false) {
      JOIN channels ch ON ch.id = f.channel_id
      LEFT JOIN users ru ON ru.id = f.reviewed_by
      WHERE ${includeReviewed ? "1 = 1" : "f.reviewed_at IS NULL"} ${channelId ? "AND f.channel_id = ?" : ""}
-     ORDER BY f.created_at DESC LIMIT 300`,
+     ORDER BY CASE f.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, f.created_at DESC LIMIT 300`,
     ...(channelId ? [channelId] : []),
   );
 }
