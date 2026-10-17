@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ClipboardList, Database, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
+import { BarChart3, ClipboardList, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
@@ -132,9 +132,9 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
 
 type Page = 'inbox' | 'channels' | 'monitor' | 'data' | 'settings'
 
-const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', monitor: 'Giám sát Zalo nhân viên', data: 'Dữ liệu', settings: 'Cài đặt' }
+const PAGE_TITLE: Record<Page, string> = { inbox: 'Hội thoại', channels: 'Kênh Chat', monitor: 'Giám sát Zalo nhân viên', data: 'Báo cáo', settings: 'Cài đặt' }
 
-type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null; findPhone?: string | null; sso?: 'baocao' | null }
+type Route = { page: Page; convId: string | null; msgId: number | null; tab?: SettingsTab; monitorChannel?: number | null; monitorConv?: string | null; findPhone?: string | null; sso?: 'baocao' | null; reportTab?: string | null }
 
 function parseHash(): Route {
   const [, rawPage, id, msg] = window.location.hash.split('/')
@@ -173,6 +173,8 @@ function parseHash(): Route {
     // #/monitor/<kênh>/<hội thoại>
     monitorChannel: page === 'monitor' && id && /^\d+$/.test(id) ? Number(id) : null,
     monitorConv: page === 'monitor' && msg ? decodeURIComponent(msg) : null,
+    // #/data/<tab>: mục Báo cáo (overview | staff | monitor | export)
+    reportTab: page === 'data' && id ? id : null,
   }
 }
 
@@ -184,7 +186,7 @@ function Shell() {
   const [pwOpen, setPwOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const { can: allowed } = useApp()
-  const canData = allowed('data.view') || allowed('data.export')
+  const canData = allowed('data.view') || allowed('data.export') || allowed('monitor.view')
   const canSettings = (['channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
 
   useEffect(() => {
@@ -202,14 +204,14 @@ function Shell() {
     { id: 'inbox', label: 'Hội thoại', icon: <MessagesSquare size={20} /> },
     { id: 'channels', label: 'Kênh Chat', icon: <Radio size={20} /> },
     { id: 'monitor', label: 'Giám sát Zalo nhân viên', icon: <Eye size={20} />, show: allowed('monitor.view') },
-    { id: 'data', label: 'Dữ liệu', icon: <Database size={20} />, show: canData },
+    { id: 'data', label: 'Báo cáo', icon: <BarChart3 size={20} />, show: canData },
     { id: 'settings', label: 'Cài đặt', icon: <SettingsIcon size={20} />, show: canSettings },
   ]
 
   const offline = zaloStatuses.filter((s) => s.state !== 'connected')
   const zaloOk = zaloStatuses.length > 0 && offline.length === 0
   // Thanh dưới đáy (điện thoại): tên ngắn cho từng màn
-  const SHORT: Record<string, string> = { inbox: 'Hội thoại', channels: 'Kênh', monitor: 'Giám sát', data: 'Dữ liệu', settings: 'Cài đặt' }
+  const SHORT: Record<string, string> = { inbox: 'Hội thoại', channels: 'Kênh', monitor: 'Giám sát', data: 'Báo cáo', settings: 'Cài đặt' }
   const mobileItems: NavItem[] = nav
     .filter((n) => n.show !== false)
     .map((n) => ({ id: n.id, label: n.label, short: SHORT[n.id] ?? n.label, icon: n.icon, badge: n.id === 'inbox' ? alertCount : undefined }))
@@ -334,7 +336,7 @@ function Shell() {
         {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} findPhone={route.findPhone} />}
         {route.page === 'channels' && <Channels />}
         {route.page === 'monitor' && allowed('monitor.view') && <Monitor channelId={route.monitorChannel ?? null} convId={route.monitorConv ?? null} />}
-        {route.page === 'data' && canData && <Reports />}
+        {route.page === 'data' && canData && <Reports tab={route.reportTab} />}
         {route.page === 'settings' && canSettings && <SettingsPage tab={route.tab} />}
         {((route.page === 'data' && !canData) || (route.page === 'settings' && !canSettings)) && (
           <div className="page">

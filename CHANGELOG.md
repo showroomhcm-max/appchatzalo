@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.14.0 — 17/10/2026
+
+**Mục Báo cáo (thay cho Dữ liệu): biểu đồ + báo cáo ở một chỗ**
+- **Tổng quan**: khách nhắn, tin khách / tin shop, phản hồi trung bình và % trả lời trong 5 phút, cảnh báo đơn "rơi" đã xử lý / phát sinh, đơn hàng gắn hội thoại. Biểu đồ tin nhắn theo ngày, khách mới / khách cũ quay lại, thời gian phản hồi theo ngày, **giờ cao điểm khách nhắn** (thứ × giờ, để xếp ca trực), theo kênh, tag hội thoại, cảnh báo đơn "rơi" theo loại, đơn hàng theo ngày và theo nguồn (POS từ chat / Sapo / web).
+- **Nhân viên**: biểu đồ tin đã gửi và thời gian phản hồi của từng người + bảng hiệu suất như cũ (tải hội thoại từng người).
+- **Giám sát** (người có quyền giám sát): khách, tin, tin thu hồi, tin cần chú ý (AI / quy tắc), điểm tư vấn AI; biểu đồ tin theo ngày, tin cần chú ý theo ngày, mức rủi ro, loại vấn đề, kết quả hội thoại; bảng theo nhân viên, xuất Excel riêng từng người.
+- **Xuất dữ liệu & báo cáo**: báo cáo giám sát (Excel), mở app Báo cáo công việc CSKH, xuất dữ liệu hội thoại TXT / CSV / JSONL / JSON như cũ.
+- Lọc chung theo hôm nay / 7 / 30 / 90 ngày hoặc khoảng tùy chọn, theo kênh, bộ phận. Rê chuột / chạm vào biểu đồ để xem số từng ngày; dùng tốt trên điện thoại.
+
 ## v3.13.0 — 17/10/2026
 
 **Câu trả lời mẫu theo form "Danh sách CTLM"** (giống file xuất từ trang Pancake / Sapo)

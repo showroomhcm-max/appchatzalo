@@ -48,6 +48,7 @@ import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, pub
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
 import { workReport } from "./work-report.js";
+import { monitorOverview, overview } from "./dashboard.js";
 import { ReportRangeError, monitorReport } from "./monitor-report.js";
 import { publicReportLinkConfig, reportLinkConfig, rotateReportLinkKey, saveReportLinkConfig, signSso, testReportLink } from "./report-link.js";
 
@@ -1476,6 +1477,21 @@ appRouter.post(
 
 // Dữ liệu: báo cáo & xuất hội thoại — chỉ quản lý
 appRouter.get("/stats", requirePerm("data.view"), (req, res) => res.json(agentStats(exportFilter(req.query))));
+// Mục Báo cáo: số liệu cho biểu đồ (giờ Việt Nam)
+function dashRange(q: Request["query"]) {
+  const from = parseDate(q.from);
+  const to = parseDate(q.to, true);
+  if (!from || !to || to < from) throw new HttpError(400, "Chọn khoảng ngày hợp lệ");
+  if (to - from > 370 * 86_400_000) throw new HttpError(400, "Tối đa 1 năm");
+  return { from, to };
+}
+appRouter.get("/reports/overview", requirePerm("data.view"), (req, res) =>
+  res.json(overview({ ...dashRange(req.query), channelId: num(req.query.channelId), departmentId: num(req.query.departmentId) })),
+);
+appRouter.get("/reports/monitor", requirePerm("monitor.view"), (req, res) => {
+  const r = dashRange(req.query);
+  res.json(monitorOverview(r.from, r.to, num(req.query.channelId)));
+});
 appRouter.get("/export", requirePerm("data.export"), (req, res) => sendExport(req, res));
 
 // Tích hợp: API key + webhook (chỉ admin)

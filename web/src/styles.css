@@ -3293,3 +3293,43 @@ html.compact .dvkt-links a { min-height: 36px; }
 .tpl-attach img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--mz-ink-200); display: block; }
 
 .monitor-actions { padding: 0 12px 8px; display: flex; gap: 8px; }
+
+/* ───────── Mục Báo cáo: biểu đồ ───────── */
+.reports .report-tabs { align-self: flex-start; flex-wrap: wrap; }
+.reports .report-tabs button { display: inline-flex; align-items: center; gap: 6px; }
+.report-filters { gap: 8px; }
+.report-actions { gap: 8px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.chart-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.chart-card.wide { grid-column: 1 / -1; }
+.chart-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.chart-head h3 { margin: 0; }
+.chart { position: relative; width: 100%; min-width: 0; }
+.chart svg { display: block; overflow: visible; touch-action: pan-y; }
+.chart-grid line, .chart .chart-grid { stroke: var(--mz-ink-100); stroke-width: 1; }
+.chart-axis { fill: var(--mz-ink-500); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-empty { fill: var(--mz-ink-500); font-size: 13px; }
+.chart-cursor { stroke: var(--mz-ink-300); stroke-dasharray: 3 3; }
+.chart-tip { position: absolute; top: 4px; width: 170px; pointer-events: none; background: var(--mz-ink-900); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); z-index: 2; }
+.chart-tip i, .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--mz-ink-700); }
+.chart-legend.col { flex-direction: column; gap: 6px; }
+.chart-legend i.dashed { border-top: 2px dashed; border-radius: 0; height: 0; width: 14px; vertical-align: 3px; }
+.hbars { display: flex; flex-direction: column; gap: 10px; }
+.hbar { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hbar-head { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.hbar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-head b { font-variant-numeric: tabular-nums; }
+.hbar-track { height: 8px; background: var(--mz-ink-100); border-radius: 9999px; overflow: hidden; }
+.hbar-fill { height: 100%; border-radius: 9999px; min-width: 2px; }
+.heat { display: flex; flex-direction: column; gap: 8px; overflow-x: auto; }
+.heat-grid { display: grid; grid-template-columns: 28px repeat(24, minmax(14px, 1fr)); gap: 3px; min-width: 420px; }
+.heat-cell { aspect-ratio: 1; border-radius: 3px; }
+.heat-h { font-size: 10px; color: var(--mz-ink-500); text-align: center; }
+.heat-d { font-size: 11px; color: var(--mz-ink-600); align-self: center; }
+.donut { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.donut circle { transition: stroke-width 0.15s; }
+.donut-num { fill: var(--mz-ink-900); font-size: 22px; font-weight: 700; }
+.nowrap { white-space: nowrap; }
+@media (max-width: 900px) { .chart-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .donut circle { transition: none; } }
