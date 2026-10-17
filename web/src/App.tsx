@@ -318,7 +318,8 @@ function Shell() {
       <main className="main">
         <header className="topbar">
           <span className="topbar-title">{PAGE_TITLE[route.page]}</span>
-          <ChannelPicker />
+          {/* Chọn kênh chỉ có tác dụng với hộp thư Hội thoại */}
+          {route.page === 'inbox' && <ChannelPicker />}
         </header>
         <UpdateBanner />
         {ssoMsg && <div className={`banner ${ssoMsg.ok ? 'info' : 'warn'} inline`}>{ssoMsg.text}</div>}
