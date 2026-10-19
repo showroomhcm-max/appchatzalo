@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { BarChart3, ClipboardList, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
+import { BarChart3, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
@@ -219,14 +219,8 @@ function Shell() {
   const detail = (route.page === 'inbox' && !!route.convId) || (route.page === 'monitor' && !!route.monitorConv)
   useEffect(() => setMoreOpen(false), [route.page, route.convId])
 
-  // App Báo cáo công việc CSKH: hiện mục menu khi đã bật kết nối; #/sso/baocao → ký vé đăng nhập rồi chuyển sang app đó
-  const [reportUrl, setReportUrl] = useState<string | null>(null)
+  // App Báo cáo công việc CSKH: #/sso/baocao (nút đăng nhập của app đó) → ký vé đăng nhập rồi chuyển sang
   const [ssoMsg, setSsoMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  useEffect(() => {
-    api<{ enabled: boolean; url: string | null }>('/report-link/status')
-      .then((r) => setReportUrl(r.enabled ? r.url : null))
-      .catch(() => {})
-  }, [])
   useEffect(() => {
     if (route.sso !== 'baocao') return
     setSsoMsg({ ok: true, text: 'Đang mở app Báo cáo công việc…' })
@@ -268,14 +262,6 @@ function Shell() {
               </a>
             ))}
         </nav>
-        {reportUrl && (
-          <nav className="sidenav-extra">
-            <a href="#/sso/baocao" target="_blank" rel="noopener" className="nav-item" title="Báo cáo công việc CSKH" aria-label="Báo cáo công việc CSKH">
-              <ClipboardList size={20} />
-              <span className="nav-label">Báo cáo công việc</span>
-            </a>
-          </nav>
-        )}
         <div className="sidenav-foot">
           <a
             href="#/channels"
@@ -346,7 +332,7 @@ function Shell() {
         )}
       </main>
       <BottomBar items={mobileItems} active={route.page} onMore={() => setMoreOpen((v) => !v)} moreOpen={moreOpen} />
-      {moreOpen && <MoreSheet items={mobileItems} reportUrl={reportUrl} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
+      {moreOpen && <MoreSheet items={mobileItems} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
     </div>
   )

@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { ClipboardList, KeyRound, LogOut, MoreHorizontal, ShieldOff, UserRound } from 'lucide-react'
+import { KeyRound, LogOut, MoreHorizontal, ShieldOff, UserRound } from 'lucide-react'
 import { api } from './api'
 import { useApp } from './store'
 import { Avatar } from './components'
@@ -42,7 +42,7 @@ export function BottomBar({ items, active, onMore, moreOpen }: { items: NavItem[
 }
 
 /** Tấm trượt từ đáy: các màn còn lại + tài khoản (đổi mật khẩu, đăng xuất…) */
-export function MoreSheet({ items, reportUrl, onClose, onChangePassword }: { items: NavItem[]; reportUrl?: string | null; onClose: () => void; onChangePassword: () => void }) {
+export function MoreSheet({ items, onClose, onChangePassword }: { items: NavItem[]; onClose: () => void; onChangePassword: () => void }) {
   const { user, logout, zaloStatuses } = useApp()
   const rest = items.length <= 4 ? [] : items.slice(3)
   const offline = zaloStatuses.filter((s) => s.state !== 'connected')
@@ -64,16 +64,6 @@ export function MoreSheet({ items, reportUrl, onClose, onChangePassword }: { ite
                 {!!i.badge && <span className="unread-count">{i.badge}</span>}
               </a>
             ))}
-          </div>
-        )}
-        {reportUrl && (
-          <div className="sheet-group">
-            <a href="#/sso/baocao" target="_blank" rel="noopener" className="sheet-row" onClick={onClose}>
-              <span className="sheet-ic">
-                <ClipboardList size={20} />
-              </span>
-              <span className="grow">Báo cáo công việc</span>
-            </a>
           </div>
         )}
         <div className="sheet-group">

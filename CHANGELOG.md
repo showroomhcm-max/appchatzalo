@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.15.2 — 19/10/2026
+
+- Bỏ mục **Báo cáo công việc** khỏi thanh menu (máy tính và tấm "Thêm" trên điện thoại). Kết nối với app Báo cáo công việc CSKH vẫn giữ: app đó vẫn đăng nhập qua Chat Siêu Tốc và lấy số liệu chat như cũ.
+
 ## v3.15.1 — 17/10/2026
 
 - Ô chọn kênh ở góc trên chỉ hiện trong trang **Hội thoại** (nơi nó có tác dụng); các trang Kênh Chat, Giám sát, Báo cáo, Cài đặt không còn hiện.
