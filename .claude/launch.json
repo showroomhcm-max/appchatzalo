@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "zalo-cskh-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "name": "chat-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/demo.mjs"],
       "port": 5173
     }
   ]

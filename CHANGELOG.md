@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.18.2 — 20/10/2026
+
+- Không còn bị **đăng xuất** khi mở app đúng lúc máy chủ đang khởi động lại (NAS tự cập nhật bản mới, mất mạng): app hiện "Đang kết nối máy chủ…" rồi tự vào lại; chỉ bắt đăng nhập lại khi phiên thật sự hết hạn.
+- Bản demo trên máy phát triển (`node scripts/demo.mjs`): dữ liệu sao chép đã bỏ phiên Zalo, webhook, kết nối app nội bộ, để chỉnh giao diện và tính năng mà không đụng app thật.
+
 ## v3.18.1 — 20/10/2026
 
 - Đồng bộ tin cũ lật trang đúng chiều Zalo trả (xuôi từ lúc tài khoản được gắn → mới nhất): ít lượt gọi hơn hẳn (Zalo SR từ 67 lượt còn vài lượt).

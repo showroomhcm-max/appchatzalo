@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { BarChart3, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
-import { api, getToken, setToken } from './api'
+import { api, ApiError, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
 import Inbox from './pages/Inbox'
@@ -18,16 +18,39 @@ import { BottomBar, MoreSheet, type NavItem } from './MobileNav'
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [checking, setChecking] = useState(!!getToken())
+  const [waiting, setWaiting] = useState(false)
 
   useEffect(() => {
     if (!getToken()) return
-    api<User>('/auth/me')
-      .then(setUser)
-      .catch(() => setToken(null))
-      .finally(() => setChecking(false))
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    // Chỉ đăng xuất khi máy chủ báo phiên hết hạn (401/403). Máy chủ đang khởi động lại (cập nhật bản mới,
+    // lỗi 502, mất mạng) thì chờ rồi thử lại, không bắt đăng nhập lại.
+    const check = () =>
+      api<User>('/auth/me')
+        .then((u) => {
+          if (!alive) return
+          setUser(u)
+          setChecking(false)
+        })
+        .catch((e) => {
+          if (!alive) return
+          if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+            setToken(null)
+            setChecking(false)
+          } else {
+            setWaiting(true)
+            timer = setTimeout(check, 3000)
+          }
+        })
+    void check()
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
   }, [])
 
-  if (checking) return <div className="splash">Đang tải…</div>
+  if (checking) return <div className="splash">{waiting ? 'Đang kết nối máy chủ… (app vừa cập nhật, đợi vài giây)' : 'Đang tải…'}</div>
   if (!user) return <Login onLogin={setUser} />
   return (
     <AppProvider user={user} onLogout={() => setUser(null)}>
