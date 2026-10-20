@@ -70,6 +70,6 @@ Khi có bản mới:
 
 ## E. Ghi chú
 
-- App mở thêm cổng `3000` trong mạng nội bộ (`http://<IP-NAS>:3000`), từ internet chỉ vào được qua `cskhzalo.sieutoc.com`.
+- App mở cổng `3100` trong mạng nội bộ (`http://<IP-NAS>:3100`, đổi trong `docker-compose.yml` nếu NAS đã dùng cổng này); app chạy trong mạng riêng nên không tranh cổng 3000 với app khác trên NAS. Từ internet chỉ vào được qua `cskhzalo.sieutoc.com`.
 - Giới hạn RAM cho app là 3 GB (trong `docker-compose.yml`), thực tế dùng khoảng 100–300 MB.
 - Nhật ký: Container Manager → Container → `chat-sieutoc` → *Nhật ký*.

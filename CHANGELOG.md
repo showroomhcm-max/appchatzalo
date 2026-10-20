@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.15.4 — 20/10/2026
+
+- NAS: app và Cloudflare Tunnel chạy trong mạng riêng, không còn dùng cổng 3000 của NAS (trước đây nếu app khác trên NAS đã chiếm cổng 3000 thì tên miền sẽ trỏ nhầm sang app đó). Trong mạng nội bộ mở app qua cổng 3100.
+
 ## v3.15.3 — 20/10/2026
 
 - Chạy được trên **Synology NAS** (Container Manager): thêm `deploy/nas/docker-compose.yml` (app + Cloudflare Tunnel) và hướng dẫn `deploy/nas/HUONG-DAN.md`.

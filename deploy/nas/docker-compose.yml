@@ -6,14 +6,26 @@
 #     data/                ← CSDL, ảnh, file (KHÔNG xoá)
 #     app.env              ← cấu hình app (bản sao .env)
 #     tunnel.env           ← TUNNEL_TOKEN=... của Cloudflare Tunnel
-# Dùng mạng host để tunnel gọi app qua localhost:3000 như khi chạy trên laptop,
-# không phải sửa cấu hình tunnel trên Cloudflare.
+# App và tunnel dùng chung một mạng riêng (do container "net" giữ), nên tunnel gọi app qua
+# localhost:3000 như khi chạy trên laptop mà không đụng cổng 3000 của NAS (app khác trên NAS
+# dùng cổng đó cũng không sao). "net" chỉ ngủ, không bao giờ khởi động lại, để app hay tunnel
+# có khởi động lại thì mạng chung vẫn còn.
 services:
+  net:
+    image: node:24-slim
+    container_name: chat-sieutoc-net
+    command: ["sleep", "infinity"]
+    init: true
+    ports:
+      - "3100:3000" # mở trong mạng nội bộ: http://<IP-NAS>:3100 (đổi số 3100 nếu NAS đã dùng)
+    restart: unless-stopped
+
   app:
     build: ./app
     image: chat-sieutoc:latest
     container_name: chat-sieutoc
-    network_mode: host
+    network_mode: service:net
+    depends_on: [net]
     env_file: app.env
     environment:
       DATA_DIR: /app/data
@@ -30,10 +42,10 @@ services:
   tunnel:
     image: cloudflare/cloudflared:2026.10.0
     container_name: chat-sieutoc-tunnel
-    network_mode: host
+    network_mode: service:net
     command: tunnel --no-autoupdate run
     env_file: tunnel.env
-    depends_on: [app]
+    depends_on: [net, app]
     restart: unless-stopped
     logging:
       driver: json-file
