@@ -1,6 +1,6 @@
 {
   "name": "zalo-cskh-server",
-  "version": "3.17.0",
+  "version": "3.17.1",
   "description": "Backend Zalo CSKH đa nhân viên",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../.env src/index.ts",

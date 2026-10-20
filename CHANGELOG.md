@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.17.1 — 20/10/2026
+
+- Đồng bộ tin nhắn cũ lùi xa hơn, giống Zalo Web lúc mới đăng nhập: lật tối đa 80 lô tin, lô nào toàn tin đã có thì vẫn lùi tiếp thay vì dừng sớm.
+
 ## v3.17.0 — 20/10/2026
 
 - **Đồng bộ tin nhắn cũ** của Zalo: vừa quét QR gắn tài khoản Zalo vào kênh là app tự kéo các tin cũ Zalo còn giữ trên máy chủ (tin cá nhân + nhóm, tối đa 90 ngày) để nhân viên biết mà chat tiếp. Trên thẻ kênh (Cài đặt › Kết nối kênh) có nút **Đồng bộ tin nhắn cũ** để chạy lại bất cứ lúc nào, kèm tiến độ và kết quả. Tin đã có thì bỏ qua, không nhân đôi; tin cũ không bắn webhook / cảnh báo / thông báo và không tính là chưa đọc.

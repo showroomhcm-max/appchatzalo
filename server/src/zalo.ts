@@ -432,22 +432,29 @@ export class ChannelSession implements ChannelAdapter {
     try {
       for (const type of [ThreadType.User, ThreadType.Group]) {
         st.step = type === ThreadType.User ? "Tin nhắn cá nhân" : "Tin nhắn nhóm";
+        // Giống Zalo Web lúc mới đăng nhập: xin lô mới nhất, rồi lùi dần bằng mã tin cũ nhất của lô trước.
         const seen = new Set<string>();
+        const asked = new Set<string>();
         let lastId: string | null = null;
-        for (let page = 0; page < 60 && this.api === api; page++) {
+        for (let page = 0; page < 80 && this.api === api; page++) {
           const batch = await this.requestOld(api, type, lastId);
-          let fresh = 0;
+          if (!batch.length) break;
           let oldest: Message | null = null;
           for (const m of batch) {
+            if (!oldest || Number(m.data.ts) < Number(oldest.data.ts)) oldest = m;
             const id = String(m.data.msgId);
             if (seen.has(id)) continue;
             seen.add(id);
-            fresh++;
             save(m);
-            if (!oldest || Number(m.data.ts) < Number(oldest.data.ts)) oldest = m;
           }
-          if (!fresh || !oldest || Number(oldest.data.ts) < cutoff) break;
-          lastId = String(oldest.data.msgId);
+          if (oldest && Number(oldest.data.ts) < cutoff) break;
+          // Mốc lùi tiếp: tin cũ nhất, rồi tin cuối / đầu lô (phòng khi Zalo trả lô không theo thứ tự)
+          const next = [oldest, batch[batch.length - 1], batch[0]]
+            .map((m) => String(m?.data.msgId ?? m?.data.cliMsgId ?? ""))
+            .find((id) => id && !asked.has(id));
+          if (!next) break;
+          asked.add(next);
+          lastId = next;
           await pause(700);
         }
       }
