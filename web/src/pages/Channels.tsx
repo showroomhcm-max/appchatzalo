@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, KeyRound, LogIn, LogOut, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, History, KeyRound, LogIn, LogOut, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
 import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Channel, User, ZaloStatus } from '../types'
@@ -620,6 +620,7 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
               >
                 <LogOut size={14} /> Ngắt kết nối
               </button>
+              <HistorySyncButton channelId={c.id} />
             </>
           ) : state === 'connecting' ? (
             <span className="muted small row">
@@ -642,6 +643,73 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
         <div className="muted small">Kênh đang tắt. Bật lại trong phần cài đặt kênh.</div>
       )}
     </div>
+  )
+}
+
+type HistorySync = {
+  state: 'idle' | 'running' | 'done' | 'error'
+  step?: string
+  finishedAt?: number
+  fetched?: number
+  added?: number
+  conversations?: number
+  groups?: number
+  error?: string
+}
+
+/** Kéo tin cũ Zalo còn giữ về app (tự chạy khi vừa quét QR gắn tài khoản, hoặc bấm tay). */
+function HistorySyncButton({ channelId }: { channelId: number }) {
+  const [sync, setSync] = useState<HistorySync | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const s = await api<HistorySync>(`/channels/${channelId}/sync-history`)
+        if (!alive) return
+        setSync(s)
+        if (s.state === 'running') timer = setTimeout(poll, 2000)
+      } catch {
+        /* bỏ qua: thử lại khi bấm nút */
+      }
+    }
+    if (!sync || sync.state === 'running') poll()
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+  }, [channelId, sync?.state])
+
+  async function start() {
+    try {
+      await api(`/channels/${channelId}/sync-history`, { method: 'POST' })
+      setSync({ state: 'running', step: 'Bắt đầu', fetched: 0, added: 0 })
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  const running = sync?.state === 'running'
+  return (
+    <>
+      <button
+        className="btn outline sm"
+        disabled={running}
+        onClick={start}
+        title="Kéo các tin nhắn cũ mà Zalo còn giữ trên máy chủ về app (tin đã có thì bỏ qua)"
+      >
+        <History size={14} className={running ? 'spin' : undefined} /> {running ? 'Đang đồng bộ tin cũ…' : 'Đồng bộ tin nhắn cũ'}
+      </button>
+      {sync && sync.state !== 'idle' && (
+        <div className={`small ${sync.state === 'error' ? 'err-text' : 'muted'}`} style={{ flexBasis: '100%' }}>
+          {running && `${sync.step ?? ''}: đã đọc ${sync.fetched ?? 0} tin, thêm mới ${sync.added ?? 0} tin${sync.groups ? `, ${sync.groups} nhóm` : ''}.`}
+          {sync.state === 'done' &&
+            `Đồng bộ xong${sync.finishedAt ? ` lúc ${new Date(sync.finishedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}: thêm ${sync.added ?? 0} tin vào ${sync.conversations ?? 0} hội thoại (đọc ${sync.fetched ?? 0} tin, ${sync.groups ?? 0} nhóm).`}
+          {sync.state === 'error' && `Đồng bộ dừng giữa chừng: ${sync.error}. Đã thêm ${sync.added ?? 0} tin.`}
+        </div>
+      )}
+    </>
   )
 }
 

@@ -162,6 +162,26 @@ settingsRouter.post(
     await zalo.session(id).init();
   }),
 );
+// Đồng bộ tin cũ Zalo còn giữ (chạy nền, giao diện hỏi tiến độ bằng GET)
+settingsRouter.post(
+  "/channels/:id/sync-history",
+  requirePerm("channels.manage"),
+  channelAction((id) => {
+    const s = zalo.zaloSession(id);
+    if (s.getStatus().state !== "connected") throw new HttpError(400, "Kênh chưa kết nối Zalo. Kết nối xong mới đồng bộ được tin cũ.");
+    if (s.history.state === "running") throw new HttpError(409, "Kênh đang đồng bộ tin cũ, đợi xong lượt này.");
+    void s.syncHistory().catch(() => undefined);
+  }),
+);
+settingsRouter.get(
+  "/channels/:id/sync-history",
+  requirePerm("channels.manage"),
+  h((req, res) => {
+    const id = Number(req.params.id);
+    if (!get("SELECT 1 FROM channels WHERE id = ? AND platform = 'zalo' AND deleted_at IS NULL", id)) throw new HttpError(404, "Không tìm thấy kênh Zalo");
+    res.json(zalo.zaloSession(id).history);
+  }),
+);
 settingsRouter.post("/channels/:id/logout", requirePerm("channels.manage"), channelAction((id) => zalo.session(id).logout(true)));
 
 // Trạng thái các kênh người này dùng được (banner "Zalo chưa kết nối")

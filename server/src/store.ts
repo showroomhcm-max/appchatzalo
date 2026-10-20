@@ -25,6 +25,8 @@ export type SaveMessageInput = {
   ts: number;
   /** Tin cũ đồng bộ lại: không tăng số chưa đọc. */
   isHistory?: boolean;
+  /** Nhập hàng loạt tin cũ: không phát sự kiện tin mới (webhook, cảnh báo, giám sát, thông báo). */
+  quiet?: boolean;
   /** Tin này trả lời (trích dẫn) tin nào */
   quote?: MessageQuote | null;
   /** Hội thoại bình luận (Facebook) và thông tin bài viết */
@@ -441,8 +443,10 @@ export function saveMessage(input: SaveMessageInput) {
 
   const message = getMessage(result.id)!;
   const conversation = getConversation(conversationId)!;
-  if (result.isNew) bus.emit("message.created", message, conversation);
-  else if (result.changed) bus.emit("message.updated", message, conversation);
+  if (!input.quiet) {
+    if (result.isNew) bus.emit("message.created", message, conversation);
+    else if (result.changed) bus.emit("message.updated", message, conversation);
+  }
   return { message, conversation, isNew: result.isNew };
 }
 

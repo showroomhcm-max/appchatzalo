@@ -35,6 +35,19 @@ export type StickerInfo = { id: number; cateId: number; type: number; url: strin
 
 export type ZaloStatus = ChannelStatus;
 
+/** Tiến độ đồng bộ tin cũ của một kênh Zalo. */
+export type HistorySync = {
+  state: "idle" | "running" | "done" | "error";
+  step?: string;
+  startedAt?: number;
+  finishedAt?: number;
+  fetched?: number;
+  added?: number;
+  conversations?: number;
+  groups?: number;
+  error?: string;
+};
+
 export type ZaloGroup = { groupId: string; name: string; avatar: string; members: number };
 
 export type ZaloPerson = {
@@ -70,6 +83,11 @@ export class ChannelSession implements ChannelAdapter {
   private friendsCache: { at: number; list: ZaloPerson[] } | null = null;
   private groupsCache: { at: number; list: ZaloGroup[] } | null = null;
   private lookupTimes: number[] = [];
+  /** Đang đồng bộ tin cũ: lô "old_messages" chuyển cho syncHistory thay vì lưu thẳng. */
+  private oldMsgWaiter: ((msgs: Message[], type: ThreadType) => void) | null = null;
+  private profileChain: Promise<void> = Promise.resolve();
+  private pendingAutoSync = false;
+  history: HistorySync = { state: "idle" };
 
   constructor(readonly channelId: number) {
     this.status = { channelId, channelName: this.channelName(), platform: "zalo", state: "disconnected", updatedAt: Date.now() };
@@ -192,6 +210,8 @@ export class ChannelSession implements ChannelAdapter {
         return;
       }
       if (creds) this.saveCredentials(creds);
+      // Tài khoản vừa gắn: kéo luôn tin cũ Zalo còn giữ để nhân viên biết mà chat tiếp.
+      this.pendingAutoSync = true;
       await this.attach(api);
       logEvent(null, null, "zalo.login", { method: "qr", channel: this.channelId });
     } catch (e: any) {
@@ -261,12 +281,20 @@ export class ChannelSession implements ChannelAdapter {
     const { listener } = api;
     listener.on("connected", () => {
       this.setStatus({ state: "connected", account: { id: ownId, name, avatar }, error: undefined, qrImage: undefined });
-      // Đồng bộ các tin gần đây mà Zalo còn giữ.
-      listener.requestOldMessages(ThreadType.User);
-      listener.requestOldMessages(ThreadType.Group);
+      if (this.pendingAutoSync) {
+        this.pendingAutoSync = false;
+        void this.syncHistory().catch((e) => console.warn(`[zalo#${this.channelId}] Đồng bộ tin cũ lỗi:`, e?.message ?? e));
+      } else if (this.history.state !== "running") {
+        // Đồng bộ các tin gần đây mà Zalo còn giữ (bù tin lúc mất kết nối).
+        listener.requestOldMessages(ThreadType.User);
+        listener.requestOldMessages(ThreadType.Group);
+      }
     });
     listener.on("message", (m) => this.handleMessage(m, false));
-    listener.on("old_messages", (msgs) => msgs.forEach((m) => this.handleMessage(m, true)));
+    listener.on("old_messages", (msgs, type) => {
+      if (this.oldMsgWaiter) this.oldMsgWaiter(msgs, type);
+      else msgs.forEach((m) => this.handleMessage(m, true));
+    });
     listener.on("reaction", (r) => this.handleReaction(r));
     // Khách đang soạn tin (Zalo báo khoảng vài giây một lần khi khách gõ)
     listener.on("typing", (t: any) => {
@@ -323,12 +351,13 @@ export class ChannelSession implements ChannelAdapter {
     this.setStatus({ state: "connecting", account: { id: ownId, name, avatar } });
   }
 
-  private handleMessage(m: Message, isHistory: boolean) {
+  private handleMessage(m: Message, isHistory: boolean, quiet = false) {
     try {
       const d = m.data;
       const isGroup = m.type === ThreadType.Group;
       const source: Source = m.isSelf ? (isHistory ? "history" : "phone") : "customer";
-      saveMessage({
+      const saved = saveMessage({
+        quiet,
         channelId: this.channelId,
         threadId: m.threadId,
         conversationType: isGroup ? 1 : 0,
@@ -352,9 +381,101 @@ export class ChannelSession implements ChannelAdapter {
           : null,
       });
       this.ensureProfile(m.threadId, isGroup);
+      return saved;
     } catch (e) {
       console.error(`[zalo#${this.channelId}] Lỗi lưu tin nhắn:`, e);
+      return null;
     }
+  }
+
+  // ───────────── Đồng bộ tin cũ ─────────────
+
+  /** Xin một lô tin cũ (cá nhân hoặc nhóm) qua kết nối Zalo; hết 20 giây không có thì coi như hết. */
+  private requestOld(api: API, type: ThreadType, lastId: string | null) {
+    return new Promise<Message[]>((resolve) => {
+      const timer = setTimeout(() => {
+        this.oldMsgWaiter = null;
+        resolve([]);
+      }, 20_000);
+      this.oldMsgWaiter = (msgs, t) => {
+        if (t !== type) return msgs.forEach((m) => this.handleMessage(m, true));
+        clearTimeout(timer);
+        this.oldMsgWaiter = null;
+        resolve(msgs);
+      };
+      api.listener.requestOldMessages(type, lastId);
+    });
+  }
+
+  /**
+   * Kéo tin cũ Zalo còn giữ trên máy chủ (Zalo không cho lấy toàn bộ lịch sử trên điện thoại):
+   * lật dần từng lô tin cá nhân + nhóm, rồi lấy thêm lịch sử từng nhóm. Tin đã có thì bỏ qua;
+   * không bắn webhook / cảnh báo cho tin cũ.
+   */
+  async syncHistory(days = 90) {
+    if (this.history.state === "running") throw new Error("Kênh đang đồng bộ tin cũ, đợi xong lượt này.");
+    const api = this.requireApi();
+    const cutoff = Date.now() - days * 86_400_000;
+    const st: HistorySync = { state: "running", startedAt: Date.now(), step: "Tin nhắn cá nhân", fetched: 0, added: 0, conversations: 0, groups: 0 };
+    this.history = st;
+    const touched = new Set<string>();
+    const save = (m: Message) => {
+      st.fetched!++;
+      const r = this.handleMessage(m, true, true);
+      if (r?.isNew) {
+        st.added!++;
+        touched.add(r.conversation.id);
+        st.conversations = touched.size;
+      }
+    };
+    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    try {
+      for (const type of [ThreadType.User, ThreadType.Group]) {
+        st.step = type === ThreadType.User ? "Tin nhắn cá nhân" : "Tin nhắn nhóm";
+        const seen = new Set<string>();
+        let lastId: string | null = null;
+        for (let page = 0; page < 60 && this.api === api; page++) {
+          const batch = await this.requestOld(api, type, lastId);
+          let fresh = 0;
+          let oldest: Message | null = null;
+          for (const m of batch) {
+            const id = String(m.data.msgId);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            fresh++;
+            save(m);
+            if (!oldest || Number(m.data.ts) < Number(oldest.data.ts)) oldest = m;
+          }
+          if (!fresh || !oldest || Number(oldest.data.ts) < cutoff) break;
+          lastId = String(oldest.data.msgId);
+          await pause(700);
+        }
+      }
+      st.step = "Lịch sử từng nhóm";
+      const groups = Object.keys((await api.getAllGroups()).gridVerMap ?? {}).slice(0, 300);
+      for (const gid of groups) {
+        if (this.api !== api) break;
+        try {
+          const r = await api.getGroupChatHistory(gid, 50);
+          for (const m of r.groupMsgs ?? []) if (Number(m.data.ts) >= cutoff) save(m as Message);
+        } catch (e: any) {
+          console.warn(`[zalo#${this.channelId}] Không lấy được lịch sử nhóm ${gid}:`, e?.message ?? e);
+        }
+        st.groups!++;
+        await pause(500);
+      }
+      Object.assign(st, { state: "done", step: undefined, finishedAt: Date.now() });
+    } catch (e: any) {
+      Object.assign(st, { state: "error", error: e?.message ?? String(e), finishedAt: Date.now() });
+    } finally {
+      this.oldMsgWaiter = null;
+      for (const id of touched) {
+        const conv = getConversation(id);
+        if (conv) bus.emit("conversation.updated", conv);
+      }
+      logEvent(null, null, "zalo.history_synced", { channel: this.channelId, fetched: st.fetched, added: st.added, conversations: st.conversations, groups: st.groups, state: st.state });
+    }
+    return st;
   }
 
   /** Khách (hoặc shop trên điện thoại) thả cảm xúc vào tin nhắn. */
@@ -380,7 +501,8 @@ export class ChannelSession implements ChannelAdapter {
     if (!this.api || !conv || (conv.avatar && conv.name) || this.profileFetchQueue.has(threadId)) return;
     this.profileFetchQueue.add(threadId);
     const api = this.api;
-    (async () => {
+    // Lần lượt từng người, cách nhau một chút: đồng bộ tin cũ có thể gặp hàng trăm khách mới cùng lúc.
+    this.profileChain = this.profileChain.then(async () => {
       try {
         if (isGroup) {
           const r = await api.getGroupInfo(threadId);
@@ -394,7 +516,8 @@ export class ChannelSession implements ChannelAdapter {
       } catch (e) {
         console.warn(`[zalo#${this.channelId}] Không lấy được thông tin`, threadId, e);
       }
-    })();
+      await new Promise((r) => setTimeout(r, 250));
+    });
   }
 
   // ───────────── Tìm người dùng Zalo ─────────────
