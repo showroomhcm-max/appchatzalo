@@ -9,6 +9,8 @@ COPY web web
 RUN npm --prefix web run build && npm --prefix server run build && npm --prefix server prune --omit=dev
 
 FROM node:24-slim
+ARG GIT_COMMIT=""
+ENV GIT_COMMIT=$GIT_COMMIT
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/app/data WEB_DIST=/app/web/dist TZ=Asia/Ho_Chi_Minh
 WORKDIR /app/server
 # package.json gốc giữ số phiên bản app (server/src/version.ts đọc ../package.json)

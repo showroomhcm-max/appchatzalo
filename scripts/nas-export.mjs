@@ -1,6 +1,5 @@
 // Đóng gói app + dữ liệu để chuyển sang Synology NAS (xem deploy/nas/HUONG-DAN.md).
 //   node scripts/nas-export.mjs                 dừng app trên máy này rồi đóng gói (lúc chuyển thật)
-//   node scripts/nas-export.mjs --code-only     chỉ mã nguồn bản mới (cập nhật app đã chạy trên NAS)
 //   node scripts/nas-export.mjs --keep-running  đóng gói mà không dừng app (chỉ để thử; KHÔNG chạy
 //                                               bản này khi app trên máy này còn chạy: Zalo chỉ cho một
 //                                               nơi nhận tin, bản sau sẽ đá bản trước)
@@ -14,8 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const root = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
-const codeOnly = args.includes("--code-only");
-const keepRunning = codeOnly || args.includes("--keep-running");
+const keepRunning = args.includes("--keep-running");
 const outIdx = args.indexOf("--out");
 const out = path.resolve(outIdx >= 0 ? args[outIdx + 1] : path.join(root, "nas-export", "chat-sieutoc"));
 const dataSrc = path.join(root, "server", "data");
@@ -35,22 +33,7 @@ if (!keepRunning) {
   execSync("npx pm2 stop zalo-cskh zalo-cskh-tunnel", { cwd: root, stdio: "inherit" });
 }
 
-// 1. Mã nguồn: đúng các file trong git
-const appDir = path.join(out, "app");
-for (const file of git("ls-files -z").split("\0").filter(Boolean)) {
-  const dest = path.join(appDir, file);
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(path.join(root, file), dest);
-}
-
-if (codeOnly) {
-  const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
-  console.log(`\nĐã đóng gói mã nguồn v${version} vào ${appDir}`);
-  console.log("Trên NAS: thay thư mục docker/chat-sieutoc/app bằng thư mục này rồi Build lại dự án (KHÔNG đụng thư mục data).");
-  process.exit(0);
-}
-
-// 2. Dữ liệu: bản chụp CSDL gọn một file + khoá đăng nhập + ảnh/file
+// 1. Dữ liệu: bản chụp CSDL gọn một file + khoá đăng nhập + ảnh/file
 const dataDir = path.join(out, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(path.join(dataSrc, "app.db"));
@@ -59,7 +42,7 @@ db.close();
 fs.copyFileSync(path.join(dataSrc, ".jwt-secret"), path.join(dataDir, ".jwt-secret"));
 if (fs.existsSync(path.join(dataSrc, "uploads"))) fs.cpSync(path.join(dataSrc, "uploads"), path.join(dataDir, "uploads"), { recursive: true });
 
-// 3. Cấu hình: .env → app.env, token tunnel → tunnel.env (bỏ BOM, xuống dòng kiểu Linux)
+// 2. Cấu hình: .env → app.env, token tunnel → tunnel.env (bỏ BOM, xuống dòng kiểu Linux)
 const clean = (s) => s.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
 const envFile = path.join(root, ".env");
 fs.writeFileSync(path.join(out, "app.env"), fs.existsSync(envFile) ? clean(fs.readFileSync(envFile, "utf8")) : "");
@@ -69,7 +52,10 @@ if (fs.existsSync(tokenFile)) {
 } else {
   console.warn("Chưa có tools/cloudflare-tunnel-token.txt: tạo tunnel.env trên NAS với dòng TUNNEL_TOKEN=<token>.");
 }
-fs.copyFileSync(path.join(root, "deploy", "nas", "docker-compose.yml"), path.join(out, "docker-compose.yml"));
+// 3. File chạy trên NAS (app lấy bản build sẵn từ GitHub, cap-nhat.sh tự cập nhật)
+for (const f of ["docker-compose.yml", "cap-nhat.sh", "ghcr.env.example", "HUONG-DAN.md"]) {
+  fs.copyFileSync(path.join(root, "deploy", "nas", f), path.join(out, f));
+}
 
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
 console.log(`\nĐã đóng gói v${version} vào ${out}`);

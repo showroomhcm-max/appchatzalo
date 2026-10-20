@@ -1,0 +1,39 @@
+# Mỗi lần phát hành (tag v*), build ảnh Docker và đẩy lên GitHub Container Registry.
+# NAS (deploy/nas/cap-nhat.sh) thấy ảnh mới thì tự cập nhật.
+name: Build ảnh cho NAS
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    # Code được đẩy lên 2 repo; chỉ build ở repo công ty.
+    if: github.repository == 'SieuTocCorp/chatcskh'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: v
+        run: echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: GIT_COMMIT=${{ github.sha }}
+          tags: |
+            ghcr.io/sieutoccorp/chatcskh:latest
+            ghcr.io/sieutoccorp/chatcskh:${{ steps.v.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

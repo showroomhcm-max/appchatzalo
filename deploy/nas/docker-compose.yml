@@ -2,7 +2,8 @@
 # Thư mục trên NAS:
 #   chat-sieutoc/
 #     docker-compose.yml   ← file này
-#     app/                 ← mã nguồn (thay khi cập nhật bản mới)
+#     cap-nhat.sh          ← tự cập nhật bản mới (Bộ lập lịch tác vụ của DSM chạy vài phút một lần)
+#     ghcr.env             ← GHCR_USER / GHCR_TOKEN: mã chỉ-đọc để tải bản build từ GitHub
 #     data/                ← CSDL, ảnh, file (KHÔNG xoá)
 #     app.env              ← cấu hình app (bản sao .env)
 #     tunnel.env           ← TUNNEL_TOKEN=... của Cloudflare Tunnel
@@ -10,6 +11,8 @@
 # localhost:3000 như khi chạy trên laptop mà không đụng cổng 3000 của NAS (app khác trên NAS
 # dùng cổng đó cũng không sao). "net" chỉ ngủ, không bao giờ khởi động lại, để app hay tunnel
 # có khởi động lại thì mạng chung vẫn còn.
+name: chat-sieutoc
+
 services:
   net:
     image: node:24-slim
@@ -21,8 +24,8 @@ services:
     restart: unless-stopped
 
   app:
-    build: ./app
-    image: chat-sieutoc:latest
+    # Bản build sẵn trên GitHub; muốn giữ một bản cố định thì đặt APP_TAG=3.15.5 trong file .env cạnh file này.
+    image: ghcr.io/sieutoccorp/chatcskh:${APP_TAG:-latest}
     container_name: chat-sieutoc
     network_mode: service:net
     depends_on: [net]
