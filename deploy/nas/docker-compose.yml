@@ -1,0 +1,40 @@
+# Chat Siêu Tốc trên Synology NAS (Container Manager › Dự án).
+# Thư mục trên NAS:
+#   chat-sieutoc/
+#     docker-compose.yml   ← file này
+#     app/                 ← mã nguồn (thay khi cập nhật bản mới)
+#     data/                ← CSDL, ảnh, file (KHÔNG xoá)
+#     app.env              ← cấu hình app (bản sao .env)
+#     tunnel.env           ← TUNNEL_TOKEN=... của Cloudflare Tunnel
+# Dùng mạng host để tunnel gọi app qua localhost:3000 như khi chạy trên laptop,
+# không phải sửa cấu hình tunnel trên Cloudflare.
+services:
+  app:
+    build: ./app
+    image: chat-sieutoc:latest
+    container_name: chat-sieutoc
+    network_mode: host
+    env_file: app.env
+    environment:
+      DATA_DIR: /app/data
+      PORT: "3000"
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ./data:/app/data
+    mem_limit: 3g
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: chat-sieutoc-tunnel
+    network_mode: host
+    command: tunnel --no-autoupdate run
+    env_file: tunnel.env
+    depends_on: [app]
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.15.3 — 20/10/2026
+
+- Chạy được trên **Synology NAS** (Container Manager): thêm `deploy/nas/docker-compose.yml` (app + Cloudflare Tunnel) và hướng dẫn `deploy/nas/HUONG-DAN.md`.
+- Lệnh `npm run nas:export` dừng app trên máy này và gói mã nguồn + dữ liệu + cấu hình để chép lên NAS; `npm run nas:update` gói mã nguồn bản mới để cập nhật.
+- Sửa file Docker: build được giao diện và hiện đúng số phiên bản khi chạy trong container.
+
 ## v3.15.2 — 19/10/2026
 
 - Bỏ mục **Báo cáo công việc** khỏi thanh menu (máy tính và tấm "Thêm" trên điện thoại). Kết nối với app Báo cáo công việc CSKH vẫn giữ: app đó vẫn đăng nhập qua Chat Siêu Tốc và lấy số liệu chat như cũ.
