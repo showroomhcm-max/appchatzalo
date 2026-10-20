@@ -519,12 +519,9 @@ export class ChannelSession implements ChannelAdapter {
             if (save(m)) added++;
           }
           this.log(`${label} lô ${page}: ${describeBatch(batch, type)}, thêm mới ${added}`);
-          if (oldest && Number(oldest.data.ts) < cutoff) {
-            this.log(`${label}: đã lùi quá ${days} ngày, dừng`);
-            break;
-          }
-          // Mốc lùi tiếp: tin cũ nhất, rồi tin cuối / đầu lô (phòng khi Zalo trả lô không theo thứ tự)
-          const next = [oldest, batch[batch.length - 1], batch[0]]
+          // Zalo trả tin theo chiều xuôi (từ lúc thiết bị được gắn → mới nhất): xin tiếp từ tin mới nhất của lô
+          const newest = batch.reduce((a, m) => (Number(m.data.ts) > Number(a.data.ts) ? m : a), batch[0]);
+          const next = [newest, batch[batch.length - 1], batch[0]]
             .map((m) => String(m?.data.msgId ?? m?.data.cliMsgId ?? ""))
             .find((id) => id && !asked.has(id));
           if (!next) {
@@ -576,7 +573,7 @@ export class ChannelSession implements ChannelAdapter {
           st.groups = ok;
         } catch (e: any) {
           st.groupsFailed!++;
-          firstError ||= e?.message ?? String(e);
+          firstError ||= `${e?.message ?? String(e)}${e?.code != null ? ` [mã ${e.code}]` : ""}`;
           // Zalo đổi / khóa API này thì nhóm nào cũng lỗi: dừng sớm, khỏi gọi dồn dập
           if (!ok && st.groupsFailed! >= 3) {
             this.log(`Lịch sử từng nhóm: Zalo không cho dùng (${firstError}), bỏ qua bước này`);

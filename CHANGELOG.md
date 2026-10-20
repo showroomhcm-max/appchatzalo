@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.18.1 — 20/10/2026
+
+- Đồng bộ tin cũ lật trang đúng chiều Zalo trả (xuôi từ lúc tài khoản được gắn → mới nhất): ít lượt gọi hơn hẳn (Zalo SR từ 67 lượt còn vài lượt).
+- Nhật ký ghi mã lỗi Zalo khi lấy lịch sử nhóm thất bại.
+
 ## v3.18.0 — 20/10/2026
 
 - Đồng bộ tin nhắn cũ lấy **lịch sử nhóm từ đám mây của Zalo** (cách chat.zalo.me tải tin nhóm, không cần điện thoại): mỗi nhóm lấy lô mới nhất rồi lùi dần, tối đa 90 ngày / 1.000 tin mỗi nhóm. Thay cho API lịch sử nhóm cũ đã bị Zalo khóa (lỗi 404).
