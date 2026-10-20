@@ -139,7 +139,7 @@ export function monitorAccounts() {
      FROM channels ch
      LEFT JOIN channel_assets a ON a.channel_id = ch.id
      LEFT JOIN users u ON u.id = a.holder_id
-     WHERE ch.mode = 'monitor'
+     WHERE ch.mode = 'monitor' AND ch.deleted_at IS NULL
      ORDER BY ch.name`,
   ).map((r) => {
     const s = get<any>(

@@ -543,7 +543,7 @@ async function tick() {
       const date = vnDate(now);
       const from = Date.parse(`${date}T00:00:00+07:00`);
       const chans = all<{ id: number }>(
-        `SELECT ch.id FROM channels ch WHERE ch.mode = 'monitor'
+        `SELECT ch.id FROM channels ch WHERE ch.mode = 'monitor' AND ch.deleted_at IS NULL
            AND NOT EXISTS (SELECT 1 FROM ai_digests d WHERE d.channel_id = ch.id AND d.date = ?)
            AND EXISTS (SELECT 1 FROM conversations c JOIN messages m ON m.conversation_id = c.id WHERE c.channel_id = ch.id AND m.ts >= ?)`,
         date,

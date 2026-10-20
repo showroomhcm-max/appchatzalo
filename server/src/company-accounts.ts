@@ -54,7 +54,7 @@ export function listAccounts() {
      FROM channels ch
      LEFT JOIN channel_assets a ON a.channel_id = ch.id
      LEFT JOIN users u ON u.id = a.holder_id
-     WHERE ch.platform = 'zalo'
+     WHERE ch.platform = 'zalo' AND ch.deleted_at IS NULL
      ORDER BY ch.id`,
   );
   const stats = new Map(

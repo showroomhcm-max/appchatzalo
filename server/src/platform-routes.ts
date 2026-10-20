@@ -327,7 +327,7 @@ oauthRouter.get(
 
 /** Tạo kênh mới, hoặc cập nhật token nếu tài khoản này đã có kênh. */
 function upsertChannel(platform: Platform, externalId: string, name: string, creds: unknown, userId: number) {
-  const existing = get<{ id: number }>("SELECT id FROM channels WHERE platform = ? AND external_id = ?", platform, externalId);
+  const existing = get<{ id: number }>("SELECT id FROM channels WHERE platform = ? AND external_id = ? AND deleted_at IS NULL", platform, externalId);
   if (existing) {
     run("UPDATE channels SET credentials = ?, active = 1 WHERE id = ?", JSON.stringify(creds), existing.id);
     logEvent(null, userId, "channel.reconnected", { id: existing.id, platform });
@@ -391,7 +391,7 @@ platformRouter.post(
 platformRouter.get("/platform-connect/facebook/:key", requirePerm("channels.manage"), (req, res) => {
   const p = pendingPages.get(req.params.key);
   if (!p) throw new HttpError(404, "Phiên chọn Fanpage đã hết hạn, đăng nhập Facebook lại");
-  const connected = new Set(all<{ external_id: string }>("SELECT external_id FROM channels WHERE platform = 'facebook'").map((r) => r.external_id));
+  const connected = new Set(all<{ external_id: string }>("SELECT external_id FROM channels WHERE platform = 'facebook' AND deleted_at IS NULL").map((r) => r.external_id));
   res.json(p.pages.map((pg) => ({ id: pg.id, name: pg.name, picture: pg.picture, connected: connected.has(pg.id) })));
 });
 

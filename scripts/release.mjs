@@ -38,4 +38,4 @@ run("git add -A");
 run(`git commit -m "Phát hành v${version}"`);
 run(`git tag -a v${version} -m "Phiên bản ${version}"`);
 run("git push origin HEAD --follow-tags");
-console.log(`\nĐã phát hành v${version}. Chạy "npm run prod:restart" trên máy chủ để cập nhật app.`);
+console.log(`\nĐã phát hành v${version}. GitHub đang build; NAS tự cập nhật trong khoảng 5–10 phút (kiểm tra: https://cskhzalo.sieutoc.com/api/version).`);

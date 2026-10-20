@@ -51,7 +51,7 @@ function channelPayload(isAdmin: boolean) {
       r.n,
     ]),
   );
-  return all<any>("SELECT ch.id, ch.name, ch.platform, ch.mode, ch.zalo_uid, ch.zalo_name, ch.avatar, ch.default_department_id, ch.active, ch.created_at, a.holder_id FROM channels ch LEFT JOIN channel_assets a ON a.channel_id = ch.id ORDER BY ch.id").map(
+  return all<any>("SELECT ch.id, ch.name, ch.platform, ch.mode, ch.zalo_uid, ch.zalo_name, ch.avatar, ch.default_department_id, ch.active, ch.created_at, a.holder_id FROM channels ch LEFT JOIN channel_assets a ON a.channel_id = ch.id WHERE ch.deleted_at IS NULL ORDER BY ch.id").map(
     (c) => ({
       ...c,
       department_ids: deptLinks.get(c.id) ?? [],
@@ -95,7 +95,7 @@ settingsRouter.patch(
   requirePerm("channels.manage"),
   h(async (req, res) => {
     const id = Number(req.params.id);
-    if (!get("SELECT 1 FROM channels WHERE id = ?", id)) throw new HttpError(404, "Không tìm thấy kênh");
+    if (!get("SELECT 1 FROM channels WHERE id = ? AND deleted_at IS NULL", id)) throw new HttpError(404, "Không tìm thấy kênh");
     const b = req.body ?? {};
     if (b.name !== undefined) {
       const name = String(b.name).trim();
@@ -124,11 +124,24 @@ settingsRouter.delete(
   requireSuperAdmin,
   h(async (req, res) => {
     const id = Number(req.params.id);
+    const ch = get<{ name: string }>("SELECT name FROM channels WHERE id = ? AND deleted_at IS NULL", id);
+    if (!ch) throw new HttpError(404, "Không tìm thấy kênh");
     const n = get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE channel_id = ?", id)!.n;
-    if (n > 0) throw new HttpError(400, `Kênh còn ${n} hội thoại (dữ liệu training). Hãy tắt kênh thay vì xóa.`);
     await zalo.remove(id);
-    run("DELETE FROM channels WHERE id = ?", id);
-    res.json({ ok: true });
+    if (n > 0) {
+      // Còn hội thoại (dữ liệu training): đăng xuất, xóa cookie Zalo, ẩn kênh; hội thoại và tin nhắn giữ nguyên.
+      run(
+        "UPDATE channels SET active = 0, deleted_at = ?, credentials = NULL, name = ? WHERE id = ?",
+        Date.now(),
+        ch.name.endsWith(" (đã xóa)") ? ch.name : `${ch.name} (đã xóa)`,
+        id,
+      );
+    } else {
+      run("DELETE FROM channels WHERE id = ?", id);
+    }
+    logEvent(null, req.user!.id, "channel.deleted", { id, name: ch.name, kept_conversations: n });
+    bus.emit("settings.changed", "channels");
+    res.json({ ok: true, kept_conversations: n });
   }),
 );
 

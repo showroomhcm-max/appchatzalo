@@ -181,7 +181,7 @@ export class ChannelSession implements ChannelAdapter {
 
       // Một tài khoản Zalo chỉ gắn vào một kênh, tránh 2 kênh tranh nhau một phiên.
       const ownId = api.getOwnId();
-      const dup = get<{ name: string }>("SELECT name FROM channels WHERE zalo_uid = ? AND id != ?", ownId, this.channelId);
+      const dup = get<{ name: string }>("SELECT name FROM channels WHERE zalo_uid = ? AND id != ? AND deleted_at IS NULL", ownId, this.channelId);
       if (dup) {
         try {
           api.listener.stop();

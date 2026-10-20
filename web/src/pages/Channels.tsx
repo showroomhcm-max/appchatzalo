@@ -693,7 +693,16 @@ function ChannelForm({
   }
 
   async function remove() {
-    if (!channel || !confirm(`Xóa kênh "${channel.name}"?`)) return
+    if (
+      !channel ||
+      !confirm(
+        `Xóa kênh "${channel.name}"?
+
+Zalo của kênh sẽ được đăng xuất và kênh biến mất khỏi danh sách. ` +
+          `Hội thoại và tin nhắn cũ vẫn được giữ (xem lại trong Hội thoại, Báo cáo, Xuất dữ liệu, tên kênh kèm "(đã xóa)").`,
+      )
+    )
+      return
     try {
       await api(`/channels/${channel.id}`, { method: 'DELETE' })
       onSaved()

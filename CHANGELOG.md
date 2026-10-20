@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.16.0 — 20/10/2026
+
+- **Xóa được kênh còn hội thoại**: super admin bấm Xóa kênh thì Zalo của kênh được đăng xuất (xóa cookie), kênh biến mất khỏi Kết nối kênh / Zalo nhân viên / Giám sát. Toàn bộ hội thoại và tin nhắn cũ vẫn giữ: xem lại trong Hội thoại, Báo cáo, Xuất dữ liệu, tên kênh kèm "(đã xóa)". Kênh chưa có hội thoại thì xóa hẳn như trước. Có ghi nhật ký.
+- Gắn lại tài khoản Zalo của kênh đã xóa vào kênh mới được, không còn báo trùng.
+
 ## v3.15.5 — 20/10/2026
 
 - NAS **tự cập nhật** bản mới: mỗi lần phát hành, GitHub tự build sẵn bản cho NAS (`.github/workflows/nas-image.yml`); trên NAS, `cap-nhat.sh` chạy vài phút một lần (Bộ lập lịch tác vụ của DSM), thấy bản mới thì tự đổi, app chỉ ngừng khoảng 20–30 giây. Giữ bản cố định / quay về bản cũ bằng `APP_TAG`.
