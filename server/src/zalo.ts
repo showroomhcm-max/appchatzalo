@@ -1,4 +1,4 @@
-import { Zalo, ThreadType, LoginQRCallbackEventType, type API, type Credentials, type Message, type Reaction } from "zca-js";
+import { Zalo, ThreadType, LoginQRCallbackEventType, GroupMessage, type API, type Credentials, type Message, type Reaction } from "zca-js";
 import { all, get, logEvent, run } from "./db.js";
 import { markReceipt } from "./store.js";
 import { bus } from "./bus.js";
@@ -417,6 +417,33 @@ export class ChannelSession implements ChannelAdapter {
 
   // ───────────── Đồng bộ tin cũ ─────────────
 
+  /**
+   * Gọi API lịch sử nhóm trên đám mây của Zalo (group_cloud_message › /api/cm/getrecentv2 | getoldv2),
+   * đúng như chat.zalo.me. zca-js chưa có sẵn nên gắn thêm bằng api.custom.
+   */
+  private groupCloud(api: API, groupId: string, globalMsgId: string, old: boolean, count = 50): Promise<any> {
+    const a = api as any;
+    if (typeof a.__groupCloud !== "function") {
+      a.custom("__groupCloud", async ({ ctx, utils, props }: any) => {
+        const base = a.zpwServiceMap?.group_cloud_message?.[0];
+        if (!base) throw new Error("Zalo không cấp địa chỉ lịch sử nhóm (group_cloud_message)");
+        const params = utils.encodeAES(
+          JSON.stringify({ groupId: props.groupId, globalMsgId: props.globalMsgId, count: props.count, msgIds: [], imei: ctx.imei, src: -1 }),
+        );
+        if (!params) throw new Error("Không mã hóa được tham số");
+        const url = utils.makeURL(utils.makeURL(`${base}/api/cm/${props.old ? "getoldv2" : "getrecentv2"}`), { params });
+        const res = await utils.request(url, { method: "GET" });
+        return utils.resolve(res, (result: any) => {
+          let d = result.data;
+          // Mã người dùng là số lớn: đổi sang chuỗi trước khi đọc JSON để không mất chữ số
+          if (typeof d === "string") d = JSON.parse(d.replace(/"(uidFrom|uidTo|uid|ownerId)":(-?\d+)/g, '"$1":"$2"'));
+          return d;
+        });
+      });
+    }
+    return a.__groupCloud({ groupId, globalMsgId, old, count });
+  }
+
   /** Xin một lô tin cũ (cá nhân hoặc nhóm) qua kết nối Zalo; hết 20 giây không có trả lời thì null. */
   private requestOld(api: API, type: ThreadType, lastId: string | null) {
     return new Promise<Message[] | null>((resolve) => {
@@ -515,11 +542,36 @@ export class ChannelSession implements ChannelAdapter {
       this.log(`Lịch sử từng nhóm: ${groups.length} nhóm`);
       let ok = 0;
       let firstError = "";
+      let groupAdded = 0;
       for (const gid of groups) {
         if (this.api !== api) break;
         try {
-          const r = await api.getGroupChatHistory(gid, 50);
-          for (const m of r.groupMsgs ?? []) if (Number(m.data.ts) >= cutoff) save(m as Message);
+          // Lịch sử nhóm trên đám mây của Zalo (chat.zalo.me cũng tải từ đây, không cần điện thoại):
+          // lô mới nhất trước, rồi lùi dần bằng mã tin cũ nhất, tối đa 20 lô × 50 tin mỗi nhóm.
+          let cursor = "0";
+          let old = false;
+          const asked = new Set<string>();
+          let got = 0;
+          let firstKeys = "";
+          for (let page = 1; page <= 20 && this.api === api; page++) {
+            const r = await this.groupCloud(api, gid, cursor, old);
+            if (page === 1) firstKeys = Object.keys(r ?? {}).join(",");
+            const msgs = (r?.groupMsgs ?? []).map((raw: any) => new GroupMessage(api.getOwnId(), raw) as Message);
+            let oldest: Message | null = null;
+            for (const m of msgs) {
+              if (!oldest || Number(m.data.ts) < Number(oldest.data.ts)) oldest = m;
+              if (Number(m.data.ts) >= cutoff && save(m)) groupAdded++;
+            }
+            got += msgs.length;
+            if (!msgs.length || !oldest || Number(oldest.data.ts) < cutoff || r?.hasMore === 0 || r?.hasMore === false) break;
+            const next = String(r?.lastMsgId || oldest.data.msgId);
+            if (!next || asked.has(next)) break;
+            asked.add(next);
+            cursor = next;
+            old = true;
+            await pause(400);
+          }
+          if (ok < 3) this.log(`Lịch sử nhóm ${gid}: Zalo trả ${got} tin (dữ liệu: ${firstKeys})`);
           ok++;
           st.groups = ok;
         } catch (e: any) {
@@ -533,7 +585,7 @@ export class ChannelSession implements ChannelAdapter {
         }
         await pause(500);
       }
-      if (st.groupsFailed) this.log(`Lịch sử từng nhóm: ${ok} nhóm lấy được, ${st.groupsFailed} nhóm lỗi (lỗi đầu: ${firstError})`);
+      this.log(`Lịch sử từng nhóm: ${ok} nhóm lấy được, thêm mới ${groupAdded} tin; ${st.groupsFailed} nhóm lỗi${firstError ? ` (lỗi đầu: ${firstError})` : ""}`);
       if (!st.fetched)
         st.note = "Zalo không trả tin cũ nào. Zalo chỉ giữ tin trên máy chủ kể từ lúc tài khoản được gắn vào app; tin trước đó chỉ còn trên điện thoại.";
       Object.assign(st, { state: "done", step: undefined, finishedAt: Date.now() });
