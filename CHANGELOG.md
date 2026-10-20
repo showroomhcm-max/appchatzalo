@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.17.2 — 20/10/2026
+
+- **Nhật ký hoạt động Zalo** chi tiết hơn (Cài đặt › Nhật ký hệ thống, lọc theo `zalo#<số kênh>`): đăng nhập lại / quét QR / kết nối / mất kết nối, Zalo gửi bù tin, từng lô khi đồng bộ tin cũ (số tin, khoảng thời gian, thêm mới bao nhiêu), lỗi và tổng kết. Nhật ký giữ được qua các lần app khởi động lại (cập nhật bản mới, mất điện).
+- Đồng bộ tin nhắn cũ: lô đầu trống thì thử lại một lần; API lịch sử nhóm của Zalo hiện báo lỗi 404 nên app dừng sau 3 nhóm lỗi thay vì gọi dồn hàng trăm nhóm; khi Zalo không trả tin nào thì báo rõ lý do (Zalo chỉ giữ tin từ lúc tài khoản được gắn vào app).
+
 ## v3.17.1 — 20/10/2026
 
 - Đồng bộ tin nhắn cũ lùi xa hơn, giống Zalo Web lúc mới đăng nhập: lật tối đa 80 lô tin, lô nào toàn tin đã có thì vẫn lùi tiếp thay vì dừng sớm.

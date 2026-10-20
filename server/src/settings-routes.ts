@@ -166,11 +166,14 @@ settingsRouter.post(
 settingsRouter.post(
   "/channels/:id/sync-history",
   requirePerm("channels.manage"),
-  channelAction((id) => {
+  h((req, res) => {
+    const id = Number(req.params.id);
+    if (!get("SELECT 1 FROM channels WHERE id = ? AND platform = 'zalo' AND active = 1", id)) throw new HttpError(404, "Kênh không tồn tại hoặc đang tắt");
     const s = zalo.zaloSession(id);
     if (s.getStatus().state !== "connected") throw new HttpError(400, "Kênh chưa kết nối Zalo. Kết nối xong mới đồng bộ được tin cũ.");
     if (s.history.state === "running") throw new HttpError(409, "Kênh đang đồng bộ tin cũ, đợi xong lượt này.");
-    void s.syncHistory().catch(() => undefined);
+    void s.syncHistory(90, `bấm tay bởi ${req.user!.display_name || req.user!.username}`).catch(() => undefined);
+    res.json(s.history);
   }),
 );
 settingsRouter.get(

@@ -654,6 +654,8 @@ type HistorySync = {
   added?: number
   conversations?: number
   groups?: number
+  groupsFailed?: number
+  note?: string
   error?: string
 }
 
@@ -705,7 +707,8 @@ function HistorySyncButton({ channelId }: { channelId: number }) {
         <div className={`small ${sync.state === 'error' ? 'err-text' : 'muted'}`} style={{ flexBasis: '100%' }}>
           {running && `${sync.step ?? ''}: đã đọc ${sync.fetched ?? 0} tin, thêm mới ${sync.added ?? 0} tin${sync.groups ? `, ${sync.groups} nhóm` : ''}.`}
           {sync.state === 'done' &&
-            `Đồng bộ xong${sync.finishedAt ? ` lúc ${new Date(sync.finishedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}: thêm ${sync.added ?? 0} tin vào ${sync.conversations ?? 0} hội thoại (đọc ${sync.fetched ?? 0} tin, ${sync.groups ?? 0} nhóm).`}
+            `Đồng bộ xong${sync.finishedAt ? ` lúc ${new Date(sync.finishedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}: thêm ${sync.added ?? 0} tin vào ${sync.conversations ?? 0} hội thoại (Zalo trả ${sync.fetched ?? 0} tin${sync.added === 0 && sync.fetched ? ', đều đã có sẵn' : ''}).`}
+          {sync.state === 'done' && sync.note && <div>{sync.note}</div>}
           {sync.state === 'error' && `Đồng bộ dừng giữa chừng: ${sync.error}. Đã thêm ${sync.added ?? 0} tin.`}
         </div>
       )}

@@ -74,6 +74,33 @@ export function installLogger() {
   } catch {
     /* ignore */
   }
+  preload();
+}
+
+/**
+ * Nạp lại các dòng gần nhất từ file (2 ngày gần nhất) vào bộ nhớ, để sau khi app khởi động lại
+ * (cập nhật bản mới, mất điện) vẫn xem được chuyện xảy ra ngay trước đó.
+ */
+function preload() {
+  try {
+    const files = fs
+      .readdirSync(LOG_DIR)
+      .filter((f) => /^app-\d{4}-\d{2}-\d{2}\.log$/.test(f))
+      .sort()
+      .slice(-2);
+    const lines: LogLine[] = [];
+    const head = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) \[(INFO|WARN|ERROR)\] ([\s\S]*)$/;
+    for (const f of files) {
+      for (const raw of fs.readFileSync(path.join(LOG_DIR, f), "utf8").split("\n")) {
+        const m = head.exec(raw);
+        if (m) lines.push({ ts: Date.parse(`${m[1]}T${m[2]}+07:00`), level: m[3].toLowerCase() as LogLevel, msg: m[4] });
+        else if (raw && lines.length) lines[lines.length - 1].msg += "\n" + raw; // dòng tiếp theo của lỗi nhiều dòng
+      }
+    }
+    buffer.unshift(...lines.slice(-MAX_LINES + buffer.length));
+  } catch {
+    /* không đọc được file cũ: bỏ qua */
+  }
 }
 
 export function recentLogs(opts: { level?: string; q?: string; limit?: number }) {
