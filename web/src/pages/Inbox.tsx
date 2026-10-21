@@ -21,6 +21,7 @@ import {
   MessageSquareDashed,
   Paperclip,
   PanelRight,
+  Radio,
   RotateCcw,
   Quote,
   Search,
@@ -490,7 +491,7 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
                   <Pin size={12} /> Đã ghim
                 </div>
                 {pinnedList.map((c) => (
-                  <ConvItem key={`p-${c.id}`} c={c} active={c.id === convId} showChannel={channels.length > 1} {...itemProps(c, true)} />
+                  <ConvItem key={`p-${c.id}`} c={c} active={c.id === convId} {...itemProps(c, true)} />
                 ))}
                 <div className="conv-section">Tất cả hội thoại</div>
               </>
@@ -498,7 +499,7 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
             {list
               .filter((c) => deletedView || !pinnedIds.includes(c.id))
               .map((c) => (
-                <ConvItem key={c.id} c={c} active={c.id === convId} showChannel={channels.length > 1} {...itemProps(c, false)} />
+                <ConvItem key={c.id} c={c} active={c.id === convId} {...itemProps(c, false)} />
               ))}
             {hasMore && !loading && (
               <button
@@ -823,7 +824,6 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
 function ConvItem({
   c,
   active,
-  showChannel,
   pinned = false,
   selecting = false,
   checked = false,
@@ -832,7 +832,6 @@ function ConvItem({
 }: {
   c: Conversation
   active: boolean
-  showChannel: boolean
   pinned?: boolean
   selecting?: boolean
   checked?: boolean
@@ -908,6 +907,12 @@ function ConvItem({
           {c.unread_count > 0 && <span className="unread-count">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
         </div>
         <div className="conv-meta">
+          {c.channel_name && (
+            <span className="conv-channel" title={`Kênh: ${c.channel_name}`}>
+              <Radio size={11} />
+              <span>{c.channel_name}</span>
+            </span>
+          )}
           {c.channel_mode === 'monitor' ? null : c.assigned_name ? (
             <Badge tone={c.assigned_to === user.id ? 'green' : 'neutral'}>
               <UserRound size={12} /> {c.assigned_to === user.id ? 'Bạn' : c.assigned_name}
@@ -934,9 +939,8 @@ function ConvItem({
             </span>
           )}
         </div>
-        {(showChannel || c.department_name || c.tags.length > 0) && (
+        {(c.department_name || c.tags.length > 0) && (
           <div className="conv-meta">
-            {showChannel && c.channel_name && <span className="channel-label">{c.channel_name}</span>}
             {c.department_name && (
               <span className="dept-chip sm" style={{ '--chip': c.department_color ?? '#55655c' } as React.CSSProperties}>
                 {c.department_name}

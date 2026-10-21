@@ -2159,6 +2159,28 @@ mark {
   white-space: nowrap;
   vertical-align: 1px;
 }
+.conv-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 150px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--mz-ink-700);
+  background: var(--mz-ink-100);
+  border-radius: 9999px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+.conv-channel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-channel svg {
+  flex: none;
+  color: var(--mz-green-700);
+}
 .search-row-title .channel-label {
   margin-left: 6px;
   margin-right: 0;
