@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.18.6 — 21/10/2026
+
+- Khung **Thông tin** của hội thoại tạm ẩn mục **Đơn hàng** (nút Lên đơn POS, Mã khách hàng) và **Đánh giá chất lượng tư vấn** vì chưa dùng tới. Dữ liệu cũ vẫn giữ; bật lại bằng `SHOW_ORDERS` / `SHOW_REVIEWS` trong `web/src/pages/Inbox.tsx`.
+
 ## v3.18.5 — 21/10/2026
 
 - Cài đặt gọn hơn: gộp **Kết nối app nội bộ**, **API & Webhook**, **App nền tảng** thành một mục **Kết nối app & API**, bên trong chia 3 thẻ. Link cũ (`#/settings/apps`, `integrations`, `linked`) vẫn mở đúng thẻ.

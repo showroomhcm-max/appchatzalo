@@ -1860,6 +1860,10 @@ function Composer({
   )
 }
 
+/** Tạm ẩn trong khung Thông tin (21/10/2026, chưa dùng tới): đổi thành true để hiện lại. */
+const SHOW_ORDERS = false // Đơn hàng, nút Lên đơn POS, Mã khách hàng
+const SHOW_REVIEWS = false // Đánh giá chất lượng tư vấn
+
 function InfoPanel({
   conv,
   onPatch,
@@ -1963,6 +1967,7 @@ function InfoPanel({
         </div>
       )}
 
+      {SHOW_ORDERS && (
       <div className="info-section">
         <div className="section-title row">
           <span className="grow">
@@ -2004,9 +2009,11 @@ function InfoPanel({
           <span className="muted small">Chưa có đơn gắn với hội thoại. Đơn tự gắn theo số điện thoại khi kết nối Sapo hoặc web bán hàng.</span>
         )}
       </div>
+      )}
 
       <DvktPanel conv={conv} />
 
+      {SHOW_ORDERS && (
       <div className="info-section">
         <label className="field">
           <span>Mã khách hàng (CRM / hệ thống khác)</span>
@@ -2020,6 +2027,7 @@ function InfoPanel({
           </div>
         </label>
       </div>
+      )}
 
       <div className="info-section">
         <div className="section-title">
@@ -2067,7 +2075,7 @@ function InfoPanel({
         </ul>
       </div>
 
-      {can(user, 'reviews.manage') && (
+      {SHOW_REVIEWS && can(user, 'reviews.manage') && (
       <div className="info-section">
         <div className="section-title">
           <Star size={14} /> Đánh giá chất lượng tư vấn
