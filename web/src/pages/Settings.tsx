@@ -22,6 +22,7 @@ import LinkedApps from './LinkedApps'
 export type SettingsTab =
   | 'channels'
   | 'apps'
+  | 'connect'
   | 'integrations'
   | 'orders'
   | 'linked'
@@ -41,10 +42,8 @@ const MENU: { title: string; items: MenuItem[] }[] = [
     title: 'Tích hợp',
     items: [
       { id: 'channels', label: 'Kết nối kênh', icon: <Radio size={18} />, perms: ['channels.manage'] },
-      { id: 'apps', label: 'App nền tảng', icon: <KeyRound size={18} />, perms: ['integrations.manage'] },
-      { id: 'integrations', label: 'API & Webhook', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
+      { id: 'connect', label: 'Kết nối app & API', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
       { id: 'orders', label: 'Đồng bộ đơn hàng', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
-      { id: 'linked', label: 'Kết nối app nội bộ', icon: <Link2 size={18} />, perms: ['integrations.manage'] },
     ],
   },
   {
@@ -74,19 +73,30 @@ const MENU: { title: string; items: MenuItem[] }[] = [
 const ITEMS = MENU.flatMap((g) => g.items)
 const TABS = ITEMS.map((i) => i.id)
 
+/** Ba mục cũ gộp vào "Kết nối app & API"; link cũ #/settings/apps | integrations | linked vẫn mở đúng thẻ. */
+type ConnectSub = 'linked' | 'integrations' | 'apps'
+const CONNECT_SUBS: { id: ConnectSub; label: string; icon: React.ReactNode }[] = [
+  { id: 'linked', label: 'App nội bộ', icon: <Link2 size={16} /> },
+  { id: 'integrations', label: 'API & Webhook', icon: <PlugZap size={16} /> },
+  { id: 'apps', label: 'App nền tảng (Facebook, TikTok…)', icon: <KeyRound size={16} /> },
+]
+const isConnectSub = (t: unknown): t is ConnectSub => CONNECT_SUBS.some((c) => c.id === t)
+
 const TAB_KEY = 'zcskh.settingsTab'
 const COLLAPSE_KEY = 'zcskh.settingsCollapsed'
 
 export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
-  // Link cũ #/settings/sapo → Đồng bộ đơn hàng
-  const fromLink = (rawLink as string) === 'sapo' ? 'orders' : rawLink
+  // Link cũ #/settings/sapo → Đồng bộ đơn hàng; #/settings/apps | integrations | linked → Kết nối app & API
+  const fromLink = (rawLink as string) === 'sapo' ? 'orders' : isConnectSub(rawLink) ? 'connect' : rawLink
+  const [sub, setSub] = useState<ConnectSub>(() => (isConnectSub(rawLink) ? rawLink : 'linked'))
   const { user } = useApp()
   const allowed = (t: Tab) => canAny(user, ITEMS.find((i) => i.id === t)?.perms ?? [])
   const firstAllowed = TABS.find(allowed) ?? 'users'
   const [tab, setTabRaw] = useState<Tab>(() => {
     if (fromLink && TABS.includes(fromLink)) return fromLink
     try {
-      const saved = localStorage.getItem(TAB_KEY) as Tab
+      const raw = localStorage.getItem(TAB_KEY)
+      const saved = (isConnectSub(raw) ? 'connect' : raw) as Tab
       return TABS.includes(saved) && allowed(saved) ? saved : firstAllowed
     } catch {
       return firstAllowed
@@ -101,6 +111,7 @@ export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
   })
   const setTab = (t: Tab) => setTabRaw(allowed(t) ? t : firstAllowed)
   useEffect(() => {
+    if (isConnectSub(rawLink)) setSub(rawLink)
     if (fromLink && TABS.includes(fromLink)) setTab(fromLink)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromLink])
@@ -173,15 +184,35 @@ export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
         </select>
         {current && !['alerts', 'channels', 'company'].includes(tab) && <h1 className="settings-title">{current.label}</h1>}
         {tab === 'channels' && allowed('channels') && <Channels manage />}
-        {tab === 'apps' && allowed('apps') && <PlatformApps />}
-        {tab === 'integrations' && allowed('integrations') && <Integrations embedded />}
+        {tab === 'connect' && allowed('connect') && (
+          <>
+            <div className="seg connect-tabs" role="tablist" aria-label="Loại kết nối">
+              {CONNECT_SUBS.map((c) => (
+                <button
+                  key={c.id}
+                  role="tab"
+                  aria-selected={sub === c.id}
+                  className={sub === c.id ? 'on' : ''}
+                  onClick={() => {
+                    setSub(c.id)
+                    history.replaceState(null, '', `#/settings/${c.id}`)
+                  }}
+                >
+                  {c.icon} {c.label}
+                </button>
+              ))}
+            </div>
+            {sub === 'linked' && <LinkedApps />}
+            {sub === 'integrations' && <Integrations embedded />}
+            {sub === 'apps' && <PlatformApps />}
+          </>
+        )}
         {tab === 'orders' && allowed('orders') && (
           <>
             <SapoSettings />
             <OdooPosSettings />
           </>
         )}
-        {tab === 'linked' && allowed('linked') && <LinkedApps />}
         {tab === 'alerts' && allowed('alerts') && <AlertsSettings />}
         {tab === 'company' && allowed('company') && <CompanyZalo />}
         {tab === 'logs' && allowed('logs') && <LogsTab />}

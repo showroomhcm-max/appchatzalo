@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.18.5 — 21/10/2026
+
+- Cài đặt gọn hơn: gộp **Kết nối app nội bộ**, **API & Webhook**, **App nền tảng** thành một mục **Kết nối app & API**, bên trong chia 3 thẻ. Link cũ (`#/settings/apps`, `integrations`, `linked`) vẫn mở đúng thẻ.
+
 ## v3.18.4 — 21/10/2026
 
 - **Sao lưu tự động** trong app: `data/backups/auto/app-moi-nhat.db` ghi mỗi giờ, `app-YYYY-MM-DD.db` mỗi đêm (giữ 14 ngày). NAS đẩy thư mục này lên Google Drive bằng Cloud Sync.

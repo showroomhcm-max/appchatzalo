@@ -6,7 +6,7 @@ import { Badge } from '../components'
 type LinkCfg = { enabled: boolean; url: string; hasKey: boolean; keyHint: string; keyCreatedAt: number | null }
 type TestResult = { ok: boolean; ms: number; chat_reachable?: boolean | null; chat_error?: string | null }
 
-/** Cài đặt › Kết nối app nội bộ: app DVKT (dịch vụ kỹ thuật) + app Báo cáo công việc CSKH. */
+/** Cài đặt › Kết nối app & API › App nội bộ: app DVKT (dịch vụ kỹ thuật) + app Báo cáo công việc CSKH. */
 export default function LinkedApps() {
   return (
     <>
@@ -20,7 +20,7 @@ export default function LinkedApps() {
         version="1.0"
         description={
           <>
-            Nhân viên bấm <b>Báo cáo công việc</b> trên menu là vào thẳng app báo cáo, không phải đăng nhập lại. Số liệu chat của từng người (tin đã
+            Nhân viên mở app báo cáo và bấm <b>Đăng nhập bằng Chat Siêu Tốc</b> là vào thẳng, không phải nhập mật khẩu lại. Số liệu chat của từng người (tin đã
             gửi, hội thoại, thời gian phản hồi, đánh giá, đơn POS lên từ chat, cảnh báo đơn "rơi" đã xử lý) tự điền vào báo cáo ngày. Nhân viên ghi
             thêm việc đã làm, đơn chốt, khó khăn, kế hoạch; quản lý (người có quyền xem Dữ liệu) duyệt và xem tổng hợp theo tuần / tháng.
           </>

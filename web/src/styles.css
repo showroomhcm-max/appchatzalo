@@ -3318,6 +3318,8 @@ html.compact .dvkt-links a { min-height: 36px; }
 
 /* ───────── Mục Báo cáo: biểu đồ ───────── */
 .reports .report-tabs { align-self: flex-start; flex-wrap: wrap; }
+.connect-tabs { display: inline-flex; flex-wrap: wrap; margin-bottom: 16px; max-width: 100%; }
+.connect-tabs button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; }
 .reports .report-tabs button { display: inline-flex; align-items: center; gap: 6px; }
 .report-filters { gap: 8px; }
 .report-actions { gap: 8px; }
