@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.18.4 — 21/10/2026
+
+- **Sao lưu tự động** trong app: `data/backups/auto/app-moi-nhat.db` ghi mỗi giờ, `app-YYYY-MM-DD.db` mỗi đêm (giữ 14 ngày). NAS đẩy thư mục này lên Google Drive bằng Cloud Sync.
+- Phương án sự cố NAS: hướng dẫn `deploy/nas/SU-CO.md` và lệnh `node scripts/chay-tam-laptop.mjs <bản sao lưu>` để laptop chạy thay khi NAS hỏng (tự kiểm tra NAS đã tắt, nạp bản sao lưu, bật app + tunnel).
+
 ## v3.18.3 — 21/10/2026
 
 - Danh sách **Hội thoại**: mỗi hội thoại có nhãn **tên kênh** (vd. Zalo SR, kênh Zalo nhân viên) ở đầu dòng nhãn, luôn hiện để biết tin thuộc kênh nào khi có nhiều kênh. Tên dài tự rút gọn, rê chuột xem đủ.

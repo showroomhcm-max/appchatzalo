@@ -14,6 +14,7 @@ import { setupWebhooks } from "./webhooks.js";
 import { startAlerts } from "./alerts.js";
 import { startAccountWatch } from "./company-accounts.js";
 import { startPosSync } from "./odoo-pos.js";
+import { startBackups } from "./backup.js";
 import { startMonitor } from "./monitor.js";
 import { startAiMonitor } from "./ai-monitor.js";
 import { zalo } from "./zalo.js";
@@ -63,6 +64,7 @@ setupWebhooks();
 startAlerts();
 startAccountWatch();
 startPosSync();
+startBackups();
 startMonitor();
 startAiMonitor();
 
