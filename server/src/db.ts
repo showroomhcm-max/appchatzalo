@@ -287,6 +287,8 @@ if (!chanCols.has("external_id")) db.exec("ALTER TABLE channels ADD COLUMN exter
 if (!chanCols.has("deleted_at")) db.exec("ALTER TABLE channels ADD COLUMN deleted_at INTEGER");
 // Nhân viên đã xóa: giữ dòng (tên vẫn hiện trong lịch sử chat, báo cáo cũ), ẩn khỏi danh sách, không đăng nhập được
 if (!columns("users").has("deleted_at")) db.exec("ALTER TABLE users ADD COLUMN deleted_at INTEGER");
+// Hội thoại đã xóa khỏi hộp thư nhưng sau đó có tin mới (nhân viên nhắn tiếp trước bản sửa v3.21.1) → hiện lại
+db.exec("UPDATE conversations SET deleted_at = NULL WHERE deleted_at IS NOT NULL AND last_message_at > deleted_at");
 // Hội thoại: "chat" (tin nhắn) hoặc "comment" (bình luận dưới bài viết); meta = thông tin bài viết / bình luận
 const convCols2 = columns("conversations");
 if (!convCols2.has("kind")) db.exec("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");

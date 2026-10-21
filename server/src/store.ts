@@ -435,7 +435,8 @@ export function saveMessage(input: SaveMessageInput) {
           conversationId,
         );
       } else {
-        run("UPDATE conversations SET unread_count = 0 WHERE id = ?", conversationId);
+        // Nhân viên nhắn tiếp vào hội thoại đã xóa khỏi hộp thư (từ app hoặc điện thoại) → hiện lại, không bị ẩn sau F5.
+        run("UPDATE conversations SET unread_count = 0, deleted_at = NULL WHERE id = ?", conversationId);
       }
     }
     return { id, isNew: true, changed: true };

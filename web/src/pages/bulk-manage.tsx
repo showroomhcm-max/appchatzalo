@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, Trash2, X } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import { fold } from '../util'
@@ -101,7 +101,7 @@ const MODE_LABEL: Record<Mode, string> = {
   set: 'Đặt lại bộ phận (thay toàn bộ)',
 }
 
-/** Thanh sửa bộ phận dùng cho các dòng đang chọn. */
+/** Thanh thao tác hàng loạt cho các dòng đang chọn: đổi bộ phận dùng, xóa. */
 export function BulkDeptBar({
   kind,
   ids,
@@ -121,6 +121,24 @@ export function BulkDeptBar({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const names = useMemo(() => departments.filter((d) => depts.includes(d.id)).map((d) => d.name), [departments, depts])
+
+  async function remove() {
+    const warn =
+      kind === 'tags'
+        ? `Xóa ${ids.length} tag đã chọn? Các tag này sẽ được gỡ khỏi mọi hội thoại đang gắn. Không khôi phục được.`
+        : `Xóa ${ids.length} câu trả lời mẫu đã chọn? Không khôi phục được (nên Xuất Excel trước để lưu lại).`
+    if (!confirm(warn)) return
+    setBusy(true)
+    setError('')
+    try {
+      const r = await api<{ deleted: number }>(`/${kind}/bulk-delete`, { body: { ids } })
+      onDone(r.deleted)
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function apply() {
     setBusy(true)
@@ -155,6 +173,9 @@ export function BulkDeptBar({
           ))}
         </select>
         <span className="grow" />
+        <button type="button" className="btn danger sm" disabled={busy} onClick={remove}>
+          <Trash2 size={14} /> Xóa {ids.length} {noun}
+        </button>
         <button type="button" className="btn ghost sm" onClick={onClear}>
           Bỏ chọn
         </button>

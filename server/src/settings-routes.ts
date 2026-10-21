@@ -344,6 +344,26 @@ settingsRouter.post(
     res.json({ ok: true, updated: r.targets.length });
   }),
 );
+/** Xóa nhiều tag (chỉ những tag người này thấy); gỡ luôn khỏi các hội thoại đang gắn. */
+settingsRouter.post(
+  "/tags/bulk-delete",
+  requirePerm("tags.manage"),
+  h((req, res) => {
+    const visible = new Map(tagPayload(req).map((t) => [t.id as number, t.name as string]));
+    const targets = ids(req.body?.ids).filter((id) => visible.has(id));
+    if (!targets.length) throw new HttpError(400, "Chưa chọn tag nào");
+    let conversations = 0;
+    tx(() => {
+      for (const id of targets) {
+        conversations += renameTagInConversations(visible.get(id)!, null);
+        run("DELETE FROM tags WHERE id = ?", id);
+      }
+    });
+    logEvent(null, req.user!.id, "tags.bulk_deleted", { count: targets.length, names: targets.map((id) => visible.get(id)), conversations });
+    bus.emit("settings.changed", "tags");
+    res.json({ ok: true, deleted: targets.length, conversations });
+  }),
+);
 settingsRouter.delete(
   "/tags/:id",
   requirePerm("tags.manage"),
@@ -469,6 +489,22 @@ settingsRouter.post(
     logEvent(null, req.user!.id, "templates.bulk_departments", { count: r.targets.length, mode: r.mode, department_ids: r.depts });
     bus.emit("settings.changed", "templates");
     res.json({ ok: true, updated: r.targets.length });
+  }),
+);
+/** Xóa nhiều câu trả lời mẫu (chỉ những mẫu người này thấy). */
+settingsRouter.post(
+  "/templates/bulk-delete",
+  requirePerm("templates.manage"),
+  h((req, res) => {
+    const visible = new Map(templatePayload(req).map((t) => [t.id as number, t.shortcut as string]));
+    const targets = ids(req.body?.ids).filter((id) => visible.has(id));
+    if (!targets.length) throw new HttpError(400, "Chưa chọn mẫu nào");
+    tx(() => {
+      for (const id of targets) run("DELETE FROM templates WHERE id = ?", id);
+    });
+    logEvent(null, req.user!.id, "templates.bulk_deleted", { count: targets.length, shortcuts: targets.map((id) => visible.get(id)) });
+    bus.emit("settings.changed", "templates");
+    res.json({ ok: true, deleted: targets.length });
   }),
 );
 settingsRouter.delete("/templates/:id", requirePerm("templates.manage"), (req, res) => {

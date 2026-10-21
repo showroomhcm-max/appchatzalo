@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.21.1 — 21/10/2026
+
+- **Xóa hàng loạt** tag và câu trả lời mẫu: tick nhiều dòng → **Xóa N tag / Xóa N mẫu** (hỏi lại trước khi xóa; tag bị xóa được gỡ khỏi các hội thoại đang gắn). Có ghi nhật ký.
+- Sửa lỗi: hội thoại đã xóa khỏi hộp thư, nhân viên nhắn tiếp thì sau khi tải lại trang (F5) bị ẩn mất. Giờ nhân viên nhắn tiếp (từ app hoặc điện thoại) là hội thoại hiện lại như khi khách nhắn. Các hội thoại đang bị ẩn vì lỗi này tự hiện lại khi cập nhật.
+
 ## v3.21.0 — 21/10/2026
 
 - **Tag** và **Câu trả lời mẫu** (Cài đặt): thêm ô **tìm** (tên tag / từ viết tắt, nội dung, không cần gõ dấu) và **lọc theo bộ phận** (mọi bộ phận / dùng chung / từng bộ phận).
