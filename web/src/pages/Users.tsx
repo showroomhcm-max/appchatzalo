@@ -13,7 +13,7 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
   const { groups } = usePermissionData()
   const [editing, setEditing] = useState<User | 'new' | null>(null)
   const online = new Set(presence.online.map((o) => o.userId))
-  // Tài khoản Odoo tự đăng nhập lần đầu: chưa được duyệt, chưa từng vào app.
+  // Tài khoản Odoo đăng ký từ hồi còn phải duyệt, chưa vào app lần nào (lần đăng nhập tới sẽ tự vào được).
   const pending = users.filter((u) => !u.active && u.auth_source === 'odoo' && !u.last_login_at)
 
   async function approve(u: User) {
@@ -27,8 +27,8 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
         <div>
           {!embedded && <h1>Nhân viên</h1>}
           <p className="muted">
-            Nhân viên đăng nhập bằng tài khoản Odoo. Người mới đăng nhập lần đầu sẽ nằm ở mục "Chờ duyệt" cho tới khi bạn
-            cho phép.
+            Ai có tài khoản Odoo đăng nhập là vào được ngay với nhóm quyền <b>Nhân viên CSKH</b>. Đổi quyền, bộ phận ở bảng dưới;
+            muốn chặn ai thì sửa và khóa tài khoản đó.
           </p>
         </div>
         <button className="btn primary" onClick={() => setEditing('new')}>

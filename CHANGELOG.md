@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.19.0 — 21/10/2026
+
+- **Đăng nhập bằng Odoo vào được ngay**: ai có tài khoản Odoo đăng nhập lần đầu là vào app luôn với nhóm quyền **Nhân viên CSKH** (không còn phải chờ quản trị viên duyệt). Người đã đăng ký từ hồi phải chờ duyệt cũng vào được ở lần đăng nhập tới. Tài khoản bị quản trị viên khóa vẫn không vào được. Quản trị viên đổi quyền, bộ phận, kênh trong Cài đặt › Nhân viên.
+
 ## v3.18.6 — 21/10/2026
 
 - Khung **Thông tin** của hội thoại tạm ẩn mục **Đơn hàng** (nút Lên đơn POS, Mã khách hàng) và **Đánh giá chất lượng tư vấn** vì chưa dùng tới. Dữ liệu cũ vẫn giữ; bật lại bằng `SHOW_ORDERS` / `SHOW_REVIEWS` trong `web/src/pages/Inbox.tsx`.

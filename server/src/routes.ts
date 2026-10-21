@@ -156,11 +156,23 @@ function issueLogin(res: Response, userId: number) {
   res.json({ token: signToken(user), user });
 }
 
-/** Tài khoản Odoo đăng nhập thành công → map sang nhân viên trong app (tạo mới ở trạng thái chờ duyệt). */
+/** Nhóm quyền mặc định cho người mới đăng nhập bằng Odoo. */
+const STAFF_GROUP = "Nhân viên CSKH";
+
+function addToGroup(userId: number, name: string) {
+  const g = get<{ id: number }>("SELECT id FROM permission_groups WHERE name = ?", name);
+  if (g) run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", userId, g.id);
+  syncLegacyRole(userId);
+}
+
+/**
+ * Tài khoản Odoo đăng nhập thành công → map sang nhân viên trong app. Người mới vào được ngay với nhóm quyền
+ * "Nhân viên CSKH" (quản trị viên đổi quyền / bộ phận sau). Tài khoản bị quản trị viên khóa thì không vào được.
+ */
 function finishOdooLogin(res: Response, odoo: OdooIdentity) {
   const login = odoo.login.trim().toLowerCase();
-  let row = get<{ id: number; active: number }>(
-    "SELECT id, active FROM users WHERE odoo_uid = ? OR (auth_source = 'odoo' AND lower(username) = ?) ORDER BY odoo_uid IS NULL LIMIT 1",
+  let row = get<{ id: number; active: number; last_login_at: number | null }>(
+    "SELECT id, active, last_login_at FROM users WHERE odoo_uid = ? OR (auth_source = 'odoo' AND lower(username) = ?) ORDER BY odoo_uid IS NULL LIMIT 1",
     odoo.uid,
     login,
   );
@@ -169,30 +181,28 @@ function finishOdooLogin(res: Response, odoo: OdooIdentity) {
     const isAdmin = isSuper || config.odooAdmins.includes(login);
     const r = run(
       `INSERT INTO users(username, password_hash, display_name, role, active, auth_source, odoo_uid, created_at, super_admin)
-       VALUES(?, ?, ?, ?, ?, 'odoo', ?, ?, ${isSuper ? 1 : 0})`,
+       VALUES(?, ?, ?, ?, 1, 'odoo', ?, ?, ${isSuper ? 1 : 0})`,
       login,
       bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 4), // không dùng: mật khẩu do Odoo quản lý
       odoo.name || login,
       isAdmin ? "admin" : "agent",
-      isAdmin ? 1 : 0,
       odoo.uid,
       Date.now(),
     );
-    row = { id: Number(r.lastInsertRowid), active: isAdmin ? 1 : 0 };
-    if (isAdmin && !isSuper) {
-      const g = get<{ id: number }>("SELECT id FROM permission_groups WHERE name = 'Quản trị'");
-      if (g) run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", row.id, g.id);
-    }
-    logEvent(null, row.id, "user.odoo_registered", { login });
+    row = { id: Number(r.lastInsertRowid), active: 1, last_login_at: null };
+    if (!isSuper) addToGroup(row.id, isAdmin ? "Quản trị" : STAFF_GROUP);
+    logEvent(null, row.id, "user.odoo_registered", { login, group: isSuper ? "super_admin" : isAdmin ? "Quản trị" : STAFF_GROUP });
   } else {
     run("UPDATE users SET odoo_uid = ? WHERE id = ?", odoo.uid, row.id);
+    // Người từng đăng ký lúc còn phải chờ duyệt (chưa vào app lần nào): cho vào luôn như người mới
+    if (!row.active && !row.last_login_at) {
+      run("UPDATE users SET active = 1 WHERE id = ?", row.id);
+      if (!get("SELECT 1 FROM user_permission_groups WHERE user_id = ?", row.id)) addToGroup(row.id, STAFF_GROUP);
+      logEvent(null, row.id, "user.odoo_registered", { login, group: STAFF_GROUP, from_pending: true });
+      row.active = 1;
+    }
   }
-  if (!row.active) {
-    return res.status(403).json({
-      error: "Tài khoản Odoo của bạn chưa được cấp quyền vào app CSKH. Báo quản trị viên duyệt trong trang Nhân viên.",
-      pending_approval: true,
-    });
-  }
+  if (!row.active) throw new HttpError(403, "Tài khoản của bạn đã bị khóa trong app CSKH. Báo quản trị viên mở lại.");
   issueLogin(res, row.id);
 }
 
