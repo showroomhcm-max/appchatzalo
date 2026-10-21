@@ -32,6 +32,29 @@ function setLinks(table: string, ownerCol: string, ownerId: number, otherCol: st
   run(`DELETE FROM ${table} WHERE ${ownerCol} = ?`, ownerId);
   for (const id of otherIds) run(`INSERT OR IGNORE INTO ${table}(${ownerCol}, ${otherCol}) VALUES(?, ?)`, ownerId, id);
 }
+/**
+ * Đổi bộ phận dùng cho nhiều tag / mẫu cùng lúc. mode: "add" thêm bộ phận, "remove" bỏ bộ phận,
+ * "set" đặt lại đúng danh sách (rỗng = mọi bộ phận dùng chung). Chỉ đụng tới mục người này đang thấy.
+ */
+function bulkDepartments(table: "tag_departments" | "template_departments", ownerCol: "tag_id" | "template_id", visible: number[], b: any) {
+  const allowedIds = new Set(visible);
+  const targets = ids(b?.ids).filter((id) => allowedIds.has(id));
+  if (!targets.length) throw new HttpError(400, "Chưa chọn mục nào");
+  const mode = b?.mode === "add" || b?.mode === "remove" ? b.mode : b?.mode === "set" ? "set" : null;
+  if (!mode) throw new HttpError(400, "Chọn cách đổi bộ phận");
+  const known = new Set(all<{ id: number }>("SELECT id FROM departments").map((d) => d.id));
+  const depts = ids(b?.department_ids).filter((d) => known.has(d));
+  if (mode !== "set" && !depts.length) throw new HttpError(400, "Chọn ít nhất một bộ phận");
+  tx(() => {
+    for (const id of targets) {
+      if (mode === "set") setLinks(table, ownerCol, id, "department_id", depts);
+      else if (mode === "add") for (const d of depts) run(`INSERT OR IGNORE INTO ${table}(${ownerCol}, department_id) VALUES(?, ?)`, id, d);
+      else for (const d of depts) run(`DELETE FROM ${table} WHERE ${ownerCol} = ? AND department_id = ?`, id, d);
+    }
+  });
+  return { targets, mode, depts };
+}
+
 function linkMap(table: string, keyCol: string, valCol: string) {
   const map = new Map<number, number[]>();
   for (const r of all<Record<string, number>>(`SELECT ${keyCol} AS k, ${valCol} AS v FROM ${table}`)) {
@@ -311,6 +334,16 @@ settingsRouter.patch(
     res.json(tagPayload(req).find((t) => t.id === id));
   }),
 );
+settingsRouter.post(
+  "/tags/bulk-departments",
+  requirePerm("tags.manage"),
+  h((req, res) => {
+    const r = bulkDepartments("tag_departments", "tag_id", tagPayload(req).map((t) => t.id), req.body);
+    logEvent(null, req.user!.id, "tags.bulk_departments", { count: r.targets.length, mode: r.mode, department_ids: r.depts });
+    bus.emit("settings.changed", "tags");
+    res.json({ ok: true, updated: r.targets.length });
+  }),
+);
 settingsRouter.delete(
   "/tags/:id",
   requirePerm("tags.manage"),
@@ -424,6 +457,18 @@ settingsRouter.patch(
   h(async (req, res) => {
     const r = await saveTemplate(Number(req.params.id), req.body, req.user!.id);
     res.json({ ...templatePayload(req).find((t) => t.id === r.id), warnings: r.warnings });
+  }),
+);
+settingsRouter.post(
+  "/templates/bulk-departments",
+  requirePerm("templates.manage"),
+  h((req, res) => {
+    const r = bulkDepartments("template_departments", "template_id", templatePayload(req).map((t) => t.id), req.body);
+    const now = Date.now();
+    for (const id of r.targets) run("UPDATE templates SET updated_by = ?, updated_at = ?, updated_label = NULL WHERE id = ?", req.user!.id, now, id);
+    logEvent(null, req.user!.id, "templates.bulk_departments", { count: r.targets.length, mode: r.mode, department_ids: r.depts });
+    bus.emit("settings.changed", "templates");
+    res.json({ ok: true, updated: r.targets.length });
   }),
 );
 settingsRouter.delete("/templates/:id", requirePerm("templates.manage"), (req, res) => {

@@ -10,6 +10,7 @@ import PlatformApps from './PlatformApps'
 import Integrations from './Integrations'
 import LogsTab from './Logs'
 import PermissionsTab from './Permissions'
+import { BulkDeptBar, ListFilter, matchDept, matchText, SelectAllBox, useSelection, type DeptFilter } from './bulk-manage'
 import AlertsSettings from './AlertsSettings'
 import CompanyZalo from './CompanyZalo'
 import SapoSettings from './SapoSettings'
@@ -539,6 +540,10 @@ function ExcelBar({ kind, onImported }: { kind: 'tags' | 'templates'; onImported
 function TagsTab() {
   const { tags, reloadSettings } = useApp()
   const [editing, setEditing] = useState<Tag | 'new' | null>(null)
+  const [q, setQ] = useState('')
+  const [dept, setDept] = useState<DeptFilter>('all')
+  const shown = tags.filter((t) => matchDept(t.department_ids, dept) && matchText(q, t.name))
+  const sel = useSelection(shown.map((t) => t.id))
 
   return (
     <div className="card">
@@ -549,18 +554,37 @@ function TagsTab() {
         </button>
       </div>
       <ExcelBar kind="tags" onImported={reloadSettings} />
+      <ListFilter q={q} onQ={setQ} dept={dept} onDept={setDept} placeholder="Tìm tag…" shown={shown.length} total={tags.length} />
+      {sel.selected.length > 0 && (
+        <BulkDeptBar
+          kind="tags"
+          noun="tag"
+          ids={sel.selected}
+          onClear={sel.clear}
+          onDone={() => {
+            sel.clear()
+            reloadSettings()
+          }}
+        />
+      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
+              <th className="check-col">
+                <SelectAllBox allOn={sel.allOn} someOn={sel.someOn} onToggle={sel.toggleAll} label="Chọn mọi tag đang hiện" />
+              </th>
               <th>Tag</th>
               <th>Bộ phận dùng</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {tags.map((t) => (
-              <tr key={t.id}>
+            {shown.map((t) => (
+              <tr key={t.id} className={sel.has(t.id) ? 'selected' : ''}>
+                <td className="check-col">
+                  <input type="checkbox" checked={sel.has(t.id)} onChange={() => sel.toggle(t.id)} aria-label={`Chọn tag ${t.name}`} />
+                </td>
                 <td>
                   <TagChip tag={t} />
                 </td>
@@ -574,10 +598,10 @@ function TagsTab() {
                 </td>
               </tr>
             ))}
-            {!tags.length && (
+            {!shown.length && (
               <tr>
-                <td colSpan={3} className="muted">
-                  Chưa có tag. Ví dụ: Khách VIP, Hỏi giá, Chờ chuyển khoản, Bảo hành.
+                <td colSpan={4} className="muted">
+                  {tags.length ? 'Không có tag nào khớp bộ lọc.' : 'Chưa có tag. Ví dụ: Khách VIP, Hỏi giá, Chờ chuyển khoản, Bảo hành.'}
                 </td>
               </tr>
             )}
@@ -674,6 +698,10 @@ function TagForm({ tag, onClose, onSaved }: { tag: Tag | null; onClose: () => vo
 function TemplatesTab() {
   const [list, setList] = useState<Template[]>([])
   const [editing, setEditing] = useState<Template | 'new' | null>(null)
+  const [q, setQ] = useState('')
+  const [dept, setDept] = useState<DeptFilter>('all')
+  const shown = list.filter((t) => matchDept(t.department_ids, dept) && matchText(q, t.shortcut, t.content))
+  const sel = useSelection(shown.map((t) => t.id))
   const reload = () => api<Template[]>('/templates').then(setList)
   useEffect(() => {
     void reload()
@@ -691,10 +719,26 @@ function TemplatesTab() {
         Trong ô chat gõ <code>/</code> rồi phím tắt để chèn nhanh. Nhân viên chỉ thấy mẫu dùng chung và mẫu của bộ phận mình.
       </p>
       <ExcelBar kind="templates" onImported={() => void reload()} />
+      <ListFilter q={q} onQ={setQ} dept={dept} onDept={setDept} placeholder="Tìm theo từ viết tắt hoặc nội dung…" shown={shown.length} total={list.length} />
+      {sel.selected.length > 0 && (
+        <BulkDeptBar
+          kind="templates"
+          noun="mẫu"
+          ids={sel.selected}
+          onClear={sel.clear}
+          onDone={() => {
+            sel.clear()
+            void reload()
+          }}
+        />
+      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
+              <th className="check-col">
+                <SelectAllBox allOn={sel.allOn} someOn={sel.someOn} onToggle={sel.toggleAll} label="Chọn mọi mẫu đang hiện" />
+              </th>
               <th>Từ viết tắt</th>
               <th>Nội dung</th>
               <th>Đính kèm</th>
@@ -704,8 +748,11 @@ function TemplatesTab() {
             </tr>
           </thead>
           <tbody>
-            {list.map((t) => (
-              <tr key={t.id}>
+            {shown.map((t) => (
+              <tr key={t.id} className={sel.has(t.id) ? 'selected' : ''}>
+                <td className="check-col">
+                  <input type="checkbox" checked={sel.has(t.id)} onChange={() => sel.toggle(t.id)} aria-label={`Chọn mẫu /${t.shortcut}`} />
+                </td>
                 <td>
                   <code className="ok-text">/{t.shortcut}</code>
                 </td>
@@ -740,10 +787,10 @@ function TemplatesTab() {
                 </td>
               </tr>
             ))}
-            {!list.length && (
+            {!shown.length && (
               <tr>
-                <td colSpan={6} className="muted">
-                  Chưa có tin nhắn mẫu.
+                <td colSpan={7} className="muted">
+                  {list.length ? 'Không có mẫu nào khớp bộ lọc.' : 'Chưa có tin nhắn mẫu.'}
                 </td>
               </tr>
             )}

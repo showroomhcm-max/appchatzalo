@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.21.0 — 21/10/2026
+
+- **Tag** và **Câu trả lời mẫu** (Cài đặt): thêm ô **tìm** (tên tag / từ viết tắt, nội dung, không cần gõ dấu) và **lọc theo bộ phận** (mọi bộ phận / dùng chung / từng bộ phận).
+- **Sửa bộ phận hàng loạt**: tick nhiều dòng (hoặc ô chọn tất cả những dòng đang lọc) rồi chọn **Thêm bộ phận**, **Bỏ bộ phận** hoặc **Đặt lại bộ phận** → Áp dụng. Đặt lại mà không chọn bộ phận nào = dùng chung cho mọi bộ phận. Có ghi nhật ký.
+
 ## v3.20.0 — 21/10/2026
 
 - **Xóa tài khoản nhân viên** (chỉ Super Admin): Cài đặt › Nhân viên › Sửa › **Xóa tài khoản**. Người đó mất quyền vào app ngay, biến khỏi danh sách, mất nhóm quyền / bộ phận / kênh; hội thoại đang mở họ nhận trả về "Chưa nhận". Tin nhắn, ghi chú, báo cáo cũ vẫn giữ tên họ. Không xóa được chính mình và Super Admin khác (bỏ quyền trước). Có ghi nhật ký.
