@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.20.0 — 21/10/2026
+
+- **Xóa tài khoản nhân viên** (chỉ Super Admin): Cài đặt › Nhân viên › Sửa › **Xóa tài khoản**. Người đó mất quyền vào app ngay, biến khỏi danh sách, mất nhóm quyền / bộ phận / kênh; hội thoại đang mở họ nhận trả về "Chưa nhận". Tin nhắn, ghi chú, báo cáo cũ vẫn giữ tên họ. Không xóa được chính mình và Super Admin khác (bỏ quyền trước). Có ghi nhật ký.
+- Tài khoản Odoo đã xóa mà đăng nhập lại thì vào như nhân viên mới; muốn chặn hẳn thì khóa (bỏ "Cho phép đăng nhập") thay vì xóa.
+
 ## v3.19.0 — 21/10/2026
 
 - **Đăng nhập bằng Odoo vào được ngay**: ai có tài khoản Odoo đăng nhập lần đầu là vào app luôn với nhóm quyền **Nhân viên CSKH** (không còn phải chờ quản trị viên duyệt). Người đã đăng ký từ hồi phải chờ duyệt cũng vào được ở lần đăng nhập tới. Tài khoản bị quản trị viên khóa vẫn không vào được. Quản trị viên đổi quyền, bộ phận, kênh trong Cài đặt › Nhân viên.

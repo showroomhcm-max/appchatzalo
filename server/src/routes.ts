@@ -5,8 +5,8 @@ import { odooLogin, odooCompleteTotp, type OdooIdentity } from "./odoo.js";
 import multer from "multer";
 import fs from "node:fs";
 import { config } from "./config.js";
-import { all, get, run, logEvent } from "./db.js";
-import { generateApiKey, requireApiKey, requireUser, revokeSessions, signLinkToken, signToken, type AuthUser } from "./auth.js";
+import { all, get, run, logEvent, tx } from "./db.js";
+import { generateApiKey, requireApiKey, requireSuperAdmin, requireUser, revokeSessions, signLinkToken, signToken, type AuthUser } from "./auth.js";
 import {
   PERMISSIONS,
   can,
@@ -330,7 +330,7 @@ appRouter.put(
   h((req, res) => {
     const list = Array.isArray(req.body?.assignments) ? req.body.assignments : [];
     for (const a of list) setUserChannels(Number(a.user_id), a.channel_ids);
-    res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users ORDER BY active DESC, display_name`)));
+    res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE deleted_at IS NULL ORDER BY active DESC, display_name`)));
   }),
 );
 
@@ -435,7 +435,7 @@ function setUserDepartments(userId: number, deptIds: unknown) {
   bus.emit("settings.changed", "users");
 }
 appRouter.get("/users", (_req, res) =>
-  res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users ORDER BY active DESC, display_name`))),
+  res.json(withDepartments(all<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE deleted_at IS NULL ORDER BY active DESC, display_name`))),
 );
 appRouter.post(
   "/users",
@@ -507,6 +507,42 @@ appRouter.patch(
     setUserChannels(id, req.body?.channel_ids);
     setUserPermissions(id, req.body);
     res.json(withDepartments([get<{ id: number }>(`SELECT ${USER_LIST_FIELDS} FROM users WHERE id = ?`, id)!])[0]);
+  }),
+);
+
+/**
+ * Xóa tài khoản (chỉ Super Admin): người đó mất quyền vào app ngay, biến khỏi danh sách nhân viên, mất nhóm quyền /
+ * bộ phận / kênh; hội thoại đang mở họ nhận trả về "Chưa nhận". Tin nhắn, ghi chú, báo cáo cũ vẫn giữ tên họ.
+ * Tài khoản Odoo bị xóa mà đăng nhập lại thì vào như người mới (muốn chặn hẳn thì khóa thay vì xóa).
+ */
+appRouter.delete(
+  "/users/:id",
+  requireSuperAdmin,
+  h((req, res) => {
+    const id = Number(req.params.id);
+    if (id === req.user!.id) throw new HttpError(400, "Không thể tự xóa tài khoản của mình");
+    const target = get<{ username: string; display_name: string; super_admin: number }>(
+      "SELECT username, display_name, super_admin FROM users WHERE id = ? AND deleted_at IS NULL",
+      id,
+    );
+    if (!target) throw new HttpError(404, "Không tìm thấy nhân viên");
+    if (target.super_admin) throw new HttpError(400, "Bỏ quyền Super Admin của người này trước khi xóa");
+    const unassigned = tx(() => {
+      run(
+        "UPDATE users SET active = 0, deleted_at = ?, username = username || '#xoa-' || id, odoo_uid = NULL, working_channels = NULL WHERE id = ?",
+        Date.now(),
+        id,
+      );
+      run("DELETE FROM user_permission_groups WHERE user_id = ?", id);
+      run("DELETE FROM user_departments WHERE user_id = ?", id);
+      run("DELETE FROM user_channels WHERE user_id = ?", id);
+      return Number(run("UPDATE conversations SET assigned_to = NULL WHERE assigned_to = ? AND status != 'closed'", id).changes);
+    });
+    onUserDeactivated(id, req.user!.id);
+    revokeSessions(id);
+    logEvent(null, req.user!.id, "user.deleted", { id, username: target.username, display_name: target.display_name, unassigned });
+    bus.emit("settings.changed", "users");
+    res.json({ ok: true, unassigned });
   }),
 );
 

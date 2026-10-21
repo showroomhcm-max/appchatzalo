@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Check, UserPlus } from 'lucide-react'
+import { Check, Trash2, UserPlus } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import type { User } from '../types'
@@ -234,6 +234,26 @@ function UserForm({
     }
   }
 
+  async function remove() {
+    if (!user) return
+    if (
+      !confirm(
+        `Xóa tài khoản "${user.display_name}" (${user.username})?\n\n` +
+          'Người này mất quyền vào app ngay và biến khỏi danh sách nhân viên. Hội thoại đang mở họ nhận sẽ về "Chưa nhận". ' +
+          'Tin nhắn, ghi chú, báo cáo cũ vẫn giữ tên họ.\n\n' +
+          (user.auth_source === 'odoo' ? 'Lưu ý: tài khoản Odoo này đăng nhập lại sẽ vào như nhân viên mới. Muốn chặn hẳn thì bỏ tick "Cho phép đăng nhập" thay vì xóa.' : ''),
+      )
+    )
+      return
+    try {
+      const r = await api<{ unassigned: number }>(`/users/${user.id}`, { method: 'DELETE' })
+      if (r.unassigned) alert(`Đã xóa. ${r.unassigned} hội thoại đang mở của họ đã chuyển về "Chưa nhận".`)
+      onSaved()
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
   return (
     <Modal title={user ? `Sửa ${user.display_name}` : 'Thêm nhân viên'} onClose={onClose} wide>
       <form className="stack" onSubmit={submit}>
@@ -364,6 +384,12 @@ function UserForm({
         )}
         {error && <div className="form-error">{error}</div>}
         <div className="row end">
+          {user && !isSelf && me.super_admin && !user.super_admin && (
+            <button type="button" className="btn danger" onClick={remove}>
+              <Trash2 size={16} /> Xóa tài khoản
+            </button>
+          )}
+          <span className="grow" />
           <button type="button" className="btn ghost" onClick={onClose}>
             Hủy
           </button>
