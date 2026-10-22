@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.21.2 — 22/10/2026
+
+- Sửa lỗi nút **Cảnh báo (1)** bấm vào không thấy hội thoại nào: cảnh báo thuộc hội thoại đã xóa khỏi hộp thư hoặc kênh đã xóa / tắt giờ tự đóng và không còn được đếm. Xóa hội thoại, xóa hoặc tắt kênh là cảnh báo của nó đóng ngay.
+
 ## v3.21.1 — 21/10/2026
 
 - **Xóa hàng loạt** tag và câu trả lời mẫu: tick nhiều dòng → **Xóa N tag / Xóa N mẫu** (hỏi lại trước khi xóa; tag bị xóa được gỡ khỏi các hội thoại đang gắn). Có ghi nhật ký.

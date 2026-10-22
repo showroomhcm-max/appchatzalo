@@ -38,7 +38,7 @@ import { bus } from "./bus.js";
 import { openConversationWith, searchContacts, searchMessages } from "./people.js";
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
-import { alertConfig, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
+import { alertConfig, closeAlertsOfGone, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
 import { createMonitorAccount, monitorAccounts, monitorConfig, monitorConversations, monitorFlags, reviewFlag, saveMonitorConfig, setChannelMode } from "./monitor.js";
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
@@ -891,6 +891,7 @@ appRouter.post(
           if (mode === "monitor" && !req.user!.super_admin) throw new HttpError(403, "Hội thoại đang giám sát, chỉ Super Admin được xóa");
           run("UPDATE conversations SET deleted_at = ? WHERE id = ?", Date.now(), id);
           run("DELETE FROM conversation_pins WHERE conversation_id = ?", id);
+          if (closeAlertsOfGone()) bus.emit("alerts.changed");
           logEvent(id, req.user!.id, "conversation.deleted");
           bus.emit("conversation.updated", getConversation(id)!, { type: "deleted", by: req.user!.id });
         } else if (action === "restore") {

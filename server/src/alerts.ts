@@ -222,17 +222,33 @@ const dismissedSince = (conversationId: string, type: AlertType, since: number) 
 
 const WINDOW = 7 * 24 * 3600_000;
 
+/** Kênh còn dùng được để chăm khách (đang bật, chưa xóa, không phải Zalo nhân viên giám sát). */
+const LIVE_CHANNELS = "(SELECT id FROM channels WHERE active = 1 AND deleted_at IS NULL AND mode != 'monitor')";
+
+/** Hội thoại đã xóa khỏi hộp thư hoặc thuộc kênh đã xóa / tắt: đóng cảnh báo đang mở (không ai xử lý được). */
+export function closeAlertsOfGone() {
+  const r = run(
+    `UPDATE conversation_alerts SET resolved_at = ?, resolution = 'hội thoại đã xóa / kênh đã tắt'
+     WHERE resolved_at IS NULL AND conversation_id IN (
+       SELECT id FROM conversations WHERE deleted_at IS NOT NULL OR channel_id NOT IN ${LIVE_CHANNELS})`,
+    Date.now(),
+  );
+  if (r.changes) changed = true;
+  return Number(r.changes);
+}
+
 export async function scan() {
   const cfg = alertConfig();
   const now = Date.now();
   changed = false;
+  closeAlertsOfGone();
 
   // 1. Chưa phản hồi
   if (cfg.noReply.enabled) {
     const late = all<{ id: string; last_message_at: number }>(
       `SELECT id, last_message_at FROM conversations
        WHERE status != 'closed' AND last_direction = 'in' AND last_message_at BETWEEN ? AND ?
-         AND channel_id NOT IN (SELECT id FROM channels WHERE mode = 'monitor')`,
+         AND deleted_at IS NULL AND channel_id IN ${LIVE_CHANNELS}`,
       now - WINDOW,
       now - cfg.noReply.minutes * 60_000,
     );
@@ -255,7 +271,8 @@ export async function scan() {
       const rows = db
         .prepare(
           `SELECT s.*, c.last_message_at FROM conversation_signals s JOIN conversations c ON c.id = s.conversation_id
-           WHERE c.last_message_at >= @since AND (${conds.map((x) => `(${x})`).join(" OR ")})
+           WHERE c.last_message_at >= @since AND c.deleted_at IS NULL AND c.channel_id IN ${LIVE_CHANNELS}
+             AND (${conds.map((x) => `(${x})`).join(" OR ")})
              AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.conversation_id = s.conversation_id)`,
         )
         .all({ cut, since: now - WINDOW }) as any[];
@@ -281,7 +298,8 @@ export async function scan() {
   if (cfg.noShipping.enabled) {
     const pending = all<{ conversation_id: string; code: string; created_at: number }>(
       `SELECT conversation_id, code, created_at FROM orders
-       WHERE conversation_id IS NOT NULL AND created_at BETWEEN ? AND ?
+       WHERE conversation_id IN (SELECT id FROM conversations WHERE deleted_at IS NULL AND channel_id IN ${LIVE_CHANNELS})
+         AND created_at BETWEEN ? AND ?
          AND COALESCE(status, '') NOT IN ('cancelled', 'canceled', 'closed')
          AND COALESCE(fulfillment_status, '') IN ('', 'unshipped', 'pending', 'unfulfilled', 'partial')`,
       now - WINDOW,
@@ -311,7 +329,7 @@ export function listAlerts(access: Scope) {
      JOIN conversations c ON c.id = a.conversation_id
      LEFT JOIN channels ch ON ch.id = c.channel_id
      LEFT JOIN users u ON u.id = c.assigned_to
-     WHERE a.resolved_at IS NULL AND ${conversationFilter(access)}
+     WHERE a.resolved_at IS NULL AND c.deleted_at IS NULL AND ch.active = 1 AND ch.deleted_at IS NULL AND ${conversationFilter(access)}
      ORDER BY a.created_at DESC LIMIT 500`,
   ).map((a) => ({ ...a, label: ALERT_LABEL[a.type as AlertType], detail: a.detail ? JSON.parse(a.detail) : null }));
 }

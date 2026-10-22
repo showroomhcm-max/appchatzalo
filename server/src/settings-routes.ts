@@ -5,6 +5,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import ExcelJS from "exceljs";
+import { closeAlertsOfGone } from "./alerts.js";
 import { all, get, run, tx, logEvent } from "./db.js";
 import { requireSuperAdmin } from "./auth.js";
 import { can, requirePerm } from "./permissions.js";
@@ -133,7 +134,10 @@ settingsRouter.patch(
     const wasActive = !!get<{ active: number }>("SELECT active FROM channels WHERE id = ?", id)?.active;
     if (b.active !== undefined && !!b.active !== wasActive) {
       run("UPDATE channels SET active = ? WHERE id = ?", b.active ? 1 : 0, id);
-      if (!b.active) await zalo.session(id).logout(false);
+      if (!b.active) {
+        await zalo.session(id).logout(false);
+        if (closeAlertsOfGone()) bus.emit("alerts.changed");
+      }
       else void zalo.session(id).init();
     }
     zalo.session(id).refreshName();
@@ -163,6 +167,7 @@ settingsRouter.delete(
       run("DELETE FROM channels WHERE id = ?", id);
     }
     logEvent(null, req.user!.id, "channel.deleted", { id, name: ch.name, kept_conversations: n });
+    if (closeAlertsOfGone()) bus.emit("alerts.changed");
     bus.emit("settings.changed", "channels");
     res.json({ ok: true, kept_conversations: n });
   }),
