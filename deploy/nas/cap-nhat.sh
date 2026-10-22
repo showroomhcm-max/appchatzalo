@@ -25,7 +25,7 @@ if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="do
 
 # Container kẹt tên tạm (vd "d0e803f0337e_chat-sieutoc") thì đổi lại đúng tên; đổi tên không làm app ngừng.
 for name in chat-sieutoc chat-sieutoc-net chat-sieutoc-tunnel; do
-  if ! docker inspect "$name" >/dev/null 2>&1; then
+  if ! docker container inspect "$name" >/dev/null 2>&1; then
     stuck=$(docker ps -a --format '{{.Names}}' | grep -E "^[0-9a-f]{12}_${name}\$" | head -n 1)
     if [ -n "$stuck" ] && docker rename "$stuck" "$name" 2>>"$LOG"; then
       echo "$(now) Đổi tên container kẹt $stuck → $name" >> "$LOG"
@@ -50,6 +50,10 @@ if echo "$out" | grep -qiE "recreate|creating|created|starting|started|error"; t
   echo "$(now) Đã cập nhật:" >> "$LOG"
   echo "$out" >> "$LOG"
   docker image prune -f >/dev/null 2>&1
+fi
+# Ảnh "chat-sieutoc" build trên NAS lúc mới chuyển (nay dùng bản build sẵn từ GitHub): còn thì xóa, không container nào dùng
+if docker image inspect chat-sieutoc:latest >/dev/null 2>&1 && docker image rm chat-sieutoc:latest >/dev/null 2>&1; then
+  echo "$(now) Đã xóa ảnh cũ chat-sieutoc:latest (bản build trên NAS lúc mới chuyển)" >> "$LOG"
 fi
 # Giữ nhật ký gọn
 tail -n 500 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
