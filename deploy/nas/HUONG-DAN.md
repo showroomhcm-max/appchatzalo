@@ -70,7 +70,7 @@ GHCR_TOKEN=<mã vừa tạo>
 - Thẻ *Lịch*: Chạy hằng ngày, *Tần suất*: mỗi **1 phút** (hoặc nhỏ nhất NAS cho), *Thời gian chạy cuối*: 23:59.
 - Thẻ *Cài đặt tác vụ* → Tập lệnh do người dùng xác định (sửa `volume1` nếu thư mục nằm ở volume khác — xem trong File Station → chuột phải thư mục → *Thuộc tính*):
   ```
-  sh "/volume1/Chat Sieu Toc/VPS Chat Sieu Toc/cap-nhat.sh"
+  sh "/volume2/Chat Sieu Toc/VPS Chat Sieu Toc/cap-nhat.sh"
   ```
 - *OK*. Chọn tác vụ → *Chạy* để chạy thử ngay, rồi mở `cap-nhat.log` xem kết quả.
 
