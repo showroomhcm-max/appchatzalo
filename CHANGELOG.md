@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.21.3 — 22/10/2026
+
+- NAS: hết chấm đỏ ở dự án `chat-sieutoc` trong Container Manager. Khi có bản mới, `cap-nhat.sh` gỡ hẳn container cũ rồi tạo mới (không còn container tên tạm `<mã>_chat-sieutoc` làm Container Manager báo lỗi), không cho hai lượt chạy chồng nhau, dọn container và ảnh cũ còn sót.
+- `cap-nhat.sh` đi kèm bản build và **tự thay bằng bản mới** sau mỗi lần cập nhật, không phải chép tay lên NAS nữa.
+
 ## v3.21.2 — 22/10/2026
 
 - Sửa lỗi nút **Cảnh báo (1)** bấm vào không thấy hội thoại nào: cảnh báo thuộc hội thoại đã xóa khỏi hộp thư hoặc kênh đã xóa / tắt giờ tự đóng và không còn được đếm. Xóa hội thoại, xóa hoặc tắt kênh là cảnh báo của nó đóng ngay.

@@ -19,6 +19,8 @@ COPY --from=build /app/server/node_modules ./node_modules
 COPY --from=build /app/server/dist ./dist
 COPY --from=build /app/server/package.json ./
 COPY --from=build /app/web/dist /app/web/dist
+# Script tự cập nhật trên NAS đi kèm bản build: NAS tự lấy bản mới của script này
+COPY deploy/nas/cap-nhat.sh /app/deploy/cap-nhat.sh
 VOLUME /app/data
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
