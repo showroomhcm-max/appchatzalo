@@ -70,10 +70,13 @@ export async function openAuthedLink(href: string) {
   window.location.href = `${href}${href.includes('?') ? '&' : '?'}token=${encodeURIComponent(r.token)}`
 }
 
-/** Chỉ cho link http(s) hoặc file trong app (chặn javascript:, data: … trong tin nhắn khách gửi). */
+/**
+ * Chỉ cho link http(s) hoặc file đã tải lên trong app (chặn javascript:, data: … trong tin nhắn khách gửi).
+ * Không cho link /api/…: bấm link /api/ là app tự gắn mã đăng nhập (main.tsx), khách không được tạo link kiểu đó.
+ */
 export function safeUrl(v: unknown) {
   const s = String(v ?? '').trim()
-  return /^https?:\/\//i.test(s) || /^\/(uploads|api)\//.test(s) ? s : undefined
+  return /^https?:\/\//i.test(s) || /^\/uploads\//.test(s) ? s : undefined
 }
 
 export function connectSocket(): Socket {

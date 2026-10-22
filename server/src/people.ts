@@ -248,12 +248,13 @@ export function openConversationWith(
 
   const { id, created } = ensureConversation(channelId, uid, person.is_group ? 1 : 0, { name: person.name ?? null, avatar: person.avatar ?? null });
   const phone = person.phone ? normalizePhone(String(person.phone)) : null;
+  // Hội thoại đã có mà người này không được xem: dừng trước khi sửa tên / ảnh / SĐT của nó
+  if (!created && !access.all && !canSeeConversation(access, getConversation(id)!)) throw new HttpError(403, "Hội thoại này thuộc bộ phận khác");
   if (phone) run("UPDATE conversations SET phone = COALESCE(phone, ?) WHERE id = ?", phone, id);
   if (!created && (person.name || person.avatar)) updateConversationProfile(id, { name: person.name, avatar: person.avatar });
 
   let conv = getConversation(id)!;
   if (!access.all && !canSeeConversation(access, conv)) {
-    if (!created) throw new HttpError(403, "Hội thoại này thuộc bộ phận khác");
     const linked = all<{ department_id: number }>("SELECT department_id FROM department_channels WHERE channel_id = ?", channelId)
       .map((r) => r.department_id)
       .filter((d) => access.departmentIds.includes(d));

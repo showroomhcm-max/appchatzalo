@@ -7,8 +7,23 @@ import { config } from "./config.js";
 import { fold } from "./text.js";
 
 export const db = new DatabaseSync(config.dbFile);
-db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+// WAL + synchronous NORMAL: an toàn dữ liệu khi app lỗi; mất điện đột ngột chỉ có thể mất vài lệnh ghi cuối.
+// Bộ đệm 64 MB, bảng tạm trong RAM, đọc qua mmap: bớt đọc ổ đĩa NAS khi dữ liệu lớn.
+db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;
+  PRAGMA cache_size = -65536; PRAGMA temp_store = MEMORY; PRAGMA mmap_size = 268435456; PRAGMA journal_size_limit = 67108864;`);
 // fold(): so khớp không dấu trong SQL (tìm kiếm tin nhắn, tên khách)
+// Câu lệnh đã biên dịch được dùng lại (mỗi tin nhắn đến chạy hàng chục câu giống nhau)
+const statements = new Map<string, ReturnType<typeof db.prepare>>();
+function stmt(sql: string) {
+  let s = statements.get(sql);
+  if (!s) {
+    if (statements.size >= 500) statements.clear(); // câu có danh sách IN (...) dài ngắn khác nhau: không giữ mãi
+    s = db.prepare(sql);
+    statements.set(sql, s);
+  }
+  return s;
+}
+
 db.function("fold", { deterministic: true }, (v) => (v === null || v === undefined ? null : fold(String(v))));
 
 // Hội thoại thuộc 1 kênh (1 tài khoản Zalo) + 1 bộ phận. id = "<kênh>_<threadId Zalo>".
@@ -287,8 +302,6 @@ if (!chanCols.has("external_id")) db.exec("ALTER TABLE channels ADD COLUMN exter
 if (!chanCols.has("deleted_at")) db.exec("ALTER TABLE channels ADD COLUMN deleted_at INTEGER");
 // Nhân viên đã xóa: giữ dòng (tên vẫn hiện trong lịch sử chat, báo cáo cũ), ẩn khỏi danh sách, không đăng nhập được
 if (!columns("users").has("deleted_at")) db.exec("ALTER TABLE users ADD COLUMN deleted_at INTEGER");
-// Hội thoại đã xóa khỏi hộp thư nhưng sau đó có tin mới (nhân viên nhắn tiếp trước bản sửa v3.21.1) → hiện lại
-db.exec("UPDATE conversations SET deleted_at = NULL WHERE deleted_at IS NOT NULL AND last_message_at > deleted_at");
 // Hội thoại: "chat" (tin nhắn) hoặc "comment" (bình luận dưới bài viết); meta = thông tin bài viết / bình luận
 const convCols2 = columns("conversations");
 if (!convCols2.has("kind")) db.exec("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");
@@ -306,13 +319,13 @@ CREATE INDEX IF NOT EXISTS idx_msg_agent_ts ON messages(agent_id, ts);
 export type Row = Record<string, any>;
 
 export function all<T = Row>(sql: string, ...params: SQLInputValue[]): T[] {
-  return db.prepare(sql).all(...params) as T[];
+  return stmt(sql).all(...params) as T[];
 }
 export function get<T = Row>(sql: string, ...params: SQLInputValue[]): T | undefined {
-  return db.prepare(sql).get(...params) as T | undefined;
+  return stmt(sql).get(...params) as T | undefined;
 }
 export function run(sql: string, ...params: SQLInputValue[]) {
-  return db.prepare(sql).run(...params);
+  return stmt(sql).run(...params);
 }
 export function tx<T>(fn: () => T): T {
   db.exec("BEGIN");
@@ -357,7 +370,7 @@ export function logEvent(conversationId: string | null, userId: number | null, t
 export function applySuperAdmins() {
   for (const login of config.superAdmins) {
     const r = run(
-      "UPDATE users SET super_admin = 1, role = 'admin', active = 1 WHERE lower(username) = ? AND super_admin = 0",
+      "UPDATE users SET super_admin = 1, role = 'admin', active = 1 WHERE lower(username) = ? AND super_admin = 0 AND auth_source = 'odoo' AND deleted_at IS NULL",
       login,
     );
     if (r.changes) console.log(`[setup] Đã cấp Super Admin cho ${login}`);
@@ -442,6 +455,7 @@ CREATE TABLE IF NOT EXISTS monitor_flags (
   UNIQUE(message_id, reason)
 );
 CREATE INDEX IF NOT EXISTS idx_flags_open ON monitor_flags(channel_id, reviewed_at);
+CREATE INDEX IF NOT EXISTS idx_flags_conv_open ON monitor_flags(conversation_id) WHERE reviewed_at IS NULL;
 `);
 
 // ───────────── Ghim / xóa hội thoại (menu thao tác hội thoại) ─────────────
@@ -494,3 +508,21 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
   ])
     if (!g.has(col)) db.exec(`ALTER TABLE tags ADD COLUMN ${col} ${def}`);
 }
+
+// Chỉ mục cho các truy vấn hay dùng khi dữ liệu lớn (báo cáo theo ngày, tìm theo SĐT, nhật ký, giám sát…)
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_msg_ts ON messages(ts);
+CREATE INDEX IF NOT EXISTS idx_msg_extid ON messages(zalo_msg_id);
+CREATE INDEX IF NOT EXISTS idx_msg_undone ON messages(conversation_id) WHERE undone = 1;
+CREATE INDEX IF NOT EXISTS idx_conv_sort ON conversations(COALESCE(last_message_at, created_at) DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_conv_phone ON conversations(phone);
+CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(type, ts);
+CREATE INDEX IF NOT EXISTS idx_events_conv ON events(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_notes_conv ON notes(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_reviews_conv ON reviews(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_pins_conv ON conversation_pins(conversation_id);
+`);
+// Cập nhật thống kê cho bộ chọn chỉ mục (nhanh, chỉ làm khi cần); chạy lại mỗi ngày trong backup.ts
+db.exec("PRAGMA optimize = 0x10002");
+// Hội thoại đã xóa khỏi hộp thư nhưng sau đó có tin mới (nhân viên nhắn tiếp trước bản sửa v3.21.1) → hiện lại
+db.exec("UPDATE conversations SET deleted_at = NULL WHERE deleted_at IS NOT NULL AND last_message_at > deleted_at");

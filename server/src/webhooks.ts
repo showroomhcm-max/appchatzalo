@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { all, run } from "./db.js";
 import { bus } from "./bus.js";
+import { safeRequest } from "./net-guard.js";
 
 type Hook = { id: number; url: string; secret: string; events: string };
 
@@ -14,7 +15,8 @@ async function deliver(hook: Hook, event: string, payload: unknown) {
   let lastError = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(hook.url, {
+      // Chỉ gọi địa chỉ công khai, không theo chuyển hướng (không để webhook dò mạng nội bộ của NAS)
+      const res = await safeRequest(hook.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -22,9 +24,10 @@ async function deliver(hook: Hook, event: string, payload: unknown) {
           "X-Zalo-CSKH-Signature": signature,
         },
         body,
-        signal: AbortSignal.timeout(10_000),
+        timeoutMs: 10_000,
+        maxBytes: 64 * 1024,
       });
-      if (res.ok) {
+      if (res.status >= 200 && res.status < 300) {
         run("UPDATE webhooks SET last_status = ? WHERE id = ?", `OK ${res.status} @ ${new Date().toISOString()}`, hook.id);
         return;
       }

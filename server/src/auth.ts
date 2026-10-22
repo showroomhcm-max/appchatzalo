@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { config } from "./config.js";
 import { get, run } from "./db.js";
 import { permissionsOf } from "./permissions.js";
+import { bus } from "./bus.js";
 
 export type AuthUser = {
   id: number;
@@ -61,14 +62,18 @@ export function userFromToken(token: string | undefined, kind: "session" | "link
 /** Hủy mọi phiên đăng nhập cũ của một người (lùi 1 giây để phiên mới cấp ngay sau vẫn dùng được). */
 export function revokeSessions(userId: number) {
   run("UPDATE users SET token_after = ? WHERE id = ?", Math.floor(Date.now() / 1000) * 1000, userId);
+  // Ngắt luôn các kết nối realtime đang mở của người này (realtime.ts)
+  bus.emit("user.revoked", userId);
 }
 
 export function requireUser(req: Request, res: Response, next: NextFunction) {
   const h = req.headers.authorization;
-  // Header: mã phiên. ?token=: chỉ nhận mã link ngắn hạn.
+  // Header: mã phiên. ?token=: chỉ nhận mã link ngắn hạn, và chỉ để xem / tải (GET) —
+  // không gửi tin, không sửa dữ liệu, không tự xin mã link mới để kéo dài phiên.
+  const linkOk = req.method === "GET" && !req.path.startsWith("/auth/");
   const user = h?.startsWith("Bearer ")
     ? userFromToken(h.slice(7), "session")
-    : typeof req.query.token === "string"
+    : linkOk && typeof req.query.token === "string"
       ? userFromToken(req.query.token, "link")
       : null;
   if (!user) return res.status(401).json({ error: "Chưa đăng nhập hoặc phiên đã hết hạn" });

@@ -7,6 +7,36 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.22.0 — 22/10/2026
+
+Rà soát bảo mật và hiệu năng toàn app.
+
+**Bảo mật**
+- Chống dò mật khẩu theo IP thật của người dùng (qua Cloudflare): một IP sai 5 lần với một tài khoản, hoặc 20 lần với nhiều tài khoản thì bị chặn 10 phút; người khác không còn khóa được tài khoản của mình.
+- Tài khoản portal của Odoo (khách hàng, đối tác) không đăng nhập được app.
+- Nhóm quyền: người có quyền phân quyền không tự thêm mình / người khác vào nhóm có quyền mình không có, không xóa nhóm đó.
+- Không tự gán thêm kênh / bộ phận cho chính mình; chỉ Super Admin đặt lại mật khẩu tài khoản nội bộ; không tạo tài khoản nội bộ dạng email.
+- Zalo nhân viên (giám sát) chỉ được xem: chặn gửi sticker, thả cảm xúc, thu hồi, chuyển tiếp thay nhân viên; API không gửi tin qua Zalo nhân viên; chỉ Super Admin chuyển Zalo nhân viên thành kênh chung.
+- Khóa / xóa / đăng xuất mọi nơi: kết nối realtime đang mở bị ngắt ngay (trước đây vẫn nhận tin mới).
+- Mã link tạm (tải file) chỉ dùng để xem / tải, không gửi tin hay sửa dữ liệu.
+- Link trong tin khách gửi không được trỏ vào /api của app.
+- Tải ảnh / tệp mẫu và webhook không gọi được vào mạng nội bộ của NAS (chặn cả kiểu viết IPv6, kiểm lúc kết nối).
+- Kiểm tra kết nối Odoo POS không gửi API key đã lưu sang địa chỉ khác.
+- Xuất CSV: ô bắt đầu bằng = + - @ không chạy như công thức Excel. Nhập Excel: chặn file "bom nén".
+- Nhật ký: che thêm API key, cookie Zalo; lỗi trình duyệt không giả được dòng nhật ký, không gửi SĐT khách trong đường dẫn.
+- Lỗi kỹ thuật không trả nguyên văn ra ngoài; file khách gửi không cho Cloudflare lưu tạm.
+- Tag / câu trả lời mẫu: chỉ sửa / xóa được mục thuộc phạm vi bộ phận mình.
+- Triển khai: GitHub chỉ build từ tag phát hành, các bước build ghim cố định phiên bản; `cap-nhat.sh` không tự thay bằng bản trong ảnh (lưu ra `cap-nhat.sh.moi` để quản trị viên duyệt).
+
+**Hiệu năng**
+- Thêm chỉ mục cho danh sách hội thoại, báo cáo theo ngày, nhật ký, giám sát, tìm theo SĐT; SQLite dùng bộ đệm lớn hơn, dùng lại câu lệnh đã biên dịch.
+- Sao lưu mỗi giờ chạy nền (không làm app khựng khi dữ liệu lớn).
+- Xuất dữ liệu nhanh hơn nhiều khi có nhiều tin nhắn; quét cảnh báo gộp lại khi đồng bộ nhiều đơn.
+- Giao diện: các trang Báo cáo, Giám sát tải riêng khi mở.
+
+**Sửa lỗi**
+- App khởi động lỗi trên cơ sở dữ liệu mới tinh (ảnh hưởng khi dựng lại từ đầu / chạy tạm laptop với dữ liệu trống).
+
 ## v3.21.3 — 22/10/2026
 
 - NAS: hết chấm đỏ ở dự án `chat-sieutoc` trong Container Manager. Khi có bản mới, `cap-nhat.sh` gỡ hẳn container cũ rồi tạo mới (không còn container tên tạm `<mã>_chat-sieutoc` làm Container Manager báo lỗi), không cho hai lượt chạy chồng nhau, dọn container và ảnh cũ còn sót.

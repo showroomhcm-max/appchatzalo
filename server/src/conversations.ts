@@ -1,3 +1,4 @@
+import { isOthersMonitorChannel } from "./access.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -184,8 +185,13 @@ export function messageInConversation(conversationId: string, messageId: number)
 }
 
 /** Phiên Zalo đang kết nối của hội thoại (cho sticker, cảm xúc, thu hồi, chuyển tiếp — chỉ Zalo có). */
-export function connectedSession(conv: { channel_id: number; channel_name: string | null; platform?: string }) {
+/**
+ * Phiên Zalo của kênh để thao tác (sticker, cảm xúc, thu hồi, chuyển tiếp). Zalo nhân viên đang giám sát chỉ được xem:
+ * chỉ người đang giữ máy mới thao tác được (giống gửi tin).
+ */
+export function connectedSession(conv: { channel_id: number; channel_name: string | null; platform?: string }, userId: number) {
   if (conv.platform && conv.platform !== "zalo") throw new HttpError(400, "Thao tác này hiện chỉ có ở kênh Zalo");
+  if (isOthersMonitorChannel(conv.channel_id, userId)) throw new HttpError(403, "Zalo nhân viên đang giám sát chỉ được xem, không thao tác thay nhân viên");
   const session = zalo.zaloSession(conv.channel_id);
   if (!session.connected) throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo`);
   return session;

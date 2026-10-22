@@ -322,6 +322,13 @@ function saveTag(id: number | null, b: any) {
 }
 
 settingsRouter.get("/tags", (req, res) => res.json(tagPayload(req)));
+/** Sửa / xóa theo id: chỉ tag, mẫu thuộc phạm vi bộ phận người này đang thấy. */
+const ensureTagVisible = (req: Request, id: number) => {
+  if (!tagPayload(req).some((t) => t.id === id)) throw new HttpError(404, "Không tìm thấy tag");
+};
+const ensureTemplateVisible = (req: Request, id: number) => {
+  if (!templatePayload(req).some((t) => t.id === id)) throw new HttpError(404, "Không tìm thấy tin nhắn mẫu");
+};
 settingsRouter.post(
   "/tags",
   requirePerm("tags.manage"),
@@ -334,6 +341,7 @@ settingsRouter.patch(
   "/tags/:id",
   requirePerm("tags.manage"),
   h((req, res) => {
+    ensureTagVisible(req, Number(req.params.id));
     const id = saveTag(Number(req.params.id), req.body);
     bus.emit("settings.changed", "tags");
     res.json(tagPayload(req).find((t) => t.id === id));
@@ -373,6 +381,7 @@ settingsRouter.delete(
   "/tags/:id",
   requirePerm("tags.manage"),
   h((req, res) => {
+    ensureTagVisible(req, Number(req.params.id));
     const t = get<{ name: string }>("SELECT name FROM tags WHERE id = ?", Number(req.params.id));
     if (t) {
       tx(() => {
@@ -480,6 +489,7 @@ settingsRouter.patch(
   "/templates/:id",
   requirePerm("templates.manage"),
   h(async (req, res) => {
+    ensureTemplateVisible(req, Number(req.params.id));
     const r = await saveTemplate(Number(req.params.id), req.body, req.user!.id);
     res.json({ ...templatePayload(req).find((t) => t.id === r.id), warnings: r.warnings });
   }),
@@ -512,11 +522,12 @@ settingsRouter.post(
     res.json({ ok: true, deleted: targets.length });
   }),
 );
-settingsRouter.delete("/templates/:id", requirePerm("templates.manage"), (req, res) => {
+settingsRouter.delete("/templates/:id", requirePerm("templates.manage"), h((req, res) => {
+  ensureTemplateVisible(req, Number(req.params.id));
   run("DELETE FROM templates WHERE id = ?", Number(req.params.id));
   bus.emit("settings.changed", "templates");
   res.json({ ok: true });
-});
+}));
 
 // ───────────── Xuất / nhập Excel (theo form "Danh sách CTLM") ─────────────
 
@@ -586,9 +597,33 @@ const foldHeader = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/** Tổng dung lượng giải nén của file .xlsx (zip), đọc từ mục lục cuối file; null nếu không phải zip hợp lệ. */
+function zipUnpackedSize(buf: Buffer): number | null {
+  const min = Math.max(0, buf.length - 65_557);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= min; i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) return null;
+  const entries = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  if (entries > 10_000 || p === 0xffffffff) return Infinity;
+  let total = 0;
+  for (let n = 0; n < entries; n++) {
+    if (p + 46 > buf.length || buf.readUInt32LE(p) !== 0x02014b50) return null;
+    const size = buf.readUInt32LE(p + 24);
+    if (size === 0xffffffff) return Infinity;
+    total += size;
+    p += 46 + buf.readUInt16LE(p + 28) + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+  }
+  return total;
+}
+
 /** Đọc sheet đầu, nhận cột theo tên tiêu đề (đổi thứ tự / thêm cột vẫn đọc đúng). */
 async function readTable(file: Express.Multer.File | undefined, aliases: Record<string, string[]>, positional: string[]) {
   if (!file) throw new HttpError(400, "Chọn file Excel (.xlsx)");
+  // File nén nhỏ nhưng giải nén ra rất lớn (zip bomb) làm tràn bộ nhớ: kiểm trước khi mở
+  const unpacked = zipUnpackedSize(file.buffer);
+  if (unpacked === null) throw new HttpError(400, "File không phải Excel .xlsx hợp lệ");
+  if (unpacked > 100 * 1024 * 1024) throw new HttpError(400, "File Excel quá lớn khi giải nén (tối đa 100 MB)");
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(file.buffer as any);

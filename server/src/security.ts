@@ -6,6 +6,7 @@
  * - File tải lên (/uploads): chỉ ảnh / video / âm thanh được mở trực tiếp; loại khác (html, svg, pdf…) luôn tải về,
  *   và chạy trong sandbox để không thể chạy mã trên tên miền của app.
  */
+import { createHash, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import type { NextFunction, Request, Response } from "express";
 
@@ -14,6 +15,26 @@ export const allowLan = () => process.env.ALLOW_LAN === "1";
 
 export function isLoopback(address: string | undefined) {
   return !!address && LOOPBACK.has(address);
+}
+
+/**
+ * IP thật của người dùng. Qua Cloudflare Tunnel mọi kết nối đều tới từ localhost, IP thật nằm ở header
+ * CF-Connecting-IP; chỉ tin header này khi kết nối đến từ localhost (máy trong LAN không giả được).
+ */
+export function clientIp(req: Request) {
+  const remote = req.socket.remoteAddress;
+  if (isLoopback(remote)) {
+    const cf = req.get("cf-connecting-ip");
+    if (cf && /^[0-9a-fA-F:.]{3,45}$/.test(cf)) return cf;
+  }
+  return remote ?? "unknown";
+}
+
+/** So sánh chuỗi bí mật không lộ thời gian (băm SHA-256 trước để hai bên cùng độ dài). */
+export function safeEqual(a: unknown, b: unknown) {
+  if (typeof a !== "string" || typeof b !== "string" || !a || !b) return false;
+  const h = (v: string) => createHash("sha256").update(v).digest();
+  return timingSafeEqual(h(a), h(b));
 }
 
 export function localOnly(req: Request, res: Response, next: NextFunction) {

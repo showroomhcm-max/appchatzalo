@@ -4,6 +4,7 @@
  * - /api/oauth/*     : luồng đăng nhập / ủy quyền tài khoản (trình duyệt chuyển hướng qua lại)
  * - /api/platform-*  : cấu hình app nhà phát triển, kết nối Fanpage / tài khoản / shop thành kênh
  */
+import { safeEqual } from "./security.js";
 import express, { Router, type NextFunction, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import { all, get, logEvent, run } from "./db.js";
@@ -58,7 +59,7 @@ function parseBody(req: Request) {
 // Meta kiểm tra webhook lúc cấu hình: trả lại hub.challenge nếu verify token đúng
 webhookRouter.get("/meta", (req, res) => {
   const cfg = metaConfig();
-  if (req.query["hub.mode"] === "subscribe" && cfg && req.query["hub.verify_token"] === cfg.verifyToken) {
+  if (req.query["hub.mode"] === "subscribe" && cfg && safeEqual(req.query["hub.verify_token"], cfg.verifyToken)) {
     return res.status(200).send(String(req.query["hub.challenge"] ?? ""));
   }
   res.sendStatus(403);
@@ -86,7 +87,7 @@ webhookRouter.post("/meta", (req, res) => {
 webhookRouter.post("/tiktok", (req, res) => {
   const body = parseBody(req);
   const signed = req.header("tiktok-signature");
-  const keyOk = !!tiktokConfig()?.webhookKey && req.query.k === tiktokConfig()!.webhookKey;
+  const keyOk = safeEqual(req.query.k, tiktokConfig()?.webhookKey);
   if (!body || (!signed && !keyOk) || !verifyTikTokWebhook(req.body as Buffer, signed, body.client_key)) {
     console.warn("[webhook/tiktok] Sai chữ ký / client_key, bỏ qua");
     return res.sendStatus(401);

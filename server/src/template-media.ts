@@ -5,11 +5,10 @@
  * - Ảnh phải đúng loại ảnh; tệp chỉ nhận đuôi văn phòng / nén / ảnh thường gặp.
  */
 import crypto from "node:crypto";
-import dns from "node:dns/promises";
 import fs from "node:fs";
-import net from "node:net";
 import path from "node:path";
 import { config } from "./config.js";
+import { safeRequest } from "./net-guard.js";
 
 const DIR = path.join(config.uploadDir, "templates");
 fs.mkdirSync(DIR, { recursive: true });
@@ -18,51 +17,16 @@ const MAX = 10 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" };
 const FILE_EXT = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".zip", ".rar", ".7z", ".jpg", ".jpeg", ".png", ".webp", ".mp4"]);
 
-function privateIp(ip: string) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
-  }
-  const v = ip.toLowerCase();
-  if (v.startsWith("::ffff:")) return privateIp(v.slice(7));
-  return v === "::" || v === "::1" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80") || v.startsWith("ff");
-}
-
-async function assertPublic(u: URL) {
-  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Link phải là http(s)");
-  if (u.username || u.password) throw new Error("Link không được chứa tài khoản");
-  const host = u.hostname.replace(/^\[|\]$/g, "");
-  const ips = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true })).map((a) => a.address);
-  if (!ips.length || ips.some(privateIp)) throw new Error("Link trỏ vào mạng nội bộ, không tải");
-}
-
 async function download(raw: string) {
-  let u: URL;
+  // Chỉ địa chỉ công khai, kiểm ngay lúc kết nối (net-guard), tối đa 3 lần chuyển hướng
+  let res;
   try {
-    u = new URL(raw.trim());
-  } catch {
-    throw new Error("Link không hợp lệ");
+    res = await safeRequest(raw, { maxBytes: MAX, timeoutMs: 20_000, maxRedirects: 3 });
+  } catch (e: any) {
+    throw new Error(/MB/.test(e?.message) ? "Tệp quá 10 MB" : e?.message ?? "Không tải được");
   }
-  for (let hop = 0; hop < 4; hop++) {
-    await assertPublic(u);
-    const res = await fetch(u, { redirect: "manual", signal: AbortSignal.timeout(20_000), headers: { "user-agent": "ChatSieuToc/1.0" } });
-    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
-      u = new URL(res.headers.get("location")!, u);
-      continue;
-    }
-    if (!res.ok || !res.body) throw new Error(`Không tải được (mã ${res.status})`);
-    const len = Number(res.headers.get("content-length") ?? 0);
-    if (len > MAX) throw new Error("Tệp quá 10 MB");
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const c of res.body as any as AsyncIterable<Uint8Array>) {
-      size += c.length;
-      if (size > MAX) throw new Error("Tệp quá 10 MB");
-      chunks.push(Buffer.from(c));
-    }
-    return { buf: Buffer.concat(chunks), type: (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase(), url: u };
-  }
-  throw new Error("Chuyển hướng quá nhiều lần");
+  if (res.status < 200 || res.status >= 300) throw new Error(`Không tải được (mã ${res.status})`);
+  return { buf: res.body, type: String(res.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase(), url: res.url };
 }
 
 const sniffImage = (b: Buffer) =>

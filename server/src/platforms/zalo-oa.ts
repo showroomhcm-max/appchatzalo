@@ -4,6 +4,7 @@
  * Mỗi kênh = 1 OA, credentials = { oaId, accessToken, refreshToken, ... }.
  * Gửi tin tư vấn (message/cs) được trong 7 ngày kể từ lần cuối khách tương tác (theo quy định của Zalo).
  */
+import { safeEqual } from "../security.js";
 import crypto from "node:crypto";
 import { logEvent, run } from "../db.js";
 import { bus } from "../bus.js";
@@ -102,7 +103,7 @@ export async function exchangeZaloOaCode(code: string, state: string, oaIdHint?:
 export function verifyZaloOaWebhook(rawBody: Buffer, signature: string | undefined, urlKey: unknown) {
   const cfg = zaloOaConfig();
   if (!cfg) return false;
-  if (cfg.webhookKey && urlKey === cfg.webhookKey) return true;
+  if (safeEqual(urlKey, cfg.webhookKey)) return true;
   if (!cfg.oaSecretKey || !signature) return false;
   let ts = "";
   try {

@@ -59,7 +59,8 @@ export function saveOdooPosConfig(input: any, userId: number) {
     url: str(input?.url).replace(/\/+$/, "") || cur.url,
     db: str(input?.db) || cur.db,
     login: input?.login !== undefined ? str(input.login) : cur.login,
-    apiKey: str(input?.apiKey) || cur.apiKey,
+    // Đổi địa chỉ Odoo / tài khoản mà không nhập lại API key → không giữ key cũ (tránh gửi key đã lưu sang địa chỉ lạ)
+    apiKey: str(input?.apiKey) || (sameTarget(cur, input) ? cur.apiKey : ""),
     configId: input?.configId !== undefined ? (input.configId ? Number(input.configId) : null) : cur.configId,
     kenhBan,
   };
@@ -109,8 +110,15 @@ async function call<T = any>(model: string, method: string, args: unknown[], kwa
 }
 
 /** Kiểm tra kết nối: đăng nhập, liệt kê điểm bán POS và kênh bán. */
+/** Địa chỉ / database / tài khoản gửi lên có giống cấu hình đã lưu không (để quyết định dùng lại API key đã lưu). */
+function sameTarget(cur: OdooPosConfig, input: any) {
+  const v = (x: unknown) => (typeof x === "string" ? x.trim().replace(/\/+$/, "") : "");
+  return (!v(input?.url) || v(input.url) === cur.url) && (!v(input?.db) || v(input.db) === cur.db) && (input?.login === undefined || v(input.login) === cur.login);
+}
+
 export async function testOdooPos(input?: any) {
   const cur = odooPosConfig();
+  if (!input?.apiKey?.trim() && !sameTarget(cur, input)) throw new Error("Đổi địa chỉ / database / tài khoản Odoo thì nhập lại API key để kiểm tra");
   const cfg: OdooPosConfig = { ...cur, url: input?.url?.trim() || cur.url, db: input?.db?.trim() || cur.db, login: input?.login?.trim() || cur.login, apiKey: input?.apiKey?.trim() || cur.apiKey };
   session = null;
   const uid = await uidOf(cfg);

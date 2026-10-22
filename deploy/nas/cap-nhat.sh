@@ -2,7 +2,7 @@
 # Tự cập nhật Chat Siêu Tốc trên NAS khi GitHub có bản build mới.
 # DSM › Bảng điều khiển › Bộ lập lịch tác vụ › Tạo › Tác vụ đã lên lịch › Tập lệnh do người dùng xác định:
 #   người dùng root, lặp lại mỗi vài phút, lệnh:  sh "/volume2/Chat Sieu Toc/VPS Chat Sieu Toc/cap-nhat.sh"
-# File này tự thay bằng bản mới đi kèm mỗi bản phát hành (không phải chép tay lên NAS nữa).
+# Bản mới của file này (nếu có) được lưu ra cap-nhat.sh.moi để quản trị viên tự xem rồi chép đè.
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 cd "$(dirname "$0")" || exit 1
 LOG=cap-nhat.log
@@ -51,10 +51,11 @@ if [ -n "$latest" ] && [ "$running" != "$latest" ]; then
   } >> "$LOG"
   echo "$(now) Đã cập nhật xong" >> "$LOG"
   docker image prune -f >/dev/null 2>&1
-  # Lấy cap-nhat.sh đi kèm bản mới; hợp lệ và khác bản đang dùng thì thay (mv: lượt đang chạy không bị ảnh hưởng)
+  # Bản mới có kèm cap-nhat.sh khác bản đang dùng: KHÔNG tự thay (script chạy bằng quyền root trên NAS,
+  # ảnh tải về không được tự cấp quyền root cho mình). Lưu ra cap-nhat.sh.moi để quản trị viên xem rồi tự chép đè.
   if docker run --rm --entrypoint cat "$IMG" /app/deploy/cap-nhat.sh > .cap-nhat.new 2>/dev/null \
-    && [ -s .cap-nhat.new ] && sh -n .cap-nhat.new 2>/dev/null && ! cmp -s .cap-nhat.new cap-nhat.sh; then
-    mv .cap-nhat.new cap-nhat.sh && echo "$(now) Đã cập nhật cap-nhat.sh theo bản mới" >> "$LOG"
+    && [ -s .cap-nhat.new ] && ! cmp -s .cap-nhat.new cap-nhat.sh; then
+    mv .cap-nhat.new cap-nhat.sh.moi && echo "$(now) Có bản cap-nhat.sh mới (cap-nhat.sh.moi): xem rồi chép đè lên cap-nhat.sh nếu đồng ý" >> "$LOG"
   fi
   rm -f .cap-nhat.new
 else

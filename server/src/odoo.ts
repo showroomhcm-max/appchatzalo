@@ -8,7 +8,8 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 
-export type OdooIdentity = { uid: number; login: string; name: string };
+/** internal: false = tài khoản portal (khách hàng / đối tác), không phải nhân viên; undefined = không rõ. */
+export type OdooIdentity = { uid: number; login: string; name: string; internal?: boolean };
 export type OdooLoginResult =
   | { status: "ok"; user: OdooIdentity }
   | { status: "totp_required"; pendingId: string }
@@ -38,6 +39,7 @@ async function apiLogin(login: string, password: string): Promise<OdooIdentity |
   const uid = await jsonRpc("common", "authenticate", [config.odooDb, login, password, {}]);
   if (!uid) return null;
   let name = login;
+  let internal: boolean | undefined;
   try {
     const rows = await jsonRpc("object", "execute_kw", [
       config.odooDb,
@@ -46,14 +48,15 @@ async function apiLogin(login: string, password: string): Promise<OdooIdentity |
       "res.users",
       "read",
       [[uid]],
-      { fields: ["name", "login"] },
+      { fields: ["name", "login", "share"] },
     ]);
     name = rows?.[0]?.name || login;
     login = rows?.[0]?.login || login;
+    if (typeof rows?.[0]?.share === "boolean") internal = !rows[0].share;
   } catch {
     /* không đọc được tên thì dùng login */
   }
-  return { uid, login, name };
+  return { uid, login, name, internal };
 }
 
 // ───────────── Đăng nhập kiểu web session (cho tài khoản bật 2FA) ─────────────
@@ -115,7 +118,12 @@ async function sessionInfo(jar: Jar): Promise<OdooIdentity | null> {
   try {
     const s = JSON.parse(r.body)?.result;
     if (!s?.uid) return null;
-    return { uid: s.uid, login: s.username ?? "", name: s.name ?? s.partner_display_name ?? s.username ?? "" };
+    return {
+      uid: s.uid,
+      login: s.username ?? "",
+      name: s.name ?? s.partner_display_name ?? s.username ?? "",
+      internal: typeof s.is_internal_user === "boolean" ? s.is_internal_user : undefined,
+    };
   } catch {
     return null;
   }

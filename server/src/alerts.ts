@@ -344,7 +344,15 @@ export function startAlerts() {
   });
   const tick = () => scan().catch((e) => console.error("[alerts] Quét cảnh báo lỗi:", e));
   // Có đơn mới → đóng / mở cảnh báo ngay, không chờ lượt quét
-  bus.on("order.updated", () => void tick());
+  // Gom các lần cập nhật đơn liền nhau (đồng bộ POS có thể đẩy hàng trăm đơn một lượt) thành một lần quét
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  bus.on("order.updated", () => {
+    if (pending) return;
+    pending = setTimeout(() => {
+      pending = null;
+      void tick();
+    }, 2000);
+  });
   setTimeout(tick, 15_000);
   setInterval(tick, 60_000);
 }

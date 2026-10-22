@@ -22,7 +22,10 @@ export function redact(text: string) {
   return text
     .replace(/eyJ[A-Za-z0-9_-]{10,}(\.[A-Za-z0-9_-]+){0,2}/g, "eyJ***")
     .replace(/zck_[A-Za-z0-9_-]{8,}/g, "zck_***")
-    .replace(/("?(?:password|pass|token|secret|cookie|zpw_sek|zpsid|imei)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}&]+)/gi, "$1***")
+    .replace(/(["']?[\w-]*(?:password|pass|token|secret|cookie|zpw_sek|zpsid|imei|api[_-]?key|apikey|credentials?|sk-ant)[\w-]*["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}&\]]+)/gi, "$1***")
+    // Cookie Zalo in dạng mảng: { key: 'zpw_sek', value: '…' }
+    .replace(/(key:\s*'(?:zpw_sek|zpsid|zpw_sekm|app\.event\.zalo\.me)'[^}]*?value:\s*)'[^']*'/gi, "$1'***'")
+    .replace(/sk-ant-[A-Za-z0-9_-]{8,}/g, "sk-ant-***")
     .replace(/(Bearer\s+)[A-Za-z0-9._-]+/g, "$1***");
 }
 

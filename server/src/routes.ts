@@ -6,6 +6,8 @@ import multer from "multer";
 import fs from "node:fs";
 import { config } from "./config.js";
 import { all, get, run, logEvent, tx } from "./db.js";
+import { clientIp } from "./security.js";
+import { assertPublicUrl } from "./net-guard.js";
 import { generateApiKey, requireApiKey, requireSuperAdmin, requireUser, revokeSessions, signLinkToken, signToken, type AuthUser } from "./auth.js";
 import {
   PERMISSIONS,
@@ -113,10 +115,14 @@ async function sendExport(req: Request, res: Response) {
 function resolveAgent(req: Request): number | null {
   // Web app khác có thể ghi nhận tin gửi thay mặt một nhân viên: agent_username hoặc agent_id.
   const b = req.body ?? {};
-  if (b.agent_id) return Number(b.agent_id);
+  if (b.agent_id) {
+    const u = get<{ id: number }>("SELECT id FROM users WHERE id = ? AND active = 1", Number(b.agent_id));
+    if (!u) throw new HttpError(400, "agent_id không tồn tại hoặc đã khóa");
+    return u.id;
+  }
   if (b.agent_username) {
-    const u = get<{ id: number }>("SELECT id FROM users WHERE username = ?", String(b.agent_username));
-    if (!u) throw new HttpError(400, "agent_username không tồn tại");
+    const u = get<{ id: number }>("SELECT id FROM users WHERE username = ? AND active = 1", String(b.agent_username));
+    if (!u) throw new HttpError(400, "agent_username không tồn tại hoặc đã khóa");
     return u.id;
   }
   return null;
@@ -127,25 +133,42 @@ export const appRouter = Router();
 
 // ── Đăng nhập: tài khoản Odoo (chính) hoặc tài khoản nội bộ (dự phòng, vd "admin") ──
 
-const loginFailures = new Map<string, { count: number; until: number }>();
+/**
+ * Chống dò mật khẩu, tính theo IP thật (CF-Connecting-IP):
+ * - một IP + một tài khoản: sai 5 lần → khóa cặp đó 10 phút (người khác không khóa được tài khoản của mình);
+ * - một IP: sai 20 lần (bất kể tài khoản) → khóa IP 10 phút (chống thử hàng loạt tài khoản).
+ */
+const loginFailures = new Map<string, { count: number; until: number; last: number }>();
 const MAX_FAILS = 5;
+const MAX_FAILS_PER_IP = 20;
 const BLOCK_MS = 10 * 60_000;
 
-function checkBlocked(key: string) {
-  const f = loginFailures.get(key);
-  if (f && f.until > Date.now()) {
-    throw new HttpError(429, `Sai quá ${MAX_FAILS} lần. Thử lại sau ${Math.ceil((f.until - Date.now()) / 60_000)} phút.`);
+function checkBlocked(...keys: string[]) {
+  for (const key of keys) {
+    const f = loginFailures.get(key);
+    if (f && f.until > Date.now()) {
+      throw new HttpError(429, `Sai quá nhiều lần. Thử lại sau ${Math.ceil((f.until - Date.now()) / 60_000)} phút.`);
+    }
   }
 }
-function recordFail(key: string) {
-  const f = loginFailures.get(key) ?? { count: 0, until: 0 };
+function recordFail(key: string, limit = MAX_FAILS) {
+  const now = Date.now();
+  // Dọn mục cũ, giữ bộ nhớ gọn khi bị dò hàng loạt tên đăng nhập
+  if (loginFailures.size > 5000) for (const [k, v] of loginFailures) if (v.until < now && now - v.last > BLOCK_MS) loginFailures.delete(k);
+  const f = loginFailures.get(key) ?? { count: 0, until: 0, last: now };
+  if (now - f.last > BLOCK_MS) f.count = 0;
   f.count++;
-  if (f.count >= MAX_FAILS) {
-    f.until = Date.now() + BLOCK_MS;
+  f.last = now;
+  if (f.count >= limit) {
+    f.until = now + BLOCK_MS;
     f.count = 0;
   }
   loginFailures.set(key, f);
 }
+const failLogin = (ip: string, key: string) => {
+  recordFail(key);
+  recordFail(`ip|${ip}`, MAX_FAILS_PER_IP);
+};
 
 const USER_FIELDS = "id, username, display_name, role, auth_source, super_admin";
 
@@ -170,6 +193,8 @@ function addToGroup(userId: number, name: string) {
  * "Nhân viên CSKH" (quản trị viên đổi quyền / bộ phận sau). Tài khoản bị quản trị viên khóa thì không vào được.
  */
 function finishOdooLogin(res: Response, odoo: OdooIdentity) {
+  // Tài khoản portal của Odoo (khách hàng, nhà cung cấp) cũng đăng nhập Odoo được nhưng không phải nhân viên
+  if (odoo.internal === false) throw new HttpError(403, "Tài khoản Odoo này là tài khoản khách hàng / đối tác, không dùng được app CSKH.");
   const login = odoo.login.trim().toLowerCase();
   let row = get<{ id: number; active: number; last_login_at: number | null }>(
     "SELECT id, active, last_login_at FROM users WHERE odoo_uid = ? OR (auth_source = 'odoo' AND lower(username) = ?) ORDER BY odoo_uid IS NULL LIMIT 1",
@@ -195,7 +220,8 @@ function finishOdooLogin(res: Response, odoo: OdooIdentity) {
   } else {
     run("UPDATE users SET odoo_uid = ? WHERE id = ?", odoo.uid, row.id);
     // Người từng đăng ký lúc còn phải chờ duyệt (chưa vào app lần nào): cho vào luôn như người mới
-    if (!row.active && !row.last_login_at) {
+    const selfRegistered = !!get("SELECT 1 FROM events WHERE type = 'user.odoo_registered' AND user_id = ?", row.id);
+    if (!row.active && !row.last_login_at && selfRegistered) {
       run("UPDATE users SET active = 1 WHERE id = ?", row.id);
       if (!get("SELECT 1 FROM user_permission_groups WHERE user_id = ?", row.id)) addToGroup(row.id, STAFF_GROUP);
       logEvent(null, row.id, "user.odoo_registered", { login, group: STAFF_GROUP, from_pending: true });
@@ -213,15 +239,16 @@ appRouter.post(
     const password = String(req.body?.password ?? "");
     if (!username || !password) throw new HttpError(400, "Nhập tên đăng nhập và mật khẩu");
     if (username.length > 254 || password.length > 1024) throw new HttpError(400, "Thông tin đăng nhập không hợp lệ");
-    const key = `${req.ip}|${username.toLowerCase()}`;
-    checkBlocked(key);
+    const ip = clientIp(req);
+    const key = `${ip}|${username.toLowerCase()}`;
+    checkBlocked(key, `ip|${ip}`);
 
     // Tài khoản nội bộ (vd admin dự phòng khi Odoo gặp sự cố)
     const local = get<{ id: number; password_hash: string; active: number }>(
       "SELECT id, password_hash, active FROM users WHERE username = ? AND auth_source = 'local'",
       username,
     );
-    if (local && bcrypt.compareSync(password, local.password_hash)) {
+    if (local && (await bcrypt.compare(password, local.password_hash))) {
       if (!local.active) throw new HttpError(403, "Tài khoản đã bị khóa");
       loginFailures.delete(key);
       return issueLogin(res, local.id);
@@ -231,14 +258,15 @@ appRouter.post(
     try {
       result = await odooLogin(username, password);
     } catch (e: any) {
-      throw new HttpError(502, `Không kết nối được Odoo: ${e.message}`);
+      console.warn("[auth] Không kết nối được Odoo:", e?.message ?? e);
+      throw new HttpError(502, "Không kết nối được Odoo, thử lại sau ít phút.");
     }
     if (result.status === "ok") {
       loginFailures.delete(key);
       return finishOdooLogin(res, result.user);
     }
     if (result.status === "totp_required") return res.json({ totp_required: true, pending_id: result.pendingId });
-    recordFail(key);
+    failLogin(ip, key);
     res.status(401).json({ error: "Sai tên đăng nhập hoặc mật khẩu Odoo" });
   }),
 );
@@ -249,18 +277,20 @@ appRouter.post(
     const pendingId = String(req.body?.pending_id ?? "");
     const code = String(req.body?.code ?? "").trim();
     if (!pendingId || !/^\d{4,8}$/.test(code)) throw new HttpError(400, "Nhập mã OTP 6 số");
-    const key = `${req.ip}|otp|${pendingId}`;
-    checkBlocked(key);
+    const ip = clientIp(req);
+    const key = `${ip}|otp|${pendingId}`;
+    checkBlocked(key, `ip|${ip}`);
     const result = await odooCompleteTotp(pendingId, code);
     if (result.status === "ok") return finishOdooLogin(res, result.user);
     if (result.status === "expired") {
       return res.status(401).json({ error: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.", expired: true });
     }
-    recordFail(key);
+    failLogin(ip, key);
     res.status(401).json({ error: "Mã OTP không đúng. Kiểm tra lại trên app Authenticator." });
   }),
 );
 
+let stickerLookups: number[] = [];
 // Ảnh sticker Zalo (ảnh công khai của Zalo): thẻ <img> không gửi kèm token nên không yêu cầu đăng nhập.
 appRouter.get(
   "/sticker-image/:id",
@@ -269,6 +299,11 @@ appRouter.get(
     if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, "Sticker không hợp lệ");
     let row = get<{ url: string | null; updated_at: number }>("SELECT url, updated_at FROM sticker_cache WHERE id = ?", id);
     if (!row?.url) {
+      // Đường này không cần đăng nhập: giới hạn số lần hỏi Zalo (tránh bị dò hàng loạt làm Zalo khóa tài khoản)
+      const now = Date.now();
+      stickerLookups = stickerLookups.filter((t) => now - t < 10 * 60_000);
+      if (stickerLookups.length >= 120) throw new HttpError(429, "Tạm hết lượt tải sticker, thử lại sau");
+      stickerLookups.push(now);
       const session = zalo.anyConnected();
       if (!session) throw new HttpError(503, "Chưa có kênh Zalo nào kết nối");
       const [d] = await session.stickerDetails([id]);
@@ -336,13 +371,13 @@ appRouter.put(
 
 appRouter.post(
   "/auth/password",
-  h((req, res) => {
+  h(async (req, res) => {
     if (req.user!.auth_source === "odoo") throw new HttpError(400, "Tài khoản Odoo đổi mật khẩu trên Odoo");
     const { current, next } = req.body ?? {};
     const row = get<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = ?", req.user!.id)!;
-    if (!bcrypt.compareSync(String(current ?? ""), row.password_hash)) throw new HttpError(400, "Mật khẩu hiện tại không đúng");
+    if (!(await bcrypt.compare(String(current ?? ""), row.password_hash))) throw new HttpError(400, "Mật khẩu hiện tại không đúng");
     if (String(next ?? "").length < 6) throw new HttpError(400, "Mật khẩu mới tối thiểu 6 ký tự");
-    run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(next), 10), req.user!.id);
+    run("UPDATE users SET password_hash = ? WHERE id = ?", await bcrypt.hash(String(next), 10), req.user!.id);
     // Đổi mật khẩu: đăng xuất mọi thiết bị khác, thiết bị này nhận phiên mới
     revokeSessions(req.user!.id);
     logEvent(null, req.user!.id, "auth.password_changed");
@@ -418,6 +453,14 @@ function withDepartments<T extends { id: number }>(rows: T[]) {
     permissions: permissionsOf(u.id),
   }));
 }
+/** Danh sách id gửi lên có trùng danh sách hiện tại không (không gửi = không đổi). */
+function sameIds(sent: unknown, current: number[]) {
+  if (sent === undefined) return true;
+  if (!Array.isArray(sent)) return false;
+  const a = [...new Set(sent.map(Number).filter((n) => n > 0))].sort();
+  const b = [...current].sort();
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
 function setUserChannels(userId: number, channelIds: unknown) {
   if (!Array.isArray(channelIds)) return;
   run("DELETE FROM user_channels WHERE user_id = ?", userId);
@@ -448,6 +491,10 @@ appRouter.post(
     if (source === "odoo") username = username.toLowerCase();
     if (!username || !display_name) throw new HttpError(400, "Thiếu tên đăng nhập hoặc tên hiển thị");
     if (source === "local" && String(password ?? "").length < 6) throw new HttpError(400, "Mật khẩu tối thiểu 6 ký tự");
+    // Tài khoản nội bộ trùng tên Super Admin / quản trị Odoo có thể chiếm quyền của họ khi khởi động lại
+    if (source === "local" && !req.user!.super_admin && (username.includes("@") || [...config.superAdmins, ...config.odooAdmins].includes(username.toLowerCase()))) {
+      throw new HttpError(400, "Tên đăng nhập nội bộ không được là email (dành cho tài khoản Odoo)");
+    }
     if (get("SELECT 1 FROM users WHERE lower(username) = lower(?)", username)) throw new HttpError(400, "Tài khoản đã tồn tại");
     const r = run(
       "INSERT INTO users(username, password_hash, display_name, role, auth_source, created_at) VALUES(?, ?, ?, ?, ?, ?)",
@@ -499,9 +546,16 @@ appRouter.patch(
       revokeSessions(id);
     }
     if (password && target.auth_source === "local") {
+      if (!req.user!.super_admin && id !== req.user!.id) throw new HttpError(403, "Chỉ Super Admin được đặt lại mật khẩu tài khoản nội bộ");
       if (String(password).length < 6) throw new HttpError(400, "Mật khẩu tối thiểu 6 ký tự");
       run("UPDATE users SET password_hash = ? WHERE id = ?", bcrypt.hashSync(String(password), 10), id);
       revokeSessions(id);
+    }
+    // Tự thêm bộ phận / kênh cho mình = tự mở rộng phạm vi xem hội thoại: chỉ Super Admin
+    if (id === req.user!.id && !req.user!.super_admin && (req.body?.department_ids !== undefined || req.body?.channel_ids !== undefined)) {
+      const sameDepts = sameIds(req.body?.department_ids, all<{ department_id: number }>("SELECT department_id FROM user_departments WHERE user_id = ?", id).map((r) => r.department_id));
+      const sameChans = sameIds(req.body?.channel_ids, all<{ channel_id: number }>("SELECT channel_id FROM user_channels WHERE user_id = ?", id).map((r) => r.channel_id));
+      if (!sameDepts || !sameChans) throw new HttpError(403, "Không tự đổi bộ phận / kênh của chính mình, nhờ người quản lý khác");
     }
     setUserDepartments(id, req.body?.department_ids);
     setUserChannels(id, req.body?.channel_ids);
@@ -891,7 +945,6 @@ appRouter.post(
           if (mode === "monitor" && !req.user!.super_admin) throw new HttpError(403, "Hội thoại đang giám sát, chỉ Super Admin được xóa");
           run("UPDATE conversations SET deleted_at = ? WHERE id = ?", Date.now(), id);
           run("DELETE FROM conversation_pins WHERE conversation_id = ?", id);
-          if (closeAlertsOfGone()) bus.emit("alerts.changed");
           logEvent(id, req.user!.id, "conversation.deleted");
           bus.emit("conversation.updated", getConversation(id)!, { type: "deleted", by: req.user!.id });
         } else if (action === "restore") {
@@ -904,6 +957,8 @@ appRouter.post(
         results.push({ id, ok: false, error: e.message });
       }
     }
+    // Đóng cảnh báo của các hội thoại vừa xóa: một lần sau cả lượt (không quét lại mỗi hội thoại)
+    if (action === "delete" && results.some((r) => r.ok) && closeAlertsOfGone()) bus.emit("alerts.changed");
     const failed = results.filter((r) => !r.ok);
     res.json({ ok: failed.length === 0, done: results.length - failed.length, failed });
   }),
@@ -974,12 +1029,20 @@ appRouter.post(
   }),
 );
 appRouter.post("/monitor/accounts/:id/mode", requirePerm("channels.manage"), (req, res) => {
+  // Đổi Zalo nhân viên sang kênh chung = ai được gán kênh cũng đọc / gửi được như nhân viên: chỉ Super Admin
+  if (req.body?.mode !== "monitor" && !req.user!.super_admin) {
+    return res.status(403).json({ error: "Chỉ Super Admin được chuyển Zalo nhân viên thành kênh CSKH chung" });
+  }
   setChannelMode(Number(req.params.id), req.body?.mode === "monitor" ? "monitor" : "shared", req.user!.id);
   res.json({ ok: true });
 });
-appRouter.get("/monitor/accounts/:id/conversations", requirePerm("monitor.view"), (req, res) =>
-  res.json(monitorConversations(Number(req.params.id), typeof req.query.q === "string" ? req.query.q : undefined)),
-);
+appRouter.get("/monitor/accounts/:id/conversations", requirePerm("monitor.view"), (req, res) => {
+  // Chỉ kênh Zalo nhân viên đang giám sát (không dùng đường này để xem kênh CSKH ngoài phạm vi)
+  if (get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", Number(req.params.id))?.mode !== "monitor") {
+    return res.status(404).json({ error: "Không phải Zalo nhân viên đang giám sát" });
+  }
+  res.json(monitorConversations(Number(req.params.id), typeof req.query.q === "string" ? req.query.q : undefined));
+});
 appRouter.get("/monitor/conversations/:id/messages", requirePerm("monitor.view"), (req, res) => {
   const conv = getConversation(req.params.id);
   const mode = conv ? get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", conv.channel_id)?.mode : null;
@@ -1409,7 +1472,7 @@ appRouter.post(
     const conv = visibleConversation(req, req.params.id);
     const sticker = { id: Number(req.body?.id), cateId: Number(req.body?.cateId), type: Number(req.body?.type) };
     if (!sticker.id || !sticker.cateId) throw new HttpError(400, "Sticker không hợp lệ");
-    const message = await connectedSession(conv).sendSticker({
+    const message = await connectedSession(conv, req.user!.id).sendSticker({
       threadId: conv.thread_id,
       isGroup: conv.type === 1,
       sticker,
@@ -1428,7 +1491,7 @@ appRouter.post(
     const conv = visibleConversation(req, req.params.id);
     const msg = messageInConversation(conv.id, Number(req.params.mid));
     const icon = String(req.body?.icon ?? "");
-    await connectedSession(conv).react({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg, icon });
+    await connectedSession(conv, req.user!.id).react({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg, icon });
     res.json(setReaction(msg.id, { uid: `shop:${conv.channel_id}`, name: req.user!.display_name, agentId: req.user!.id }, icon));
   }),
 );
@@ -1442,7 +1505,7 @@ appRouter.post(
     if (!can(req.user, "messages.undo_any") && msg.agent_id !== req.user!.id) {
       throw new HttpError(403, "Chỉ người gửi hoặc quản trị viên mới thu hồi được tin này");
     }
-    await connectedSession(conv).undo({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg });
+    await connectedSession(conv, req.user!.id).undo({ threadId: conv.thread_id, isGroup: conv.type === 1, message: msg });
     logEvent(conv.id, req.user!.id, "message.undo", { message_id: msg.id });
     res.json({ ok: true });
   }),
@@ -1461,7 +1524,7 @@ appRouter.post(
     if (targets.some((t) => t.channel_id !== conv.channel_id)) {
       throw new HttpError(400, "Chỉ chuyển tiếp được trong cùng một kênh Zalo");
     }
-    const results = await connectedSession(conv).forward({
+    const results = await connectedSession(conv, req.user!.id).forward({
       text,
       targets: targets.map((t) => ({ threadId: t.thread_id, isGroup: t.type === 1 })),
       agentId: req.user!.id,
@@ -1585,9 +1648,14 @@ appRouter.get("/webhook-events", requirePerm("integrations.manage"), (_req, res)
 appRouter.post(
   "/webhooks",
   requirePerm("integrations.manage"),
-  h((req, res) => {
+  h(async (req, res) => {
     const url = String(req.body?.url ?? "").trim();
     if (!/^https?:\/\//.test(url)) throw new HttpError(400, "URL phải bắt đầu bằng http:// hoặc https://");
+    try {
+      await assertPublicUrl(url);
+    } catch (e: any) {
+      throw new HttpError(400, e.message);
+    }
     const events = Array.isArray(req.body?.events) && req.body.events.length ? req.body.events : ["*"];
     const secret = crypto.randomBytes(24).toString("hex");
     const r = run(
@@ -1629,7 +1697,20 @@ appRouter.get("/permission-groups", (_req, res) => {
     })),
   );
 });
+/**
+ * Người không phải Super Admin chỉ được đụng tới nhóm quyền không vượt quá quyền của chính mình
+ * (không tự thêm mình / người khác vào nhóm có quyền mình không có, không xóa nhóm đó).
+ */
+function guardGroup(req: Request, id: number) {
+  if (req.user!.super_admin) return;
+  const g = get<{ permissions: string }>("SELECT permissions FROM permission_groups WHERE id = ?", id);
+  if (!g) throw new HttpError(404, "Không tìm thấy nhóm quyền");
+  const over = cleanPermissions(JSON.parse(g.permissions)).filter((p) => !req.user!.permissions?.includes(p));
+  if (over.length) throw new HttpError(403, "Nhóm này có quyền mà bạn không có, chỉ Super Admin được sửa");
+}
+
 function saveGroup(req: Request, id: number | null) {
+  if (id !== null) guardGroup(req, id);
   const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
   const perms = req.body?.permissions !== undefined ? cleanPermissions(req.body.permissions) : undefined;
   if (perms && !req.user!.super_admin) {
@@ -1658,6 +1739,18 @@ function saveGroup(req: Request, id: number | null) {
     if (perms) run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify(perms), id);
   }
   if (Array.isArray(req.body?.user_ids)) {
+    if (!req.user!.super_admin) {
+      // Không đổi nhóm của người có nhiều quyền hơn mình (giống quy tắc sửa nhân viên)
+      const before = all<{ user_id: number }>("SELECT user_id FROM user_permission_groups WHERE group_id = ?", id).map((r) => r.user_id);
+      const after = new Set(req.body.user_ids.map(Number));
+      const touched = [...new Set([...before.filter((u) => !after.has(u)), ...[...after].filter((u) => !before.includes(u as number))])] as number[];
+      for (const u of touched) {
+        const t = get<{ super_admin: number }>("SELECT super_admin FROM users WHERE id = ?", u);
+        if (t?.super_admin || permissionsOf(u).some((p) => !req.user!.permissions?.includes(p))) {
+          throw new HttpError(403, "Không đổi nhóm quyền của người có nhiều quyền hơn bạn");
+        }
+      }
+    }
     run("DELETE FROM user_permission_groups WHERE group_id = ?", id);
     for (const u of new Set(req.body.user_ids.map(Number).filter((n: number) => n > 0))) {
       run("INSERT OR IGNORE INTO user_permission_groups(user_id, group_id) VALUES(?, ?)", u as number, id);
@@ -1673,12 +1766,13 @@ appRouter.patch(
   requirePerm("permissions.manage"),
   h((req, res) => res.json({ id: saveGroup(req, Number(req.params.id)) })),
 );
-appRouter.delete("/permission-groups/:id", requirePerm("permissions.manage"), (req, res) => {
+appRouter.delete("/permission-groups/:id", requirePerm("permissions.manage"), h((req, res) => {
+  guardGroup(req, Number(req.params.id));
   run("DELETE FROM permission_groups WHERE id = ?", Number(req.params.id));
   for (const u of all<{ id: number }>("SELECT id FROM users")) syncLegacyRole(u.id);
   bus.emit("settings.changed", "users");
   res.json({ ok: true });
-});
+}));
 
 // Nhật ký hệ thống (Super Admin): xem nhanh, tải file để gửi kiểm tra lỗi
 appRouter.get("/logs", requirePerm("logs.view"), (req, res) =>
@@ -1711,9 +1805,12 @@ appRouter.get("/logs/download", requirePerm("logs.view"), (req, res) => {
 /** Lỗi phía trình duyệt của nhân viên gửi về để ghi chung vào nhật ký. */
 appRouter.post("/client-log", (req, res) => {
   const b = req.body ?? {};
-  const msg = redact(String(b.message ?? "").slice(0, 2000));
-  const stack = redact(String(b.stack ?? "").slice(0, 4000));
-  console.error(`[web] ${req.user!.display_name} (#${req.user!.id}) @ ${String(b.url ?? "").slice(0, 300)}: ${msg}${stack ? "\n" + stack : ""}`);
+  // Dòng mới trong nội dung gửi lên được thụt vào: không giả được dòng nhật ký khác ([INFO] / [ERROR] …)
+  const oneBlock = (v: unknown, max: number) => redact(String(v ?? "").slice(0, max)).replace(/\r?\n/g, "\n    ");
+  const msg = oneBlock(b.message, 2000);
+  const stack = oneBlock(b.stack, 4000);
+  const where = String(b.url ?? "").replace(/[\r\n]/g, " ").slice(0, 120);
+  console.error(`[web] ${req.user!.display_name} (#${req.user!.id}) @ ${where}: ${msg}${stack ? "\n    " + stack : ""}`);
   res.json({ ok: true });
 });
 
@@ -1809,6 +1906,11 @@ publicRouter.post(
   "/conversations/:id/messages",
   upload.array("files", 10),
   h(async (req, res) => {
+    // Zalo nhân viên đang giám sát chỉ để xem: web app khác không được gửi thay nhân viên
+    const target = getConversation(req.params.id);
+    if (target && get<{ mode: string }>("SELECT mode FROM channels WHERE id = ?", target.channel_id)?.mode === "monitor") {
+      throw new HttpError(403, "Không gửi tin qua Zalo nhân viên đang giám sát");
+    }
     const messages = await sendToConversation({
       conversationId: req.params.id,
       text: req.body?.text,
@@ -1858,7 +1960,10 @@ publicRouter.get("/export", h((req, res) => sendExport(req, res)));
 export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
   const status = err instanceof HttpError ? err.status : err?.code === "LIMIT_FILE_SIZE" ? 413 : 500;
   if (status === 500) console.error(err);
-  res.status(status).json({ error: err?.message ?? "Lỗi máy chủ" });
+  // Lỗi kỹ thuật (SQLite, đường dẫn file, lỗi lập trình) không trả nguyên văn ra ngoài; lỗi có câu tiếng Việt thì giữ
+  const msg = String(err?.message ?? "");
+  const internal = status === 500 && (!msg || /sqlite|constraint|ENOENT|EACCES|EPERM|\/app\/|\bat \S+ \(|is not a function|Cannot read|undefined|SyntaxError|TypeError/i.test(msg));
+  res.status(status).json({ error: internal ? "Lỗi máy chủ, đã ghi vào nhật ký hệ thống" : msg });
 }
 
 /** Nhắc tên trong nhóm: chỉ nhận vị trí nằm trong chữ đã gửi, tối đa 30 người. */

@@ -1,14 +1,15 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { BarChart3, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
 import { api, ApiError, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
 import Inbox from './pages/Inbox'
-import Reports from './pages/Reports'
 import type { SettingsTab } from './pages/Settings'
-import Channels from './pages/Channels'
-import Monitor from './pages/Monitor'
-import SettingsPage from './pages/Settings'
+// Trang ít mở tải riêng khi cần (gói đầu nhẹ hơn, mở Hội thoại nhanh hơn)
+const Reports = lazy(() => import('./pages/Reports'))
+const Channels = lazy(() => import('./pages/Channels'))
+const Monitor = lazy(() => import('./pages/Monitor'))
+const SettingsPage = lazy(() => import('./pages/Settings'))
 import { Avatar, Modal } from './components'
 import { UpdateBanner, VersionTag } from './version'
 import ChannelPicker from './ChannelPicker'
@@ -344,10 +345,12 @@ function Shell() {
         )}
         {!socketConnected && <div className="banner info">Mất kết nối realtime với máy chủ, đang thử lại…</div>}
         {route.page === 'inbox' && <Inbox convId={route.convId} focusMsgId={route.msgId} findPhone={route.findPhone} />}
-        {route.page === 'channels' && <Channels />}
-        {route.page === 'monitor' && allowed('monitor.view') && <Monitor channelId={route.monitorChannel ?? null} convId={route.monitorConv ?? null} />}
-        {route.page === 'data' && canData && <Reports tab={route.reportTab} />}
-        {route.page === 'settings' && canSettings && <SettingsPage tab={route.tab} />}
+        <Suspense fallback={<div className="splash">Đang tải…</div>}>
+          {route.page === 'channels' && <Channels />}
+          {route.page === 'monitor' && allowed('monitor.view') && <Monitor channelId={route.monitorChannel ?? null} convId={route.monitorConv ?? null} />}
+          {route.page === 'data' && canData && <Reports tab={route.reportTab} />}
+          {route.page === 'settings' && canSettings && <SettingsPage tab={route.tab} />}
+        </Suspense>
         {((route.page === 'data' && !canData) || (route.page === 'settings' && !canSettings)) && (
           <div className="page">
             <div className="card center pad">Bạn chưa được cấp quyền vào trang này. Nhờ quản lý cấp quyền trong Cài đặt › Phân quyền.</div>

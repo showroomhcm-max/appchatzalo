@@ -44,7 +44,19 @@ app.get("/api/version", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json(appVersion());
 });
-app.use("/uploads", express.static(config.uploadDir, { maxAge: "30d", index: false, dotfiles: "deny", setHeaders: uploadHeaders }));
+// File khách gửi (ảnh giấy tờ, hóa đơn…): chỉ trình duyệt lưu tạm, không cho Cloudflare / máy trung gian lưu
+app.use(
+  "/uploads",
+  express.static(config.uploadDir, {
+    maxAge: "30d",
+    index: false,
+    dotfiles: "deny",
+    setHeaders: (res, filePath) => {
+      uploadHeaders(res, filePath);
+      res.setHeader("Cache-Control", "private, max-age=2592000");
+    },
+  }),
+);
 app.use("/api/oauth", oauthRouter);
 app.use("/api/v1", publicRouter);
 // App báo cáo công việc CSKH (khóa kết nối riêng, chỉ các đường /api/link/*)
@@ -54,8 +66,13 @@ app.use("/api", errorHandler);
 
 // Phục vụ giao diện đã build (web/dist) ở cùng cổng.
 if (fs.existsSync(config.webDist)) {
-  app.use(express.static(config.webDist, { index: false }));
-  app.get(/^(?!\/api|\/socket\.io|\/uploads|\/webhooks).*/, (_req, res) => res.sendFile(path.join(config.webDist, "index.html")));
+  // /assets/* có mã băm trong tên: lưu tạm lâu dài; thiếu file thì 404 (không trả index.html làm trang trắng)
+  app.use("/assets", express.static(path.join(config.webDist, "assets"), { maxAge: "365d", immutable: true, index: false, fallthrough: false }));
+  app.use(express.static(config.webDist, { index: false, maxAge: 0 }));
+  app.get(/^(?!\/api|\/socket\.io|\/uploads|\/webhooks|\/assets).*/, (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(path.join(config.webDist, "index.html"));
+  });
 }
 
 const server = http.createServer(app);

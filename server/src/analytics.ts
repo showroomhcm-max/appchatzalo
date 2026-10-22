@@ -97,9 +97,17 @@ function speakerLabel(m: Msg, customerName: string) {
 /** Gom tin nhắn theo hội thoại, kèm ghi chú nội bộ và đánh giá chất lượng. */
 export function buildConversations(f: ExportFilter) {
   const msgs = loadMessages(f).filter((m) => !m.undone && (!f.textOnly || m.msg_type === "webchat" || !m.msg_type));
-  const convIds = [...new Set(msgs.map((m) => m.conversation_id))];
+  // Gom tin theo hội thoại một lượt (trước đây lọc lại cả danh sách cho mỗi hội thoại: chậm khi nhiều tin)
+  const byConv = new Map<string, typeof msgs>();
+  for (const m of msgs) {
+    const list = byConv.get(m.conversation_id);
+    if (list) list.push(m);
+    else byConv.set(m.conversation_id, [m]);
+  }
+  const convIds = [...byConv.keys()];
   if (!convIds.length) return [];
-  const placeholders = convIds.map(() => "?").join(",");
+  // Một tham số JSON thay cho danh sách "?, ?, …" (SQLite giới hạn ~32 nghìn tham số)
+  const idsJson = JSON.stringify(convIds);
   const convs = new Map(
     all(
       `SELECT c.id, c.name, c.type, c.status, c.tags, c.external_ref, c.phone, u.display_name AS assigned_name,
@@ -108,25 +116,32 @@ export function buildConversations(f: ExportFilter) {
        FROM conversations c LEFT JOIN users u ON u.id = c.assigned_to LEFT JOIN channels ch ON ch.id = c.channel_id
        LEFT JOIN channel_assets ca ON ca.channel_id = c.channel_id LEFT JOIN users hu ON hu.id = ca.holder_id
        LEFT JOIN ai_conv_analysis x ON x.conversation_id = c.id
-       WHERE c.id IN (${placeholders})`,
-      ...convIds,
+       WHERE c.id IN (SELECT value FROM json_each(?))`,
+      idsJson,
     ).map((c) => [c.id, c]),
   );
   const notes = all(
     `SELECT n.conversation_id, n.content, n.created_at, u.display_name AS author
-     FROM notes n LEFT JOIN users u ON u.id = n.user_id WHERE n.conversation_id IN (${placeholders}) ORDER BY n.created_at`,
-    ...convIds,
+     FROM notes n LEFT JOIN users u ON u.id = n.user_id WHERE n.conversation_id IN (SELECT value FROM json_each(?)) ORDER BY n.created_at`,
+    idsJson,
   );
   const reviews = all(
     `SELECT r.conversation_id, r.score, r.comment, r.created_at, rv.display_name AS reviewer, a.display_name AS agent
      FROM reviews r LEFT JOIN users rv ON rv.id = r.reviewer_id LEFT JOIN users a ON a.id = r.agent_id
-     WHERE r.conversation_id IN (${placeholders}) ORDER BY r.created_at`,
-    ...convIds,
+     WHERE r.conversation_id IN (SELECT value FROM json_each(?)) ORDER BY r.created_at`,
+    idsJson,
   );
+  const group = <T extends { conversation_id: string }>(rows: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const r of rows) (m.get(r.conversation_id) ?? m.set(r.conversation_id, []).get(r.conversation_id)!).push(r);
+    return m;
+  };
+  const notesBy = group(notes as any[]);
+  const reviewsBy = group(reviews as any[]);
 
   return convIds.map((id) => {
     const c = convs.get(id) as Row;
-    const list = msgs.filter((m) => m.conversation_id === id);
+    const list = byConv.get(id)!;
     const customerName = c?.name ?? id;
     const isGroup = c?.type === 1;
     return {
@@ -163,11 +178,9 @@ export function buildConversations(f: ExportFilter) {
         type: m.msg_type,
         text: m.text ?? "",
       })),
-      notes: notes
-        .filter((n) => n.conversation_id === id)
+      notes: (notesBy.get(id) ?? [])
         .map((n) => ({ author: n.author, content: n.content, time: new Date(n.created_at).toISOString() })),
-      reviews: reviews
-        .filter((r) => r.conversation_id === id)
+      reviews: (reviewsBy.get(id) ?? [])
         .map((r) => ({ reviewer: r.reviewer, agent: r.agent, score: r.score, comment: r.comment })),
     };
   });
@@ -179,7 +192,9 @@ function vnTime(iso: string) {
 }
 
 function csvCell(v: unknown) {
-  const s = v === null || v === undefined ? "" : String(v);
+  let s = v === null || v === undefined ? "" : String(v);
+  // Ô bắt đầu bằng = + - @ (tin khách gửi) Excel sẽ chạy như công thức: thêm ' phía trước để chỉ là chữ
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

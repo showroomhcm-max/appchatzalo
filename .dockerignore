@@ -4,3 +4,10 @@ data
 server/data
 .env
 .git
+**/.env*
+**/*.local
+tools
+logs
+nas-export
+demo-data
+.github

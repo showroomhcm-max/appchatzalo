@@ -31,7 +31,8 @@ export function reportClientError(message: string, stack?: string) {
   void fetch('/api/client-log', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message, stack, url: location.href }),
+    // Chỉ gửi tên trang (vd #/inbox), không gửi mã hội thoại / số điện thoại khách trong đường dẫn
+    body: JSON.stringify({ message, stack, url: `${location.pathname}${location.hash.split('/').slice(0, 2).join('/')}` }),
   }).catch(() => {})
 }
 window.addEventListener('error', (e) => reportClientError(e.message, e.error?.stack))

@@ -20,10 +20,20 @@ export function setupRealtime(server: HttpServer) {
 
   // Phạm vi nhìn thấy của từng kết nối, tính lại tối đa mỗi 30 giây hoặc khi cài đặt thay đổi.
   const scopes = new Map<string, { at: number; scope: Scope }>();
+  const NO_SCOPE: Scope = { all: false, departmentIds: [], channelIds: [], fullChannelIds: [], viewChannelIds: [] };
   function scopeFor(socket: Socket) {
     const cached = scopes.get(socket.id);
     if (cached && Date.now() - cached.at < 30_000) return cached.scope;
-    const scope = scopeOf(socket.data.user as AuthUser);
+    // Kiểm lại phiên mỗi lần tính phạm vi: bị khóa / xóa / đăng xuất mọi nơi / hết hạn → ngắt kết nối;
+    // quyền đổi (vd bỏ quyền xem mọi hội thoại) → dùng quyền mới.
+    const fresh = userFromToken(socket.handshake.auth?.token);
+    if (!fresh) {
+      scopes.set(socket.id, { at: Date.now(), scope: NO_SCOPE });
+      setImmediate(() => socket.disconnect(true));
+      return NO_SCOPE;
+    }
+    socket.data.user = fresh;
+    const scope = scopeOf(fresh);
     scopes.set(socket.id, { at: Date.now(), scope });
     return scope;
   }
@@ -135,6 +145,12 @@ export function setupRealtime(server: HttpServer) {
   bus.on("alert.created", () => io.to("agents").emit("alerts:changed"));
   bus.on("order.updated", (order) => {
     if (order?.conversation_id) io.to("agents").emit("orders:changed", { conversation_id: order.conversation_id });
+  });
+  // Khóa / xóa / đổi mật khẩu / đăng xuất mọi nơi: ngắt ngay kết nối realtime của người đó
+  bus.on("user.revoked", (userId: number) => {
+    for (const socket of io.of("/").sockets.values()) {
+      if ((socket.data.user as AuthUser | undefined)?.id === userId) socket.disconnect(true);
+    }
   });
   bus.on("settings.changed", (what) => {
     scopes.clear();
