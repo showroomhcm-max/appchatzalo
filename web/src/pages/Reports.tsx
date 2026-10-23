@@ -5,6 +5,7 @@ import { useApp } from '../store'
 import { Empty } from '../components'
 import { duration, isoDate } from '../util'
 import { can } from '../perm'
+import { SHOW_REVIEWS } from '../features'
 import { PLATFORM_LABEL } from '../platform'
 import type { Platform } from '../types'
 import { BarChart, CHART_COLORS, Donut, HBars, Heatmap, Legend, LineChart } from '../charts'
@@ -298,7 +299,7 @@ function StaffTab(p: RangeProps) {
                   <th className="num">Phản hồi TB</th>
                   <th className="num">Trung vị</th>
                   <th className="num">Trong 5 phút</th>
-                  <th className="num">Điểm đánh giá</th>
+                  {SHOW_REVIEWS && <th className="num">Điểm đánh giá</th>}
                   <th />
                 </tr>
               </thead>
@@ -312,7 +313,7 @@ function StaffTab(p: RangeProps) {
                     <td className="num">{duration(a.avg_response_sec)}</td>
                     <td className="num">{duration(a.median_response_sec)}</td>
                     <td className="num">{a.within_5min_pct === null ? '—' : <Pct value={a.within_5min_pct} />}</td>
-                    <td className="num">{a.review_avg ? `${a.review_avg}/5 (${a.review_count})` : '—'}</td>
+                    {SHOW_REVIEWS && <td className="num">{a.review_avg ? `${a.review_avg}/5 (${a.review_count})` : '—'}</td>}
                     <td>
                       {a.agent_id && (
                         <a className="btn ghost sm" href={exportUrl({ format: 'txt', from: p.from, to: p.to, agentId: a.agent_id, textOnly: '1' })} title="Tải toàn bộ hội thoại nhân viên này đã tham gia">

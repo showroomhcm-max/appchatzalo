@@ -5,12 +5,16 @@
 import type { NextFunction, Request, Response } from "express";
 import { all, get, run, db } from "./db.js";
 
+/**
+ * hidden: tính năng đang tạm ẩn trên giao diện (web/src/features.ts) — quyền không hiện trong trang phân quyền
+ * và không cấp cho ai (kể cả nhóm đã tick trước đây), trừ Super Admin. Hiện lại tính năng thì bỏ hidden.
+ */
 export const PERMISSIONS = [
   { key: "conversations.all", group: "Hội thoại", label: "Xem tất cả hội thoại (mọi kênh, mọi bộ phận)" },
   { key: "conversations.assign", group: "Hội thoại", label: "Giao, chuyển, giành hội thoại của người khác" },
   { key: "messages.undo_any", group: "Hội thoại", label: "Thu hồi tin nhắn do người khác gửi" },
   { key: "conversations.delete", group: "Hội thoại", label: "Xóa hội thoại khỏi hộp thư (dữ liệu vẫn giữ)" },
-  { key: "reviews.manage", group: "Dữ liệu", label: "Chấm điểm chất lượng tư vấn" },
+  { key: "reviews.manage", group: "Dữ liệu", label: "Chấm điểm chất lượng tư vấn", hidden: true },
   { key: "data.view", group: "Dữ liệu", label: "Xem trang Dữ liệu (thống kê nhân viên)" },
   { key: "data.export", group: "Dữ liệu", label: "Xuất dữ liệu hội thoại (TXT, CSV, JSONL, JSON)" },
   { key: "channels.manage", group: "Cài đặt", label: "Kết nối, cài đặt kênh chat và phân công nhân viên vào kênh" },
@@ -19,7 +23,7 @@ export const PERMISSIONS = [
   { key: "tags.manage", group: "Cài đặt", label: "Quản lý tag" },
   { key: "templates.manage", group: "Cài đặt", label: "Quản lý tin nhắn mẫu" },
   { key: "alerts.manage", group: "Cài đặt", label: "Cấu hình cảnh báo đơn \"rơi\"" },
-  { key: "orders.create", group: "Hội thoại", label: "Lên đơn hàng POS (Odoo) từ hội thoại" },
+  { key: "orders.create", group: "Hội thoại", label: "Lên đơn hàng POS (Odoo) từ hội thoại", hidden: true },
   { key: "monitor.view", group: "Hội thoại", label: "Giám sát tin nhắn Zalo nhân viên (SĐT công ty cấp)" },
   { key: "integrations.manage", group: "Hệ thống", label: "Tích hợp: API key, webhook" },
   { key: "logs.view", group: "Hệ thống", label: "Xem và tải nhật ký hệ thống" },
@@ -28,6 +32,10 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number]["key"];
 const ALL_KEYS = PERMISSIONS.map((p) => p.key) as string[];
+/** Quyền cấp được cho nhân viên / nhóm quyền (bỏ quyền của tính năng đang ẩn). */
+const GRANTABLE = PERMISSIONS.filter((p) => !("hidden" in p)).map((p) => p.key) as string[];
+/** Danh sách quyền hiện trong trang phân quyền. */
+export const VISIBLE_PERMISSIONS = PERMISSIONS.filter((p) => !("hidden" in p)).map(({ key, group, label }) => ({ key, group, label }));
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS permission_groups (
@@ -61,7 +69,7 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
     "Quản lý vận hành: thấy mọi hội thoại, dữ liệu, cài đặt kênh, nhân viên, bộ phận, tag, tin nhắn mẫu",
     ALL_KEYS.filter((k) => !["integrations.manage", "logs.view", "permissions.manage"].includes(k)),
   );
-  mk("Trưởng nhóm", "Giám sát nhân viên: xem mọi hội thoại, giao việc, chấm điểm, xem thống kê", [
+  mk("Trưởng nhóm", "Giám sát nhân viên: xem mọi hội thoại, giao việc, xem thống kê", [
     "conversations.all",
     "conversations.assign",
     "messages.undo_any",
@@ -122,10 +130,17 @@ if (!(db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).some((
   run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.orders', '1')");
 })();
 
+/** Mô tả mẫu của nhóm "Trưởng nhóm" còn nhắc "chấm điểm" (tính năng đang ẩn): sửa nếu chưa ai đổi mô tả. */
+run(
+  "UPDATE permission_groups SET description = ? WHERE name = 'Trưởng nhóm' AND description = ?",
+  "Giám sát nhân viên: xem mọi hội thoại, giao việc, xem thống kê",
+  "Giám sát nhân viên: xem mọi hội thoại, giao việc, chấm điểm, xem thống kê",
+);
+
 function parse(json: string | null | undefined): string[] {
   try {
     const v = JSON.parse(json ?? "[]");
-    return Array.isArray(v) ? v.filter((k) => ALL_KEYS.includes(k)) : [];
+    return Array.isArray(v) ? v.filter((k) => GRANTABLE.includes(k)) : [];
   } catch {
     return [];
   }
@@ -147,7 +162,7 @@ export function permissionsOf(userId: number): string[] {
 }
 
 export function cleanPermissions(list: unknown): string[] {
-  return Array.isArray(list) ? [...new Set(list.map(String).filter((k) => ALL_KEYS.includes(k)))] : [];
+  return Array.isArray(list) ? [...new Set(list.map(String).filter((k) => GRANTABLE.includes(k)))] : [];
 }
 
 /** Giữ cột role cũ cho đồng bộ: có bất kỳ quyền quản lý nào thì là "admin". */

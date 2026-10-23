@@ -36,6 +36,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { api, exportUrl } from '../api'
+import { SHOW_ORDERS, SHOW_REVIEWS } from '../features'
 import { discardSend, onSent, queueSend, retrySend, useOutbox, type OutboxItem } from '../outbox'
 import { useApp, useSocketEvent } from '../store'
 import type { Alert, Conversation, ConvStatus, Message, Note, Order, Review, Sticker, Template } from '../types'
@@ -1949,9 +1950,6 @@ function Composer({
   )
 }
 
-/** Tạm ẩn trong khung Thông tin (21/10/2026, chưa dùng tới): đổi thành true để hiện lại. */
-const SHOW_ORDERS = false // Đơn hàng, nút Lên đơn POS, Mã khách hàng
-const SHOW_REVIEWS = false // Đánh giá chất lượng tư vấn
 
 function InfoPanel({
   conv,

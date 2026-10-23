@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.24.1 — 23/10/2026
+
+- **Phân quyền gọn lại**: bỏ 2 quyền của tính năng đang tạm ẩn — "Lên đơn hàng POS (Odoo) từ hội thoại" và "Chấm điểm chất lượng tư vấn". Không còn hiện trong Nhóm quyền / quyền riêng của nhân viên và không cấp cho ai (kể cả nhóm đã tick trước đây), trừ Super Admin. Trang Dữ liệu › Nhân viên bỏ cột "Điểm đánh giá" (luôn trống). Mô tả nhóm "Trưởng nhóm" bỏ chữ "chấm điểm".
+- Khi hiện lại 2 tính năng này thì 2 quyền tự hiện lại (`web/src/features.ts` + `hidden` trong `server/src/permissions.ts`).
+
 ## v3.24.0 — 23/10/2026
 
 - **Gửi tin hiện ngay**: bấm Gửi là tin hiện liền trong khung chat (mờ, "Đang gửi…"), ô nhập xóa ngay để gõ tin tiếp — không còn chờ Zalo trả lời mới cho gõ. Tin gửi đi đúng thứ tự. Gửi lỗi thì tin báo đỏ "Chưa gửi được" kèm nút **Gửi lại** / **Bỏ**; chuyển sang hội thoại khác rồi quay lại vẫn còn. Đóng / tải lại trang khi còn tin đang gửi thì trình duyệt hỏi lại.

@@ -10,7 +10,7 @@ import { clientIp } from "./security.js";
 import { assertPublicUrl } from "./net-guard.js";
 import { generateApiKey, requireApiKey, requireSuperAdmin, requireUser, revokeSessions, signLinkToken, signToken, type AuthUser } from "./auth.js";
 import {
-  PERMISSIONS,
+  VISIBLE_PERMISSIONS,
   can,
   cleanPermissions,
   permissionsOf,
@@ -1684,7 +1684,7 @@ appRouter.post("/webhooks/test", requirePerm("integrations.manage"), (_req, res)
 });
 
 // Nhóm quyền
-appRouter.get("/permissions", (_req, res) => res.json(PERMISSIONS));
+appRouter.get("/permissions", (_req, res) => res.json(VISIBLE_PERMISSIONS));
 appRouter.get("/permission-groups", (_req, res) => {
   const members = all<{ group_id: number; user_id: number }>("SELECT group_id, user_id FROM user_permission_groups");
   res.json(
