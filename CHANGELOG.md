@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.23.0 — 23/10/2026
+
+- **Tìm tin nhắn nhanh** khi có hàng trăm nghìn tin: chỉ mục tìm kiếm toàn văn (FTS5, cụm 3 ký tự, không dấu). Thử 200.000 tin: tìm một cụm từ từ ~1,4 giây còn ~3 ms; gõ có dấu / không dấu đều ra. Áp dụng cho ô tìm tin nhắn, ô tìm hội thoại, tìm trong Zalo nhân viên. Tin cũ tự đưa vào chỉ mục nền lúc khởi động; từ khóa dưới 3 ký tự tìm theo cách cũ.
+- **Danh sách hội thoại mượt hơn**: mỗi dòng chỉ vẽ lại khi chính nó đổi (trước đây cả danh sách vẽ lại mỗi khi có người gõ, tin mới, cảnh báo); trình duyệt bỏ qua vẽ các dòng ngoài màn hình; máy chủ gộp tín hiệu "đang xem / đang gõ".
+- NAS: chuẩn bị chạy app không cần quyền root (`docker-compose.yml` có `user: 1000:1000`, bỏ đặc quyền) — làm theo `deploy/nas/CHAY-KHONG-ROOT.md`. `cap-nhat.sh` dựng lại container sạch cả khi chỉ đổi cấu hình.
+
 ## v3.22.0 — 22/10/2026
 
 Rà soát bảo mật và hiệu năng toàn app.

@@ -8,6 +8,7 @@
  * - Hội thoại giám sát không lẫn vào hộp thư CSKH chung; chỉ người có quyền "Giám sát" (và chính nhân viên giữ máy) xem được.
  * - Mỗi lần quản lý mở xem hội thoại được ghi nhật ký.
  */
+import { messageMatch } from "./search-index.js";
 import { all, get, getSetting, logEvent, run, setSetting, tx } from "./db.js";
 import { bus } from "./bus.js";
 import { fold } from "./text.js";
@@ -190,6 +191,7 @@ export function setChannelMode(channelId: number, mode: "shared" | "monitor", by
 
 export function monitorConversations(channelId: number, q?: string) {
   const like = q?.trim() ? `%${fold(q.trim())}%` : null;
+  const match = like ? messageMatch(q!) : null;
   return all<any>(
     `SELECT c.id, c.thread_id, c.type, c.name, c.avatar, c.phone, c.last_message_at, c.last_message_preview, c.last_direction,
             (SELECT COUNT(*) FROM monitor_flags f WHERE f.conversation_id = c.id AND f.reviewed_at IS NULL) AS open_flags,
@@ -197,10 +199,10 @@ export function monitorConversations(channelId: number, q?: string) {
             ai.risk AS ai_risk, ai.quality_score AS ai_score, ai.summary AS ai_summary
      FROM conversations c
      LEFT JOIN ai_conv_analysis ai ON ai.conversation_id = c.id
-     WHERE c.channel_id = ? ${like ? "AND (fold(c.name) LIKE ? OR c.phone LIKE ? OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND fold(m.text) LIKE ?))" : ""}
+     WHERE c.channel_id = ? ${like ? `AND (fold(c.name) LIKE ? OR c.phone LIKE ? OR c.id IN (SELECT m.conversation_id FROM messages m WHERE ${match!.sql}))` : ""}
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC LIMIT 300`,
     channelId,
-    ...(like ? [like, `%${q!.trim()}%`, like] : []),
+    ...(like ? [like, `%${q!.trim()}%`, ...match!.params] : []),
   );
 }
 

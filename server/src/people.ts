@@ -1,4 +1,5 @@
 import { all, get, logEvent, run } from "./db.js";
+import { messageMatch } from "./search-index.js";
 import { bus } from "./bus.js";
 import { conversationKey, ensureConversation, getConversation, updateConversationProfile } from "./store.js";
 import { zalo, type ZaloPerson } from "./zalo.js";
@@ -202,8 +203,9 @@ export function searchMessages(
 ) {
   const q = rawQuery.trim();
   if (q.length < 2) return [];
-  const params: any[] = [likePattern(q)];
-  let where = `m.undone = 0 AND fold(m.text) LIKE ? ESCAPE '\\' AND ${conversationFilter(opts.access)}`;
+  const match = messageMatch(q);
+  const params: any[] = [...match.params];
+  let where = `m.undone = 0 AND ${match.sql} AND ${conversationFilter(opts.access)}`;
   if (opts.conversationId) {
     where += " AND m.conversation_id = ?";
     params.push(opts.conversationId);

@@ -40,13 +40,24 @@ IMG=$($DC config --images 2>/dev/null | grep chatcskh | head -n 1)
 running=$(docker container inspect -f '{{.Image}}' chat-sieutoc 2>/dev/null)
 latest=$(docker image inspect -f '{{.Id}}' "$IMG" 2>/dev/null)
 
-if [ -n "$latest" ] && [ "$running" != "$latest" ]; then
-  # Có bản mới: gỡ hẳn container cũ rồi tạo mới (không để Docker đổi tên tạm "<mã>_chat-sieutoc",
+# Cấu hình trong docker-compose.yml đổi (vd thêm user / bỏ đặc quyền) cũng phải dựng lại container
+CONFIG_CHANGED=""
+for pair in net:chat-sieutoc-net app:chat-sieutoc tunnel:chat-sieutoc-tunnel; do
+  want=$($DC config --hash "${pair%%:*}" 2>/dev/null | awk '{print $2}')
+  have=$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "${pair#*:}" 2>/dev/null)
+  [ -n "$want" ] && [ -n "$have" ] && [ "$want" != "$have" ] && CONFIG_CHANGED=1
+done
+
+NEW_IMAGE=""
+[ -n "$latest" ] && [ "$running" != "$latest" ] && NEW_IMAGE=1
+
+if [ -n "$NEW_IMAGE" ] || [ -n "$CONFIG_CHANGED" ]; then
+  # Gỡ hẳn container cũ rồi tạo mới (không để Docker đổi tên tạm "<mã>_chat-sieutoc",
   # Container Manager của DSM không theo kịp kiểu đổi tên đó và báo đỏ).
   {
-    echo "$(now) Có bản mới, đang cập nhật…"
-    $DC stop tunnel app 2>&1
-    $DC rm -f tunnel app 2>&1
+    if [ -n "$NEW_IMAGE" ]; then echo "$(now) Có bản mới, đang cập nhật…"; else echo "$(now) Cấu hình đổi, dựng lại container…"; fi
+    $DC stop tunnel app net 2>&1
+    $DC rm -f tunnel app net 2>&1
     $DC up -d 2>&1
   } >> "$LOG"
   echo "$(now) Đã cập nhật xong" >> "$LOG"

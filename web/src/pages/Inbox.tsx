@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   AlertTriangle,
   ArrowDown,
@@ -222,12 +222,34 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
     if (action === 'delete' || action === 'restore') void load()
     if (selecting && (action === 'delete' || action === 'restore')) setSelected([])
   }
+  // Dữ liệu chung + hàm ổn định cho từng dòng (ConvItem chỉ vẽ lại khi chính dòng đó đổi)
+  const { presence, channels: rowChannels } = useApp()
+  const rowCtx = useMemo<RowCtx>(
+    () => ({
+      userId: user.id,
+      mixedPlatforms: new Set(rowChannels.map((ch) => ch.platform ?? 'zalo')).size > 1,
+      tagColor: new Map(tags.map((t) => [t.name, t.color])),
+    }),
+    [user.id, rowChannels, tags],
+  )
+  const alertsByConv = useMemo(() => {
+    const m = new Map<string, Alert[]>()
+    for (const a of alerts) (m.get(a.conversation_id) ?? m.set(a.conversation_id, []).get(a.conversation_id)!).push(a)
+    return m
+  }, [alerts])
+  const selectedSet = useMemo(() => new Set(selected), [selected])
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds])
+  const onRowCheck = useCallback((id: string, on: boolean) => setSelected((cur) => (on ? [...new Set([...cur, id])] : cur.filter((x) => x !== id))), [])
+  const onRowMenu = useCallback((conv: Conversation, x: number, y: number) => setMenu({ conv, x, y }), [])
   const itemProps = (c: Conversation, pinned: boolean) => ({
     pinned,
     selecting,
-    checked: selected.includes(c.id),
-    onCheck: (on: boolean) => setSelected((cur) => (on ? [...new Set([...cur, c.id])] : cur.filter((x) => x !== c.id))),
-    onMenu: (x: number, y: number) => setMenu({ conv: c, x, y }),
+    checked: selectedSet.has(c.id),
+    alerts: alertsByConv.get(c.id) ?? NO_ALERTS,
+    viewing: presence.byConversation[c.id] ?? NO_VIEWERS,
+    ctx: rowCtx,
+    onCheck: onRowCheck,
+    onMenu: onRowMenu,
   })
 
   useSocketEvent<{ conversation: Conversation }>('message:new', ({ conversation }) => upsert(conversation))
@@ -497,7 +519,7 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
               </>
             )}
             {list
-              .filter((c) => deletedView || !pinnedIds.includes(c.id))
+              .filter((c) => deletedView || !pinnedSet.has(c.id))
               .map((c) => (
                 <ConvItem key={c.id} c={c} active={c.id === convId} {...itemProps(c, false)} />
               ))}
@@ -821,12 +843,24 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
   return <>{parts}</>
 }
 
-function ConvItem({
+/** Dữ liệu chung cho mọi dòng hội thoại (tính một lần ở danh sách, không tính lại cho từng dòng). */
+type RowCtx = { userId: number; mixedPlatforms: boolean; tagColor: Map<string, string> }
+const NO_ALERTS: Alert[] = []
+const NO_VIEWERS: { userId: number; name: string; typing: boolean }[] = []
+
+/**
+ * Một dòng hội thoại. Chỉ vẽ lại khi chính dòng đó đổi (memo): danh sách hàng nghìn hội thoại không vẽ lại toàn bộ
+ * mỗi khi có người gõ / tin mới / cảnh báo ở hội thoại khác.
+ */
+const ConvItem = memo(function ConvItem({
   c,
   active,
   pinned = false,
   selecting = false,
   checked = false,
+  alerts: convAlerts,
+  viewing,
+  ctx,
   onCheck,
   onMenu,
 }: {
@@ -835,14 +869,16 @@ function ConvItem({
   pinned?: boolean
   selecting?: boolean
   checked?: boolean
-  onCheck?: (on: boolean) => void
-  onMenu?: (x: number, y: number) => void
+  alerts: Alert[]
+  viewing: { userId: number; name: string; typing: boolean }[]
+  ctx: RowCtx
+  onCheck?: (id: string, on: boolean) => void
+  onMenu?: (conv: Conversation, x: number, y: number) => void
 }) {
-  const { presence, user, tags, channels, alerts } = useApp()
-  const convAlerts = alerts.filter((a) => a.conversation_id === c.id)
-  const viewers = (presence.byConversation[c.id] ?? []).filter((p) => p.userId !== user.id)
+  const user = { id: ctx.userId }
+  const viewers = viewing.filter((p) => p.userId !== ctx.userId)
   // Chỉ hiện ký hiệu nền tảng khi có từ 2 nền tảng trở lên
-  const mixed = new Set(channels.map((ch) => ch.platform ?? 'zalo')).size > 1 || platformOf(c.platform) !== 'zalo'
+  const mixed = ctx.mixedPlatforms || platformOf(c.platform) !== 'zalo'
   const typing = viewers.find((v) => v.typing)
   const waiting = c.last_direction === 'in' && c.status !== 'closed'
   return (
@@ -853,16 +889,16 @@ function ConvItem({
         // Đang chọn nhiều: bấm để tick, không mở hội thoại
         if (selecting) {
           e.preventDefault()
-          onCheck?.(!checked)
+          onCheck?.(c.id, !checked)
         }
       }}
       onContextMenu={(e) => {
         if (!onMenu) return
         e.preventDefault()
-        onMenu(e.clientX, e.clientY)
+        onMenu(c, e.clientX, e.clientY)
       }}
     >
-      {selecting && <input type="checkbox" className="conv-check" checked={checked} onChange={(e) => onCheck?.(e.target.checked)} onClick={(e) => e.stopPropagation()} aria-label={`Chọn ${c.name ?? c.id}`} />}
+      {selecting && <input type="checkbox" className="conv-check" checked={checked} onChange={(e) => onCheck?.(c.id, e.target.checked)} onClick={(e) => e.stopPropagation()} aria-label={`Chọn ${c.name ?? c.id}`} />}
       <span className="avatar-wrap">
         <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
         {mixed && <PlatformDot platform={c.platform} />}
@@ -884,7 +920,7 @@ function ConvItem({
                 e.preventDefault()
                 e.stopPropagation()
                 const r = e.currentTarget.getBoundingClientRect()
-                onMenu(r.left, r.bottom + 4)
+                onMenu(c, r.left, r.bottom + 4)
               }}
               aria-label="Thao tác hội thoại"
               title="Thao tác"
@@ -947,15 +983,14 @@ function ConvItem({
               </span>
             )}
             {c.tags.map((t) => (
-              <TagChip key={t} tag={{ name: t, color: tags.find((x) => x.name === t)?.color ?? '#9aa6a0' }} />
+              <TagChip key={t} tag={{ name: t, color: ctx.tagColor.get(t) ?? '#9aa6a0' }} />
             ))}
           </div>
         )}
       </div>
     </a>
   )
-}
-
+})
 
 function ChatView({
   convId,

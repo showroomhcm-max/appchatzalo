@@ -3374,3 +3374,9 @@ html.compact .dvkt-links a { min-height: 36px; }
 .table .check-col { width: 36px; padding-right: 0; }
 .table .check-col input { width: 16px; height: 16px; accent-color: var(--mz-green-700); cursor: pointer; }
 .table tr.selected td { background: var(--mz-green-50); }
+
+/* Danh sách hội thoại dài: trình duyệt bỏ qua vẽ các dòng ngoài màn hình (cuộn hàng nghìn dòng vẫn mượt) */
+.conv-list .conv-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 84px;
+}

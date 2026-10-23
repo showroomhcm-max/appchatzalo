@@ -45,7 +45,17 @@ export function setupRealtime(server: HttpServer) {
     }
   }
 
+  // Gộp các lần đổi "đang xem / đang gõ" liền nhau (vd nhiều người gõ cùng lúc) thành một lần gửi mỗi 250 ms
+  let presenceTimer: ReturnType<typeof setTimeout> | null = null;
   function broadcastPresence() {
+    if (presenceTimer) return;
+    presenceTimer = setTimeout(() => {
+      presenceTimer = null;
+      sendPresence();
+    }, 250);
+  }
+
+  function sendPresence() {
     const online = new Map<number, { userId: number; name: string }>();
     const byConversation: Record<string, { userId: number; name: string; typing: boolean }[]> = {};
     for (const p of presence.values()) {

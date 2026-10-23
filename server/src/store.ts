@@ -1,3 +1,4 @@
+import { indexMessage, messageMatch } from "./search-index.js";
 import { all, get, run, tx, type Row } from "./db.js";
 import { bus } from "./bus.js";
 import { conversationFilter, type Scope } from "./access.js";
@@ -209,11 +210,13 @@ export function listConversations(opts: {
     params.push(opts.type);
   }
   if (opts.q) {
+    // Tìm trong tin nhắn qua chỉ mục tìm kiếm (search-index.ts): nhanh cả khi có hàng trăm nghìn tin
+    const match = messageMatch(opts.q);
     where.push(
-      "(c.name LIKE ? OR c.id LIKE ? OR c.external_ref LIKE ? OR EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.text LIKE ?))",
+      `(c.name LIKE ? OR c.id LIKE ? OR c.external_ref LIKE ? OR c.id IN (SELECT m.conversation_id FROM messages m WHERE ${match.sql}))`,
     );
     const like = `%${opts.q}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like, ...match.params);
   }
   if (opts.before) {
     where.push("COALESCE(c.last_message_at, c.created_at) < ?");
@@ -415,6 +418,7 @@ export function saveMessage(input: SaveMessageInput) {
       holderId,
     );
     const id = Number(r.lastInsertRowid);
+    indexMessage(id, text);
 
     const preview = text.length > 120 ? text.slice(0, 117) + "..." : text;
     run(
