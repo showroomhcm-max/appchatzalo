@@ -4,6 +4,7 @@ import { api } from './api'
 import { useApp } from './store'
 import { Avatar } from './components'
 import { BUILD } from './version'
+import { ThemeChoice } from './ThemeToggle'
 
 export type NavItem = { id: string; label: string; short: string; icon: ReactNode; badge?: number }
 
@@ -80,6 +81,7 @@ export function MoreSheet({ items, onClose, onChangePassword }: { items: NavItem
               {!zaloStatuses.length ? 'Chưa có kênh chat nào' : offline.length ? `Chưa kết nối: ${offline.map((s) => s.channelName).join(', ')}` : `Đã kết nối ${zaloStatuses.length} kênh chat`}
             </span>
           </div>
+          <ThemeChoice />
           {user.auth_source === 'local' && (
             <button
               className="sheet-row"

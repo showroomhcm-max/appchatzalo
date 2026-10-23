@@ -4,9 +4,11 @@ import './styles.css'
 import App from './App'
 import { getToken, openAuthedLink } from './api'
 import { startLayout } from './layout'
+import { startTheme } from './theme'
 
 // Gắn lớp bố cục (máy tính / máy tính bảng / điện thoại) trước khi vẽ lần đầu
 startLayout()
+startTheme()
 
 // Link tải file / kết nối (/api/...) cần đăng nhập: xin mã dùng một lần rồi mới mở
 document.addEventListener(

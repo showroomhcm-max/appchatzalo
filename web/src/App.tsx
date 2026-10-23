@@ -15,6 +15,7 @@ import { UpdateBanner, VersionTag } from './version'
 import ChannelPicker from './ChannelPicker'
 import { APP_NAME, MzMark } from './Logo'
 import { BottomBar, MoreSheet, type NavItem } from './MobileNav'
+import { ThemeButton } from './ThemeToggle'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -319,6 +320,7 @@ function Shell() {
           >
             <Avatar name={user.display_name} size={32} />
           </button>
+          <ThemeButton />
           <button className="icon-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
             <LogOut size={18} />
           </button>

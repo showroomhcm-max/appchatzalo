@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.25.0 — 23/10/2026
+
+- **Giao diện sáng / tối**: chọn **Sáng**, **Tối** hoặc **Theo máy** (tự đổi theo cài đặt sáng / tối của Windows, điện thoại). Máy tính: nút mặt trời / mặt trăng ở thanh bên trái (cạnh nút đăng xuất), bấm để chuyển. Điện thoại: Thêm › Giao diện. Lựa chọn lưu riêng trên từng máy; mở app là đúng giao diện ngay, không nháy trắng.
+
 ## v3.24.1 — 23/10/2026
 
 - **Phân quyền gọn lại**: bỏ 2 quyền của tính năng đang tạm ẩn — "Lên đơn hàng POS (Odoo) từ hội thoại" và "Chấm điểm chất lượng tư vấn". Không còn hiện trong Nhóm quyền / quyền riêng của nhân viên và không cấp cho ai (kể cả nhóm đã tick trước đây), trừ Super Admin. Trang Dữ liệu › Nhân viên bỏ cột "Điểm đánh giá" (luôn trống). Mô tả nhóm "Trưởng nhóm" bỏ chữ "chấm điểm".
