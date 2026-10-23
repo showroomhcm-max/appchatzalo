@@ -68,7 +68,8 @@ app.use("/api", errorHandler);
 // Phục vụ giao diện đã build (web/dist) ở cùng cổng.
 if (fs.existsSync(config.webDist)) {
   // /assets/* có mã băm trong tên: lưu tạm lâu dài; thiếu file thì 404 (không trả index.html làm trang trắng)
-  app.use("/assets", express.static(path.join(config.webDist, "assets"), { maxAge: "365d", immutable: true, index: false, fallthrough: false }));
+  app.use("/assets", express.static(path.join(config.webDist, "assets"), { maxAge: "365d", immutable: true, index: false }));
+  app.use("/assets", (_req, res) => res.status(404).type("text").send("Không có file này (trang đang mở là bản cũ, tải lại trang)"));
   app.use(express.static(config.webDist, { index: false, maxAge: 0 }));
   app.get(/^(?!\/api|\/socket\.io|\/uploads|\/webhooks|\/assets).*/, (_req, res) => {
     res.setHeader("Cache-Control", "no-cache");
