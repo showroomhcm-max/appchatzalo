@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.24.0 — 23/10/2026
+
+- **Gửi tin hiện ngay**: bấm Gửi là tin hiện liền trong khung chat (mờ, "Đang gửi…"), ô nhập xóa ngay để gõ tin tiếp — không còn chờ Zalo trả lời mới cho gõ. Tin gửi đi đúng thứ tự. Gửi lỗi thì tin báo đỏ "Chưa gửi được" kèm nút **Gửi lại** / **Bỏ**; chuyển sang hội thoại khác rồi quay lại vẫn còn. Đóng / tải lại trang khi còn tin đang gửi thì trình duyệt hỏi lại.
+- File giao diện không có: trả 404 gọn, không ghi lỗi vào nhật ký.
+
 ## v3.23.0 — 23/10/2026
 
 - **Tìm tin nhắn nhanh** khi có hàng trăm nghìn tin: chỉ mục tìm kiếm toàn văn (FTS5, cụm 3 ký tự, không dấu). Thử 200.000 tin: tìm một cụm từ từ ~1,4 giây còn ~3 ms; gõ có dấu / không dấu đều ra. Áp dụng cho ô tìm tin nhắn, ô tìm hội thoại, tìm trong Zalo nhân viên. Tin cũ tự đưa vào chỉ mục nền lúc khởi động; từ khóa dưới 3 ký tự tìm theo cách cũ.

@@ -36,6 +36,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { api, exportUrl } from '../api'
+import { discardSend, onSent, queueSend, retrySend, useOutbox, type OutboxItem } from '../outbox'
 import { useApp, useSocketEvent } from '../store'
 import type { Alert, Conversation, ConvStatus, Message, Note, Order, Review, Sticker, Template } from '../types'
 import { Avatar, Badge, Empty } from '../components'
@@ -1134,6 +1135,20 @@ function ChatView({
     return () => clearTimeout(t)
   }, [flashId])
 
+  // Tin đang gửi / gửi lỗi (hàng chờ outbox.ts) và tin thật vừa gửi xong
+  const outbox = useOutbox(convId)
+  useEffect(
+    () =>
+      onSent((cid, sent) => {
+        if (cid !== convId || !sent.length) return
+        setMessages((prev) => [...prev, ...sent.filter((m) => !prev.some((p) => p.id === m.id))].sort((a, b) => a.ts - b.ts || a.id - b.id))
+      }),
+    [convId],
+  )
+  useEffect(() => {
+    if (outbox.length) requestAnimationFrame(() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight }))
+  }, [outbox.length])
+
   useSocketEvent<{ message: Message; conversation: Conversation }>('message:new', ({ message, conversation }) => {
     if (message.conversation_id !== convId) return
     setConv(conversation)
@@ -1416,6 +1431,9 @@ function ChatView({
               </Fragment>
             )
           })}
+          {outbox.map((item) => (
+            <PendingBubble key={item.tmpId} item={item} />
+          ))}
         </div>
 
         {!atBottom && (
@@ -1476,6 +1494,43 @@ function ChatView({
       {showInfo && conv && <InfoPanel key={notesVersion} conv={conv} onPatch={patch} onClose={toggleInfo} />}
       {forwardMsg && conv && <ForwardModal message={forwardMsg} from={conv} onClose={() => setForwardMsg(null)} />}
     </>
+  )
+}
+
+/** Tin đang gửi (mờ, "Đang gửi…") hoặc gửi lỗi (viền đỏ, Gửi lại / Bỏ). */
+function PendingBubble({ item }: { item: OutboxItem }) {
+  const failed = item.status === 'failed'
+  return (
+    <div className={`msg-row out pending ${failed ? 'failed' : ''}`}>
+      <div className="msg-line">
+        <div className="bubble">
+          {item.quote && (
+            <div className="msg-quote">
+              <b>{item.quote.from || 'Tin nhắn'}</b>
+              <span>{item.quote.text || '[Tin nhắn]'}</span>
+            </div>
+          )}
+          {item.text && <span className="msg-text pre-wrap">{item.text}</span>}
+          {item.files.length > 0 && (
+            <span className="msg-text muted small">
+              <Paperclip size={12} className="inline-icon" /> {item.files.map((f) => f.name).join(', ')}
+            </span>
+          )}
+          {!failed && <span className="msg-time">Đang gửi…</span>}
+        </div>
+      </div>
+      {failed && (
+        <div className="pending-error">
+          Chưa gửi được: {item.error}
+          <button type="button" onClick={() => retrySend(item.tmpId)}>
+            Gửi lại
+          </button>
+          <button type="button" onClick={() => discardSend(item.tmpId)}>
+            Bỏ
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1573,7 +1628,6 @@ function Composer({
   const channelStatus = zaloStatuses.find((s) => s.channelId === channelId)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<File[]>([])
-  const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [templates, setTemplates] = useState<Template[]>([])
   const [pickerIndex, setPickerIndex] = useState(0)
@@ -1651,31 +1705,31 @@ function Composer({
     }
   }
 
-  async function send() {
-    if (sending || (!text.trim() && !files.length)) return
-    setSending(true)
+  /**
+   * Gửi tin: xếp vào hàng chờ (outbox.ts) rồi xóa ô nhập ngay — tin hiện liền trong khung chat ("Đang gửi…"),
+   * không phải chờ Zalo trả lời mới gõ tiếp được. Gửi lỗi thì tin báo đỏ kèm nút Gửi lại.
+   */
+  function send() {
+    if (!text.trim() && !files.length) return
     setError('')
-    try {
-      const fd = new FormData()
-      fd.append('text', text)
-      if (replyTo) fd.append('quote_message_id', String(replyTo.id))
-      if (isComment) fd.append('mode', mode)
-      const mentions = mentionsFor(text)
-      if (mentions.length) fd.append('mentions', JSON.stringify(mentions))
-      files.forEach((f) => fd.append('files', f))
-      await api(`/conversations/${encodeURIComponent(convId)}/messages`, { body: fd })
-      setText('')
-      setFiles([])
-      setMentioned([])
-      onClearReply()
-      typingOn.current = false
-      socket?.emit('typing', false)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSending(false)
-      textarea.current?.focus()
-    }
+    const mentions = mentionsFor(text)
+    queueSend({
+      convId,
+      text,
+      files,
+      quote: replyTo
+        ? { id: replyTo.id, from: replyTo.direction === 'out' ? 'Bạn' : replyTo.sender_name ?? conv?.name ?? '', text: replyTo.text ?? '' }
+        : null,
+      mode: isComment ? mode : undefined,
+      mentions: mentions.length ? mentions : undefined,
+    })
+    setText('')
+    setFiles([])
+    setMentioned([])
+    onClearReply()
+    typingOn.current = false
+    socket?.emit('typing', false)
+    textarea.current?.focus()
   }
 
   async function sendSticker(st: Sticker) {
@@ -1886,9 +1940,9 @@ function Composer({
           }}
           disabled={disabled}
         />
-        <button className="btn primary send-btn" onClick={send} disabled={disabled || sending || (!text.trim() && !files.length)}>
+        <button className="btn primary send-btn" onClick={send} disabled={disabled || (!text.trim() && !files.length)}>
           <Send size={18} />
-          <span className="send-label">{sending ? 'Đang gửi' : 'Gửi'}</span>
+          <span className="send-label">Gửi</span>
         </button>
       </div>
     </div>
