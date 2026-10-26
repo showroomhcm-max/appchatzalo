@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
-import { BarChart3, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon, KeyRound } from 'lucide-react'
+import { BarChart3, Eye, LogOut, MessagesSquare, Radio, Settings as SettingsIcon } from 'lucide-react'
 import { api, ApiError, getToken, setToken } from './api'
 import { AppProvider, useApp } from './store'
 import type { User } from './types'
@@ -15,7 +15,7 @@ import { UpdateBanner, VersionTag } from './version'
 import ChannelPicker from './ChannelPicker'
 import { APP_NAME, MzMark } from './Logo'
 import { BottomBar, MoreSheet, type NavItem } from './MobileNav'
-import { ThemeButton } from './ThemeToggle'
+import { AccountMenu } from './AccountMenu'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -210,6 +210,7 @@ function Shell() {
   const [route, setRoute] = useState(parseHash)
   const [pwOpen, setPwOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const { can: allowed } = useApp()
   const canData = allowed('data.view') || allowed('data.export') || allowed('monitor.view')
   const canSettings = (['channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
@@ -300,27 +301,15 @@ function Shell() {
             }
             aria-label="Trạng thái kênh chat"
           />
-          {user.auth_source === 'local' && (
-            <button className="icon-btn" onClick={() => setPwOpen(true)} title="Đổi mật khẩu" aria-label="Đổi mật khẩu">
-              <KeyRound size={18} />
-            </button>
-          )}
           <button
-            className="me"
-            title={`${user.display_name} (${user.super_admin ? 'Super Admin' : user.role === 'admin' ? 'Quản lý' : 'Nhân viên'}) · bấm để đăng xuất mọi thiết bị`}
-            aria-label="Đăng xuất mọi thiết bị"
-            onClick={async () => {
-              if (!confirm('Đăng xuất tài khoản này khỏi MỌI thiết bị (máy tính, điện thoại…)? Dùng khi nghi lộ tài khoản.')) return
-              try {
-                await api('/auth/logout-all', { method: 'POST' })
-              } finally {
-                logout()
-              }
-            }}
+            className={`me ${accountOpen ? 'on' : ''}`}
+            title={`${user.display_name} · tài khoản, ảnh đại diện, giao diện`}
+            aria-label="Tài khoản"
+            aria-expanded={accountOpen}
+            onClick={() => setAccountOpen((v) => !v)}
           >
-            <Avatar name={user.display_name} size={32} />
+            <Avatar name={user.display_name} src={user.avatar} size={32} />
           </button>
-          <ThemeButton />
           <button className="icon-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
             <LogOut size={18} />
           </button>
@@ -361,6 +350,7 @@ function Shell() {
       </main>
       <BottomBar items={mobileItems} active={route.page} onMore={() => setMoreOpen((v) => !v)} moreOpen={moreOpen} />
       {moreOpen && <MoreSheet items={mobileItems} onClose={() => setMoreOpen(false)} onChangePassword={() => setPwOpen(true)} />}
+      {accountOpen && <AccountMenu onClose={() => setAccountOpen(false)} onChangePassword={() => setPwOpen(true)} />}
       {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
     </div>
   )

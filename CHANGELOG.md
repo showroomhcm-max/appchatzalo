@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.26.0 — 26/10/2026
+
+- **Khung Tài khoản**: bấm avatar ở góc dưới thanh bên trái để mở. Trong khung: tên, quyền, tên đăng nhập; **đổi / bỏ ảnh đại diện**; chọn giao diện **Sáng / Tối / Theo máy**; đổi mật khẩu (tài khoản nội bộ); **đăng xuất mọi thiết bị**; đăng xuất. Nút đổi mật khẩu và nút giao diện riêng ở thanh bên được gom vào khung này.
+- Ảnh đại diện: chọn ảnh bất kỳ, app tự cắt vuông giữa ảnh và thu nhỏ còn 256×256 trước khi tải lên (nhận PNG / JPG / WebP, tối đa 1 MB). Ảnh hiện ở thanh bên, danh sách nhân viên, nhóm quyền, bộ phận, giao hội thoại; người khác thấy ngay không cần tải lại trang. Điện thoại: Thêm › Đổi ảnh đại diện.
+
 ## v3.25.0 — 23/10/2026
 
 - **Giao diện sáng / tối**: chọn **Sáng**, **Tối** hoặc **Theo máy** (tự đổi theo cài đặt sáng / tối của Windows, điện thoại). Máy tính: nút mặt trời / mặt trăng ở thanh bên trái (cạnh nút đăng xuất), bấm để chuyển. Điện thoại: Thêm › Giao diện. Lựa chọn lưu riêng trên từng máy; mở app là đúng giao diện ngay, không nháy trắng.

@@ -3,7 +3,9 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { odooLogin, odooCompleteTotp, type OdooIdentity } from "./odoo.js";
 import multer from "multer";
+import { imageSize } from "image-size";
 import fs from "node:fs";
+import path from "node:path";
 import { config } from "./config.js";
 import { all, get, run, logEvent, tx } from "./db.js";
 import { clientIp } from "./security.js";
@@ -394,8 +396,52 @@ appRouter.post("/auth/logout-all", (req, res) => {
   res.json({ ok: true });
 });
 
+// Ảnh đại diện của chính mình: PNG / JPG / WebP, tối đa 1 MB (giao diện đã cắt vuông, thu nhỏ trước khi gửi)
+const AVATAR_DIR = path.join(config.uploadDir, "avatars");
+const AVATAR_TYPES: Record<string, string> = { png: ".png", jpg: ".jpg", webp: ".webp" };
+const avatarUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024, files: 1 } });
+function removeAvatarFile(url: string | null | undefined) {
+  const name = /^\/uploads\/avatars\/([\w-]+\.(?:png|jpg|webp))$/.exec(url ?? "")?.[1];
+  if (name) fs.rm(path.join(AVATAR_DIR, name), { force: true }, () => {});
+}
+appRouter.post(
+  "/me/avatar",
+  avatarUpload.single("file"),
+  h((req, res) => {
+    const file = req.file;
+    if (!file) throw new HttpError(400, "Chưa chọn ảnh");
+    let info: { type?: string; width: number; height: number };
+    try {
+      info = imageSize(file.buffer);
+    } catch {
+      throw new HttpError(400, "File không phải ảnh");
+    }
+    const ext = AVATAR_TYPES[info.type ?? ""];
+    if (!ext) throw new HttpError(400, "Chỉ nhận ảnh PNG, JPG hoặc WebP");
+    if (info.width > 2048 || info.height > 2048) throw new HttpError(400, "Ảnh quá lớn (tối đa 2048×2048)");
+    fs.mkdirSync(AVATAR_DIR, { recursive: true });
+    const name = `u${req.user!.id}-${crypto.randomBytes(6).toString("hex")}${ext}`;
+    fs.writeFileSync(path.join(AVATAR_DIR, name), file.buffer);
+    const url = `/uploads/avatars/${name}`;
+    const old = get<{ avatar: string | null }>("SELECT avatar FROM users WHERE id = ?", req.user!.id)?.avatar;
+    run("UPDATE users SET avatar = ? WHERE id = ?", url, req.user!.id);
+    removeAvatarFile(old);
+    logEvent(null, req.user!.id, "user.avatar_changed");
+    bus.emit("settings.changed", "users");
+    res.json({ avatar: url });
+  }),
+);
+appRouter.delete("/me/avatar", (req, res) => {
+  const old = get<{ avatar: string | null }>("SELECT avatar FROM users WHERE id = ?", req.user!.id)?.avatar;
+  run("UPDATE users SET avatar = NULL WHERE id = ?", req.user!.id);
+  removeAvatarFile(old);
+  logEvent(null, req.user!.id, "user.avatar_removed");
+  bus.emit("settings.changed", "users");
+  res.json({ avatar: null });
+});
+
 // Nhân viên
-const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at, super_admin";
+const USER_LIST_FIELDS = "id, username, display_name, role, active, auth_source, last_login_at, created_at, super_admin, avatar";
 
 /**
  * Ai sửa được ai:

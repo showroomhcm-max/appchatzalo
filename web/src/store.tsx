@@ -8,6 +8,8 @@ type Ctx = {
   user: User
   users: User[]
   reloadUsers: () => void
+  /** Tải lại thông tin tài khoản đang đăng nhập (sau khi đổi ảnh đại diện…) */
+  reloadMe: () => Promise<void>
   /** Trạng thái Zalo của các kênh người này dùng được */
   zaloStatuses: ZaloStatus[]
   channels: Channel[]
@@ -138,6 +140,7 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
         user,
         users,
         reloadUsers,
+        reloadMe: () => api<User>('/auth/me').then(setUser),
         zaloStatuses,
         channels,
         departments,

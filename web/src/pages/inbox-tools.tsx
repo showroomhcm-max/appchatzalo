@@ -103,7 +103,7 @@ export function ConvMenu({
                 )}
                 {(canAssign ? users : users.filter((u) => u.id === user.id)).map((u) => (
                   <button key={u.id} role="menuitem" onClick={() => run('assign', u.id)} className={conv.assigned_to === u.id ? 'on' : ''}>
-                    <Avatar name={u.display_name} size={18} /> {u.display_name}
+                    <Avatar name={u.display_name} src={u.avatar} size={18} /> {u.display_name}
                     {conv.assigned_to === u.id && <Check size={14} className="menu-chev" />}
                   </button>
                 ))}

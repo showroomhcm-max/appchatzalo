@@ -21,6 +21,8 @@ export type User = {
   auth_source: 'local' | 'odoo'
   /** 1 = Super Admin (quyền cao nhất) */
   super_admin?: number
+  /** Ảnh đại diện (/uploads/avatars/…) */
+  avatar?: string | null
   /** Quyền thực tế (nhóm quyền + quyền riêng) */
   permissions?: string[]
   /** Nhóm quyền đang thuộc */

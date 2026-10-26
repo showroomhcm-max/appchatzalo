@@ -14,6 +14,8 @@ export type AuthUser = {
   auth_source: "local" | "odoo";
   /** Super Admin: quyền cao nhất */
   super_admin: number;
+  /** Ảnh đại diện (/uploads/avatars/…) */
+  avatar?: string | null;
   /** Quyền thực tế (nhóm quyền + quyền riêng) */
   permissions?: string[];
 };
@@ -47,7 +49,7 @@ export function userFromToken(token: string | undefined, kind: "session" | "link
     const payload = jwt.verify(token, config.jwtSecret) as unknown as { sub: number; iat: number; scope?: string };
     if (kind === "link" ? payload.scope !== "link" : payload.scope === "link") return null;
     const user = get<AuthUser & { token_after: number }>(
-      "SELECT id, username, display_name, role, auth_source, super_admin, token_after FROM users WHERE id = ? AND active = 1",
+      "SELECT id, username, display_name, role, auth_source, super_admin, avatar, token_after FROM users WHERE id = ? AND active = 1",
       payload.sub,
     );
     // Phiên tạo trước lúc đổi mật khẩu / "đăng xuất mọi thiết bị" → hết hiệu lực

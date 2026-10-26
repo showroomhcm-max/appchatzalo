@@ -231,6 +231,7 @@ function columns(table: string) {
 const userCols = columns("users");
 if (!userCols.has("auth_source")) db.exec("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'");
 if (!userCols.has("odoo_uid")) db.exec("ALTER TABLE users ADD COLUMN odoo_uid INTEGER");
+if (!userCols.has("avatar")) db.exec("ALTER TABLE users ADD COLUMN avatar TEXT");
 if (!userCols.has("last_login_at")) db.exec("ALTER TABLE users ADD COLUMN last_login_at INTEGER");
 // Super Admin: quyền cao nhất (quản lý quản trị viên, nhật ký hệ thống, tích hợp)
 if (!userCols.has("super_admin")) db.exec("ALTER TABLE users ADD COLUMN super_admin INTEGER NOT NULL DEFAULT 0");

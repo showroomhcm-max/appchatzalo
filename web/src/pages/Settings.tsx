@@ -334,7 +334,7 @@ function DepartmentsTab() {
                 <div className="avatar-row">
                   {d.user_ids.map((id) => users.find((u) => u.id === id)).filter(Boolean).map((u) => (
                     <span key={u!.id} title={u!.display_name}>
-                      <Avatar name={u!.display_name} size={28} />
+                      <Avatar name={u!.display_name} src={u!.avatar} size={28} />
                     </span>
                   ))}
                   {!d.user_ids.length && <span className="small muted">Chưa có ai</span>}

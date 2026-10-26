@@ -1,10 +1,11 @@
 import { useEffect, type ReactNode } from 'react'
-import { KeyRound, LogOut, MoreHorizontal, ShieldOff, UserRound } from 'lucide-react'
+import { Camera, KeyRound, LogOut, MoreHorizontal, ShieldOff, Trash2, UserRound } from 'lucide-react'
 import { api } from './api'
 import { useApp } from './store'
 import { Avatar } from './components'
 import { BUILD } from './version'
 import { ThemeChoice } from './ThemeToggle'
+import { useAvatarActions } from './AccountMenu'
 
 export type NavItem = { id: string; label: string; short: string; icon: ReactNode; badge?: number }
 
@@ -45,6 +46,7 @@ export function BottomBar({ items, active, onMore, moreOpen }: { items: NavItem[
 /** Tấm trượt từ đáy: các màn còn lại + tài khoản (đổi mật khẩu, đăng xuất…) */
 export function MoreSheet({ items, onClose, onChangePassword }: { items: NavItem[]; onClose: () => void; onChangePassword: () => void }) {
   const { user, logout, zaloStatuses } = useApp()
+  const avatar = useAvatarActions()
   const rest = items.length <= 4 ? [] : items.slice(3)
   const offline = zaloStatuses.filter((s) => s.state !== 'connected')
   useEffect(() => {
@@ -69,12 +71,32 @@ export function MoreSheet({ items, onClose, onChangePassword }: { items: NavItem
         )}
         <div className="sheet-group">
           <div className="sheet-row static">
-            <Avatar name={user.display_name} size={40} />
+            <button className="account-photo" onClick={avatar.pick} disabled={avatar.busy} aria-label="Đổi ảnh đại diện">
+              <Avatar name={user.display_name} src={user.avatar} size={40} />
+              <span className="account-photo-ic">
+                <Camera size={12} />
+              </span>
+            </button>
             <span className="grow">
               <b>{user.display_name}</b>
               <span className="small muted">{user.super_admin ? 'Super Admin' : user.role === 'admin' ? 'Quản lý' : 'Nhân viên'}</span>
             </span>
           </div>
+          <button className="sheet-row" onClick={avatar.pick} disabled={avatar.busy}>
+            <span className="sheet-ic">
+              <Camera size={20} />
+            </span>
+            <span className="grow">{avatar.busy ? 'Đang tải ảnh…' : user.avatar ? 'Đổi ảnh đại diện' : 'Thêm ảnh đại diện'}</span>
+          </button>
+          {user.avatar && (
+            <button className="sheet-row" onClick={avatar.remove} disabled={avatar.busy}>
+              <span className="sheet-ic">
+                <Trash2 size={20} />
+              </span>
+              <span className="grow">Bỏ ảnh đại diện</span>
+            </button>
+          )}
+          {avatar.fileInput}
           <div className="sheet-row static small">
             <span className={`status-dot ${offline.length || !zaloStatuses.length ? 'bad' : 'ok'}`} />
             <span className="grow">

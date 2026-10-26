@@ -44,8 +44,6 @@ export function setThemePref(next: ThemePref) {
 }
 
 export const THEME_LABEL: Record<ThemePref, string> = { light: 'Sáng', dark: 'Tối', system: 'Theo máy' }
-/** Bấm nút: Sáng → Tối → Theo máy → Sáng */
-export const nextTheme = (p: ThemePref): ThemePref => (p === 'light' ? 'dark' : p === 'dark' ? 'system' : 'light')
 
 export function useThemePref() {
   return useSyncExternalStore(

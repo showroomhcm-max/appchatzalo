@@ -446,7 +446,7 @@ function AssignmentMatrix() {
               <tr key={u.id}>
                 <td>
                   <span className="row">
-                    <Avatar name={u.display_name} size={26} />
+                    <Avatar name={u.display_name} src={u.avatar} size={26} />
                     {u.display_name}
                   </span>
                 </td>
@@ -528,7 +528,7 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
         {direct.length ? (
           direct.map((u) => (
             <span key={u!.id} className="chip plain" title="Thấy toàn bộ hội thoại của kênh">
-              <Avatar name={u!.display_name} size={18} /> {u!.display_name}
+              <Avatar name={u!.display_name} src={u!.avatar} size={18} /> {u!.display_name}
             </span>
           ))
         ) : (

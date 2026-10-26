@@ -44,7 +44,7 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
             {pending.map((u) => (
               <li key={u.id}>
                 <span className="row">
-                  <Avatar name={u.display_name} size={30} />
+                  <Avatar name={u.display_name} src={u.avatar} size={30} />
                   <span>
                     <b>{u.display_name}</b>
                     <div className="muted small">
@@ -87,7 +87,7 @@ export default function UsersPage({ embedded = false }: { embedded?: boolean }) 
                   <tr key={u.id} className={u.active ? '' : 'dim'}>
                     <td>
                       <span className="row">
-                        <Avatar name={u.display_name} size={30} />
+                        <Avatar name={u.display_name} src={u.avatar} size={30} />
                         {u.display_name}
                         {online.has(u.id) && <span className="online-dot" title="Đang trực tuyến" />}
                       </span>

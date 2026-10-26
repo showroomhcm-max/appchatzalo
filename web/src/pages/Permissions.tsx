@@ -104,7 +104,7 @@ export default function PermissionsTab() {
               <div className="avatar-row">
                 {g.user_ids.map((id) => users.find((u) => u.id === id)).filter(Boolean).map((u) => (
                   <span key={u!.id} title={u!.display_name}>
-                    <Avatar name={u!.display_name} size={24} />
+                    <Avatar name={u!.display_name} src={u!.avatar} size={24} />
                   </span>
                 ))}
                 {!g.user_ids.length && <span className="muted small">Chưa có thành viên</span>}
@@ -120,7 +120,7 @@ export default function PermissionsTab() {
         <div className="row wrap">
           {supers.map((u) => (
             <span key={u.id} className="chip plain">
-              <Avatar name={u.display_name} size={18} /> {u.display_name} <code className="muted">{u.username}</code>
+              <Avatar name={u.display_name} src={u.avatar} size={18} /> {u.display_name} <code className="muted">{u.username}</code>
             </span>
           ))}
         </div>
