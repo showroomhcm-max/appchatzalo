@@ -60,7 +60,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
     items: [
       { id: 'templates', label: 'Câu trả lời mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
       { id: 'tags', label: 'Tag hội thoại', icon: <TagIcon size={18} />, perms: ['tags.manage'] },
-      { id: 'departments', label: 'Bộ phận (phân chia hội thoại)', icon: <Building2 size={18} />, perms: ['departments.manage'] },
+      { id: 'departments', label: 'Bộ phận - phân chia hội thoại', icon: <Building2 size={18} />, perms: ['departments.manage'] },
     ],
   },
   {

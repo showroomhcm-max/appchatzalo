@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.26.1 — 26/10/2026
+
+- Cài đặt: đổi tên mục "Bộ phận (phân chia hội thoại)" thành "Bộ phận - phân chia hội thoại".
+
 ## v3.26.0 — 26/10/2026
 
 - **Khung Tài khoản**: bấm avatar ở góc dưới thanh bên trái để mở. Trong khung: tên, quyền, tên đăng nhập; **đổi / bỏ ảnh đại diện**; chọn giao diện **Sáng / Tối / Theo máy**; đổi mật khẩu (tài khoản nội bộ); **đăng xuất mọi thiết bị**; đăng xuất. Nút đổi mật khẩu và nút giao diện riêng ở thanh bên được gom vào khung này.
