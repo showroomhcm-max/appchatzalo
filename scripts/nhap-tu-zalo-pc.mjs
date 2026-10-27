@@ -50,13 +50,30 @@ function token() {
   return jwt.sign({ sub: admin.id }, fs.readFileSync(path.join(dataDir, ".jwt-secret"), "utf8").trim(), { expiresIn: "10m" });
 }
 async function api(p, init = {}) {
-  const r = await fetch(`${BASE}/api${p}`, { ...init, headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
+  // Máy chủ đang khởi động lại (cập nhật bản mới) / mất mạng: đợi rồi thử lại, tối đa ~5 phút
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await apiOnce(p, init);
+    } catch (e) {
+      if (!e.retry || attempt >= 10) throw e;
+      log(`Máy chủ chưa trả lời (${e.message}), thử lại sau 30 giây… (${attempt}/10)`);
+      await sleep(30_000);
+    }
+  }
+}
+async function apiOnce(p, init = {}) {
+  let r;
+  try {
+    r = await fetch(`${BASE}/api${p}`, { ...init, headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
+  } catch (e) {
+    throw Object.assign(new Error(`${p}: ${e.message}`), { retry: true });
+  }
   const text = await r.text();
   let data = null;
   try {
     data = JSON.parse(text);
   } catch {}
-  if (!r.ok) throw new Error(`${p}: ${data?.error ?? `HTTP ${r.status}`}`);
+  if (!r.ok) throw Object.assign(new Error(`${p}: ${data?.error ?? `HTTP ${r.status}`}`), { retry: r.status === 502 || r.status === 503 || r.status === 504 || (r.status >= 520 && r.status <= 530) });
   return data;
 }
 
