@@ -16,6 +16,7 @@
     "prod:status": "pm2 status",
     "prod:url": "node scripts/public-url.mjs",
     "release": "node scripts/release.mjs",
+    "nhap-zalo-pc": "node scripts/nhap-tu-zalo-pc.mjs",
     "nas:export": "node scripts/nas-export.mjs"
   },
   "devDependencies": {
