@@ -16,7 +16,7 @@ import { bus } from "./bus.js";
 import { fetchTemplateFile, fetchTemplateImage } from "./template-media.js";
 import { publicBaseUrl } from "./platforms/common.js";
 import { importHistory } from "./history-import.js";
-import { agentScriptPath, cancelPcSync, createAgent, deleteAgent, latestPcJob, listAgents, requestPcSync } from "./pc-sync.js";
+import { agentScriptPath, buildInstaller, cancelPcSync, createAgent, deleteAgent, latestPcJob, listAgents, requestPcSync } from "./pc-sync.js";
 
 export const settingsRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
@@ -241,6 +241,23 @@ settingsRouter.delete(
     deleteAgent(Number(req.params.id), req.user!.id);
     res.json({ ok: true });
   }),
+);
+// Bộ cài .zip: tạo máy mới (body.name) hoặc tạo lại bộ cài cho máy có sẵn (đổi mã)
+const sendInstaller = (res: Response, r: { zip: Buffer; filename: string }) => {
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${r.filename}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(r.zip);
+};
+settingsRouter.post(
+  "/pc-agents/installer",
+  requireSuperAdmin,
+  h((req, res) => sendInstaller(res, buildInstaller(null, String(req.body?.name ?? ""), req.user!.id))),
+);
+settingsRouter.post(
+  "/pc-agents/:id/installer",
+  requireSuperAdmin,
+  h((req, res) => sendInstaller(res, buildInstaller(Number(req.params.id), "", req.user!.id))),
 );
 settingsRouter.get("/pc-agents/script", requireSuperAdmin, (_req, res) => {
   const p = agentScriptPath();

@@ -7,7 +7,8 @@
  * CHỈ TRONG MÁY (127.0.0.1), nhờ chính Zalo PC đọc tin (chức năng sao lưu có sẵn — không bẻ khóa, không gửi / xóa
  * gì trên Zalo), gửi lên app theo từng lô, rồi mở lại Zalo PC bình thường.
  *
- * Cần Node.js 22 trở lên (https://nodejs.org). Cách dùng (mã máy lấy ở Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC):
+ * Cách cài dễ nhất: app › Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC › Tải bộ cài (.zip), giải nén, bấm đúp
+ * "CAI DAT.cmd" (tự cài Node.js nếu thiếu). Hoặc chạy tay (cần Node.js 22+):
  *   node dong-bo-zalo-pc.mjs --ket-noi <mã máy>     lưu mã, bật tự chạy khi mở máy, rồi chạy luôn
  *   node dong-bo-zalo-pc.mjs                         chạy (đọc cấu hình đã lưu)
  *   node dong-bo-zalo-pc.mjs --go                    gỡ tự chạy khi mở máy
@@ -22,7 +23,7 @@ import net from "node:net";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ═════════════════════════ Đọc Zalo PC ═════════════════════════
@@ -316,6 +317,24 @@ function installAutostart() {
   log(`Đã bật tự chạy khi mở máy (${STARTUP})`);
 }
 
+/** Tắt bản đang chạy nền (khi cài lại / gỡ). */
+function stopRunning() {
+  try {
+    const pid = Number(fs.readFileSync(LOCK, "utf8"));
+    if (pid && pid !== process.pid) {
+      // Chỉ tắt đúng tiến trình của chương trình này (số pid cũ có thể đã thuộc về chương trình khác)
+      const cmd = execFileSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      if (cmd.includes("dong-bo-zalo-pc")) process.kill(pid);
+    }
+  } catch {}
+  try {
+    fs.rmSync(LOCK, { force: true });
+  } catch {}
+}
+
 /** Chỉ một bản chạy cùng lúc trên mỗi máy. */
 function takeLock() {
   try {
@@ -429,13 +448,26 @@ async function main() {
     try {
       fs.rmSync(STARTUP, { force: true });
     } catch {}
-    console.log("Đã gỡ tự chạy khi mở máy.");
+    stopRunning();
+    console.log("Đã gỡ máy đồng bộ: tắt chương trình đang chạy và bỏ tự chạy khi mở máy.");
+    console.log('Nhớ xóa máy này trên app (Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC).');
     return;
   }
-  const key = opt("--ket-noi");
+  // Bộ cài (CAI DAT.cmd): đọc mã máy trong cau-hinh.json đi kèm
+  const installFile = opt("--cai-dat");
+  let fromFile = null;
+  if (installFile) {
+    try {
+      fromFile = JSON.parse(fs.readFileSync(installFile, "utf8"));
+    } catch (e) {
+      console.log(`Không đọc được ${installFile}: ${e.message}. Giải nén đủ các file trong bộ cài rồi bấm lại.`);
+      process.exit(1);
+    }
+  }
+  const key = fromFile?.key ?? opt("--ket-noi");
   if (key) {
-    const base = (opt("--base") ?? readConfig()?.base ?? "https://cskhzalo.sieutoc.com").replace(/\/+$/, "");
-    const cfg = { base, key: key.trim() };
+    const base = (fromFile?.base ?? opt("--base") ?? readConfig()?.base ?? "https://cskhzalo.sieutoc.com").replace(/\/+$/, "");
+    const cfg = { base, key: String(key).trim() };
     const hello = await makeApi(cfg)("/hello", { host: os.hostname(), version: VERSION }, 1).catch((e) => {
       console.log(`Không kết nối được app bằng mã này: ${e.message}`);
       process.exit(1);
@@ -443,10 +475,14 @@ async function main() {
     writeConfig(cfg);
     log(`Đã kết nối app ${base} với tên máy "${hello.agent}"`);
     if (!args.includes("--khong-tu-chay")) {
+      stopRunning(); // cài lại: tắt bản cũ đang chạy (mã cũ)
       installAutostart();
       // Chạy ẩn ngay bây giờ (giống lúc mở máy), cửa sổ này đóng được
       spawn("wscript.exe", [STARTUP], { detached: true, stdio: "ignore" }).unref();
+      console.log("");
+      console.log(`ĐÃ CÀI XONG máy đồng bộ "${hello.agent}".`);
       console.log("Chương trình đã chạy nền và sẽ tự chạy mỗi khi mở máy. Có thể đóng cửa sổ này.");
+      console.log("Tiếp theo: đăng nhập Zalo PC đúng tài khoản Zalo của kênh, rồi trên app bấm \"Đồng bộ tin nhắn cũ\" ở kênh đó.");
       console.log(`Nhật ký: ${LOG}`);
       return;
     }

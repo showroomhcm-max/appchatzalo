@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.29.1 — 27/10/2026
+
+- **Cài máy đồng bộ Zalo PC chỉ bằng vài cú bấm**: Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC › **Thêm máy** › **Tải bộ cài** (.zip). Giải nén, bấm đúp **CAI DAT.cmd** là xong: tự cài Node.js nếu máy chưa có, tự gắn mã máy (không phải chép mã / gõ lệnh), chạy nền và tự chạy khi mở máy. Bộ cài kèm **GO CAI DAT.cmd** để gỡ. Nút **Bộ cài** cạnh mỗi máy để tải lại (đổi mã, bộ cũ hết hiệu lực).
+
 ## v3.29.0 — 27/10/2026
 
 - **Nút "Đồng bộ tin nhắn cũ" lấy luôn tin cũ từ Zalo PC**: chỉ cần một máy tính có Zalo PC đăng nhập **cùng tài khoản Zalo** với kênh. Bấm nút → app giao việc → máy đó tự đọc 90 ngày gần nhất từ Zalo PC và nhập lên; dưới nút hiện tiến độ (đang chờ máy / máy … đang đọc x/y hội thoại, đã nhập n tin / xong), có nút **Hủy**. Máy đang mở Zalo PC tài khoản khác thì không nhận và app ghi rõ lý do. Kênh đang mất kết nối (đã từng quét QR) vẫn bấm đồng bộ qua Zalo PC được.

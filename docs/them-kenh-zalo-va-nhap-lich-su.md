@@ -15,16 +15,14 @@ Tóm tắt:
 
 Cần: máy Windows có cài **Zalo PC**, và tài khoản app của anh là **Super Admin**.
 
-1. Cài **Node.js** bản LTS từ https://nodejs.org nếu máy chưa có (bấm Next tới hết).
-2. Trên app: **Cài đặt › Kết nối kênh**, kéo xuống mục **Máy đồng bộ Zalo PC** › **Thêm máy**. Đặt tên dễ nhận (ví dụ "Laptop anh Hậu") › **Tạo mã máy**.
-3. Trong hộp thoại hiện ra:
-   - bấm **dong-bo-zalo-pc.mjs** để tải chương trình về (vào thư mục Tải về / Downloads);
-   - bấm **Chép lệnh**.
-4. Mở thư mục Tải về, gõ `powershell` vào thanh địa chỉ rồi nhấn Enter. Dán lệnh vừa chép (dạng `node dong-bo-zalo-pc.mjs --ket-noi zpc_…`) rồi nhấn Enter.
-5. Thấy báo *"Chương trình đã chạy nền và sẽ tự chạy mỗi khi mở máy"* là xong, đóng cửa sổ PowerShell được.
-6. Trên app, mục **Máy đồng bộ Zalo PC** hiện máy với chấm xanh **đang bật**.
+1. Trên app: **Cài đặt › Kết nối kênh**, kéo xuống mục **Máy đồng bộ Zalo PC** › **Thêm máy**. Đặt tên dễ nhận (ví dụ "Laptop anh Hậu") › **Tải bộ cài**. Máy tải về file `Cai dat dong bo Zalo PC - ….zip`.
+2. Trên máy có Zalo PC (mang file .zip sang nếu tải ở máy khác): chuột phải file .zip › **Giải nén tất cả** (Extract All).
+3. Bấm đúp **`CAI DAT.cmd`**. Nếu Windows hỏi thì chọn **Vẫn chạy** / Run.
+   - Máy chưa có Node.js thì bộ cài tự cài, mất 1–2 phút. Nếu Windows hỏi quyền quản trị thì chọn **Yes**.
+4. Thấy báo **ĐÃ CÀI XONG** là xong, đóng cửa sổ được. Chương trình chạy nền và tự chạy mỗi khi mở máy.
+5. Trên app, mục **Máy đồng bộ Zalo PC** hiện máy với chấm xanh **đang bật**.
 
-> **Mã máy chỉ hiện một lần** và cho phép gửi tin vào app, nên không gửi cho người ngoài. Mất mã hoặc đổi máy thì **Xóa** máy cũ rồi **Thêm máy** mới.
+> **Bộ cài chứa mã máy bí mật**, không gửi cho người ngoài; cài xong có thể xóa file .zip. Muốn cài lại hoặc chuyển sang máy khác: bấm **Bộ cài** cạnh tên máy để tải bộ mới (bộ cũ hết hiệu lực). Gỡ: bấm đúp **`GO CAI DAT.cmd`** trong bộ cài, rồi **Xóa** máy trên app.
 
 ---
 
@@ -78,7 +76,7 @@ Vào **Hội thoại**, chọn kênh vừa thêm (nút **Đã chọn … kênh**
 | App báo | Nghĩa là | Cách xử lý |
 |---|---|---|
 | Zalo PC: **chưa cài máy đồng bộ** | Chưa làm phần A | Làm phần A |
-| Zalo PC: **chưa có máy đồng bộ nào đang bật** | Máy có Zalo PC đang tắt, hoặc chương trình không chạy | Bật máy đó. Chương trình tự chạy khi mở máy; nếu không, chạy lại lệnh ở bước A4 |
+| Zalo PC: **chưa có máy đồng bộ nào đang bật** | Máy có Zalo PC đang tắt, hoặc chương trình không chạy | Bật máy đó. Chương trình tự chạy khi mở máy; nếu không, bấm đúp lại `CAI DAT.cmd` |
 | Máy "…": **Zalo PC trên máy này đang đăng nhập tài khoản khác** | Zalo PC chưa đăng nhập đúng tài khoản của kênh | Làm phần C trên máy đó, bấm **Hủy** rồi **Đồng bộ tin nhắn cũ** lại |
 | Máy "…": **Zalo PC chưa sẵn sàng sau 2 phút… màn hình đăng nhập** | Zalo PC chưa đăng nhập | Đăng nhập Zalo PC, bấm Hủy rồi đồng bộ lại |
 | Máy "…": **Không tìm thấy chức năng sao lưu của Zalo PC (Zalo đã đổi bản?)** | Zalo PC cập nhật bản mới, đổi cấu trúc bên trong | Nhắn Claude sửa chương trình, dữ liệu không ảnh hưởng |
@@ -104,10 +102,6 @@ Không bắt buộc. Một máy dùng cho nhiều tài khoản được, chỉ c
 Không. Zalo không còn nội dung các tin này nên bỏ qua.
 
 **Gỡ chương trình khỏi máy?**
-Trên app, **Xóa** máy trong mục Máy đồng bộ Zalo PC. Trên máy đó, mở PowerShell rồi chạy:
-```
-node "$env:APPDATA\ChatSieuToc\dong-bo-zalo-pc.mjs" --go
-```
-Lệnh này gỡ phần tự chạy khi mở máy; khởi động lại máy là chương trình tắt hẳn.
+Bấm đúp **`GO CAI DAT.cmd`** trong bộ cài (tắt chương trình, bỏ tự chạy khi mở máy), rồi **Xóa** máy trên app.
 
 **Cách cũ bằng lệnh (chỉ trên laptop có thư mục `D:\appchatzalommz`):** `npm run nhap-zalo-pc`, thêm `-- --thu` để chỉ đếm, `-- --ngay 30` để đổi số ngày.

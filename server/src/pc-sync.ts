@@ -16,6 +16,8 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { all, db, get, logEvent, run } from "./db.js";
 import { HttpError } from "./conversations.js";
 import { importHistory } from "./history-import.js";
+import { publicBaseUrl } from "./platforms/common.js";
+import { makeZip } from "./zip.js";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS pc_sync_agents (
@@ -154,6 +156,88 @@ export function deleteAgent(id: number, userId: number) {
   if (!r.changes) throw new HttpError(404, "Không tìm thấy máy");
   run("UPDATE pc_sync_jobs SET status = 'pending', agent_id = NULL, started_at = NULL WHERE agent_id = ? AND status = 'running'", id);
   logEvent(null, userId, "pc_agent.deleted", { id });
+}
+
+/** File .cmd của Windows cần xuống dòng kiểu CR LF */
+const CRLF = String.fromCharCode(13, 10);
+
+const CAI_DAT = [
+  "@echo off",
+  "chcp 65001 >nul",
+  "title Cai dat may dong bo Zalo PC - Chat Sieu Toc",
+  'cd /d "%~dp0"',
+  'set "NODE=node"',
+  "where node >nul 2>nul",
+  "if errorlevel 1 (",
+  '  if exist "%ProgramFiles%\\nodejs\\node.exe" (',
+  '    set "NODE=%ProgramFiles%\\nodejs\\node.exe"',
+  "  ) else (",
+  "    echo May chua co Node.js - dang tu cai dat, khoang 1-2 phut...",
+  "    winget install -e --id OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements",
+  '    set "NODE=%ProgramFiles%\\nodejs\\node.exe"',
+  "  )",
+  ")",
+  '"%NODE%" -v >nul 2>nul',
+  "if errorlevel 1 (",
+  "  echo.",
+  "  echo Khong tu cai duoc Node.js. Tai ban LTS tai https://nodejs.org , cai xong bam lai file nay.",
+  "  start https://nodejs.org",
+  "  pause",
+  "  exit /b 1",
+  ")",
+  '"%NODE%" "%~dp0dong-bo-zalo-pc.mjs" --cai-dat "%~dp0cau-hinh.json"',
+  "echo.",
+  "pause",
+].join(CRLF);
+
+const GO_CAI_DAT = [
+  "@echo off",
+  "chcp 65001 >nul",
+  'set "NODE=node"',
+  'where node >nul 2>nul || set "NODE=%ProgramFiles%\\nodejs\\node.exe"',
+  '"%NODE%" "%APPDATA%\\ChatSieuToc\\dong-bo-zalo-pc.mjs" --go',
+  "echo.",
+  "pause",
+].join(CRLF);
+
+/**
+ * Bộ cài máy đồng bộ (.zip): giải nén, bấm đúp "CAI DAT.cmd" là xong (tự cài Node.js nếu thiếu, gắn mã máy,
+ * chạy nền + tự chạy khi mở máy). agentId có sẵn = tạo lại bộ cài cho máy đó (đổi mã, mã cũ hết hiệu lực).
+ */
+export function buildInstaller(agentId: number | null, name: string, userId: number) {
+  const script = agentScriptPath();
+  if (!script) throw new HttpError(404, "Bản này chưa kèm chương trình đồng bộ");
+  let agent: { id: number; name: string; key: string };
+  if (agentId) {
+    const row = get<{ id: number; name: string }>("SELECT id, name FROM pc_sync_agents WHERE id = ?", agentId);
+    if (!row) throw new HttpError(404, "Không tìm thấy máy");
+    const key = `zpc_${crypto.randomBytes(24).toString("base64url")}`;
+    run("UPDATE pc_sync_agents SET key_hash = ? WHERE id = ?", hash(key), row.id);
+    logEvent(null, userId, "pc_agent.key_rotated", { id: row.id });
+    agent = { ...row, key };
+  } else agent = createAgent(name, userId);
+  const huongDan = [
+    `Bộ cài máy đồng bộ Zalo PC — máy "${agent.name}" — Chat Siêu Tốc (${publicBaseUrl()})`,
+    "",
+    "1. Giải nén file .zip này (chuột phải › Extract All / Giải nén tất cả).",
+    '2. Bấm đúp "CAI DAT.cmd". Windows hỏi thì chọn Run / Vẫn chạy.',
+    "   Máy chưa có Node.js thì bộ cài tự cài (1–2 phút, có thể hỏi quyền quản trị: chọn Yes).",
+    '3. Thấy báo "ĐÃ CÀI XONG" là xong. Chương trình chạy nền và tự chạy mỗi khi mở máy.',
+    "",
+    "Sau đó trên app: đăng nhập Zalo PC đúng tài khoản Zalo của kênh, rồi bấm \"Đồng bộ tin nhắn cũ\" ở kênh đó.",
+    'Gỡ: bấm đúp "GO CAI DAT.cmd" (và xóa máy trên app).',
+    "",
+    "File cau-hinh.json chứa mã máy bí mật: không gửi cho người ngoài. Cài xong có thể xóa thư mục này.",
+  ].join(CRLF);
+  const zip = makeZip([
+    { name: "CAI DAT.cmd", data: CAI_DAT },
+    { name: "GO CAI DAT.cmd", data: GO_CAI_DAT },
+    { name: "HUONG DAN.txt", data: "\ufeff" + huongDan },
+    { name: "dong-bo-zalo-pc.mjs", data: fs.readFileSync(script) },
+    { name: "cau-hinh.json", data: JSON.stringify({ base: publicBaseUrl(), key: agent.key, name: agent.name }, null, 2) },
+  ]);
+  const ascii = agent.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").replace(/[^\w -]+/g, "").trim() || "may";
+  return { zip, filename: `Cai dat dong bo Zalo PC - ${ascii}.zip` };
 }
 
 /** File chương trình đồng bộ để tải về máy có Zalo PC (bản build: /app/agent, khi chạy dev: scripts/). */

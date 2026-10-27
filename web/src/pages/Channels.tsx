@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, History, KeyRound, LogIn, LogOut, Monitor, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
-import { api, authUrl } from '../api'
+import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, Download, ExternalLink, History, KeyRound, LogIn, LogOut, Monitor, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
+import { api, authUrl, getToken } from '../api'
 import { useApp } from '../store'
 import type { Channel, User, ZaloStatus } from '../types'
 import { Avatar, Badge, Modal, PublicLink } from '../components'
@@ -1159,27 +1159,63 @@ function FacebookPagePicker({ pendingKey, onClose, onDone }: { pendingKey: strin
 
 type PcAgent = { id: number; name: string; created_at: number; last_seen_at: number | null; online: boolean; channel: string | null; host: string | null; version: string | null }
 
+/** Tải bộ cài .zip (POST trả về file): tạo máy mới hoặc tạo lại bộ cài cho máy có sẵn. */
+async function downloadInstaller(path: string, body?: unknown) {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken() ?? ''}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new Error(err?.error ?? `Lỗi ${res.status}`)
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'Cai dat dong bo Zalo PC.zip'
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  return name
+}
+
 /** Super Admin: các máy có Zalo PC chạy chương trình đồng bộ tin cũ (nút "Đồng bộ tin nhắn cũ" giao việc cho máy này). */
 function PcAgentsPanel() {
   const [list, setList] = useState<PcAgent[] | null>(null)
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
-  const [created, setCreated] = useState<{ name: string; key: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
   const reload = () => api<PcAgent[]>('/pc-agents').then(setList).catch(() => setList([]))
   useEffect(() => {
     reload()
-    const t = setInterval(reload, 15_000)
+    const t = setInterval(reload, 10_000)
     return () => clearInterval(t)
   }, [])
 
   async function create(e: FormEvent) {
     e.preventDefault()
+    setBusy(true)
     try {
-      const r = await api<{ name: string; key: string }>('/pc-agents', { body: { name } })
-      setCreated(r)
+      await downloadInstaller('/pc-agents/installer', { name })
+      setDone(name.trim())
       setAdding(false)
       setName('')
       reload()
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function reinstall(a: PcAgent) {
+    if (!confirm(`Tải lại bộ cài cho máy "${a.name}"? Bộ cài cũ sẽ hết hiệu lực — cài lại bằng bộ mới trên máy đó.`)) return
+    try {
+      await downloadInstaller(`/pc-agents/${a.id}/installer`)
+      setDone(a.name)
     } catch (err: any) {
       alert(err.message)
     }
@@ -1193,7 +1229,6 @@ function PcAgentsPanel() {
       alert(err.message)
     }
   }
-  const command = created ? `node dong-bo-zalo-pc.mjs --ket-noi ${created.key}` : ''
 
   return (
     <section className="card stack">
@@ -1206,7 +1241,7 @@ function PcAgentsPanel() {
         </button>
       </div>
       <p className="muted small">
-        Zalo chỉ cho app lấy tin kể từ lúc gắn tài khoản. Tin cũ hơn lấy từ <b>Zalo PC</b>: cài chương trình đồng bộ trên máy có Zalo PC, rồi bấm{' '}
+        Zalo chỉ cho app lấy tin kể từ lúc gắn tài khoản. Tin cũ hơn lấy từ <b>Zalo PC</b>: cài bộ cài này trên máy có Zalo PC, rồi bấm{' '}
         <b>Đồng bộ tin nhắn cũ</b> ở kênh — máy nào đang mở Zalo PC <b>cùng tài khoản</b> với kênh sẽ tự đọc và nhập 90 ngày gần nhất (Zalo PC tắt / mở lại
         vài phút trong lúc đọc).
       </p>
@@ -1219,11 +1254,14 @@ function PcAgentsPanel() {
                 <b>{a.name}</b>
                 <span className="small muted">
                   {' '}
-                  · {a.online ? 'đang bật' : a.last_seen_at ? `tắt từ ${new Date(a.last_seen_at).toLocaleString('vi-VN', { hour12: false })}` : 'chưa kết nối lần nào'}
+                  · {a.online ? 'đang bật' : a.last_seen_at ? `tắt từ ${new Date(a.last_seen_at).toLocaleString('vi-VN', { hour12: false })}` : 'chưa cài'}
                   {a.channel ? ` · Zalo PC: ${a.channel}` : ''}
                   {a.host ? ` · ${a.host}` : ''}
                 </span>
               </span>
+              <button className="btn ghost sm" onClick={() => reinstall(a)} title="Tải bộ cài mới cho máy này (bộ cài cũ hết hiệu lực)">
+                <Download size={14} /> Bộ cài
+              </button>
               <button className="btn ghost sm" onClick={() => remove(a)}>
                 Xóa
               </button>
@@ -1231,55 +1269,50 @@ function PcAgentsPanel() {
           ))}
         </div>
       ) : (
-        list && <div className="muted small">Chưa có máy nào.</div>
+        list && <div className="muted small">Chưa có máy nào. Bấm "Thêm máy" để tải bộ cài.</div>
       )}
 
       {adding && (
         <Modal title="Thêm máy đồng bộ Zalo PC" onClose={() => setAdding(false)}>
           <form className="stack" onSubmit={create}>
             <label className="field">
-              <span>Tên máy</span>
+              <span>Tên máy (để nhận ra trên app)</span>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Laptop anh Hậu" autoFocus maxLength={60} />
             </label>
             <div className="row end">
               <button type="button" className="btn ghost" onClick={() => setAdding(false)}>
                 Hủy
               </button>
-              <button className="btn primary" disabled={!name.trim()}>
-                Tạo mã máy
+              <button className="btn primary" disabled={!name.trim() || busy}>
+                <Download size={16} /> {busy ? 'Đang tạo…' : 'Tải bộ cài'}
               </button>
             </div>
           </form>
         </Modal>
       )}
-      {created && (
-        <Modal title={`Cài chương trình cho máy "${created.name}"`} onClose={() => setCreated(null)}>
+      {done && (
+        <Modal title={`Đã tải bộ cài cho máy "${done}"`} onClose={() => setDone(null)}>
           <div className="stack">
+            <p className="muted small" style={{ margin: 0 }}>
+              Mang file .zip vừa tải sang máy có Zalo PC (hoặc làm ngay trên máy này):
+            </p>
             <ol className="stack sm" style={{ paddingLeft: 18, margin: 0 }}>
               <li>
-                Trên máy có Zalo PC: cài <b>Node.js</b> (bản LTS ở{' '}
-                <a href="https://nodejs.org" target="_blank" rel="noreferrer">
-                  nodejs.org
-                </a>
-                ) nếu máy chưa có.
+                Chuột phải file .zip › <b>Giải nén tất cả</b> (Extract All).
               </li>
               <li>
-                Tải chương trình: <a href="/api/pc-agents/script">dong-bo-zalo-pc.mjs</a> (lưu vào thư mục Tải về).
+                Bấm đúp <b>CAI DAT.cmd</b>. Windows hỏi thì chọn <b>Vẫn chạy</b> / Run. Máy chưa có Node.js thì bộ cài tự cài (1–2 phút, hỏi quyền thì chọn
+                Yes).
               </li>
               <li>
-                Mở thư mục Tải về, gõ <code>powershell</code> vào thanh địa chỉ rồi Enter, dán lệnh dưới đây rồi Enter:
-                <div className="secret-box">{command}</div>
-                <button className="btn outline sm" onClick={() => navigator.clipboard.writeText(command)}>
-                  Chép lệnh
-                </button>
+                Thấy báo <b>ĐÃ CÀI XONG</b> là xong — máy hiện chấm xanh <b>đang bật</b> ở danh sách này.
               </li>
-              <li>Chương trình chạy nền và tự chạy mỗi khi mở máy. Đăng nhập Zalo PC bằng tài khoản Zalo của kênh cần đồng bộ.</li>
             </ol>
             <div className="banner warn inline">
-              <AlertTriangle size={16} /> Mã máy chỉ hiện một lần và cho phép gửi tin vào app — không gửi cho người ngoài. Mất mã thì xóa máy rồi tạo lại.
+              <AlertTriangle size={16} /> Bộ cài chứa mã máy bí mật: không gửi cho người ngoài. Cài xong có thể xóa file .zip.
             </div>
             <div className="row end">
-              <button className="btn primary" onClick={() => setCreated(null)}>
+              <button className="btn primary" onClick={() => setDone(null)}>
                 Xong
               </button>
             </div>
