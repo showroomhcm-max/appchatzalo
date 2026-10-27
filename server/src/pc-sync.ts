@@ -112,8 +112,9 @@ export function latestPcJob(channelId: number) {
 }
 
 /** Bấm "Đồng bộ tin nhắn cũ": tạo việc cho máy có Zalo PC (bỏ qua nếu đang có việc chờ / đang chạy). */
-export function requestPcSync(channelId: number, days: number, userId: number) {
+export function requestPcSync(channelId: number, days: number, userId: number | null, onlyIfAgents = false) {
   expireStale();
+  if (onlyIfAgents && !get("SELECT 1 FROM pc_sync_agents LIMIT 1")) return null;
   const ch = get<{ zalo_uid: string | null }>("SELECT zalo_uid FROM channels WHERE id = ? AND platform = 'zalo' AND deleted_at IS NULL", channelId);
   if (!ch?.zalo_uid) return null; // chưa quét QR lần nào: chưa biết tài khoản để khớp với Zalo PC
   const open = get<{ id: number }>("SELECT id FROM pc_sync_jobs WHERE channel_id = ? AND status IN ('pending', 'running')", channelId);

@@ -17,6 +17,7 @@ import { fetchTemplateFile, fetchTemplateImage } from "./template-media.js";
 import { publicBaseUrl } from "./platforms/common.js";
 import { importHistory } from "./history-import.js";
 import { agentScriptPath, buildInstaller, cancelPcSync, createAgent, deleteAgent, latestPcJob, listAgents, requestPcSync } from "./pc-sync.js";
+import { WIPE_CONFIRM, purgeChannelData, wipeChatData, wipePreview } from "./wipe.js";
 
 export const settingsRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
@@ -162,8 +163,12 @@ settingsRouter.delete(
     const id = Number(req.params.id);
     const ch = get<{ name: string }>("SELECT name FROM channels WHERE id = ? AND deleted_at IS NULL", id);
     if (!ch) throw new HttpError(404, "Không tìm thấy kênh");
-    const n = get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE channel_id = ?", id)!.n;
+    const purge = req.query.purge === "1";
     await zalo.remove(id);
+    cancelPcSync(id, req.user!.id);
+    // Chọn "xóa luôn tin nhắn": xóa hẳn hội thoại + tin của kênh, rồi xóa kênh
+    const purged = purge ? purgeChannelData(id) : 0;
+    const n = get<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE channel_id = ?", id)!.n;
     if (n > 0) {
       // Còn hội thoại (dữ liệu training): đăng xuất, xóa cookie Zalo, ẩn kênh; hội thoại và tin nhắn giữ nguyên.
       run(
@@ -175,10 +180,10 @@ settingsRouter.delete(
     } else {
       run("DELETE FROM channels WHERE id = ?", id);
     }
-    logEvent(null, req.user!.id, "channel.deleted", { id, name: ch.name, kept_conversations: n });
+    logEvent(null, req.user!.id, "channel.deleted", { id, name: ch.name, kept_conversations: n, purged_conversations: purged });
     if (closeAlertsOfGone()) bus.emit("alerts.changed");
     bus.emit("settings.changed", "channels");
-    res.json({ ok: true, kept_conversations: n });
+    res.json({ ok: true, kept_conversations: n, purged_conversations: purged });
   }),
 );
 
@@ -228,6 +233,17 @@ settingsRouter.delete(
 );
 
 // Máy đồng bộ Zalo PC (chương trình chạy nền trên máy có Zalo PC)
+// Xóa sạch dữ liệu chat trước khi giao app cho nhân viên: GET xem trước, POST xóa (gõ đúng câu xác nhận)
+settingsRouter.get("/wipe-chat-data", requireSuperAdmin, (_req, res) => res.json(wipePreview()));
+settingsRouter.post(
+  "/wipe-chat-data",
+  requireSuperAdmin,
+  h(async (req, res) => {
+    if (req.body?.confirm !== WIPE_CONFIRM) throw new HttpError(400, `Gõ đúng "${WIPE_CONFIRM}" để xác nhận xóa`);
+    res.json(await wipeChatData(req.user!.id));
+  }),
+);
+
 settingsRouter.get("/pc-agents", requireSuperAdmin, (_req, res) => res.json(listAgents()));
 settingsRouter.post(
   "/pc-agents",

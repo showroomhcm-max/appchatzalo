@@ -685,7 +685,13 @@ const nf = (n: number | undefined) => (n ?? 0).toLocaleString('vi-VN')
 /** Dòng trạng thái đồng bộ qua Zalo PC dưới nút "Đồng bộ tin nhắn cũ". */
 function PcSyncLine({ pc, onCancel }: { pc: PcSync; onCancel: () => void }) {
   const j = pc.job
-  if (!j) return null
+  if (!j)
+    return pc.agents ? (
+      <div className="small muted" style={{ flexBasis: '100%' }}>
+        <b>Zalo PC:</b> {pc.online ? `${pc.online} máy đồng bộ đang bật` : 'chưa có máy đồng bộ nào đang bật'}. Bấm "Đồng bộ tin nhắn cũ" để lấy tin cũ
+        từ Zalo PC cùng tài khoản.
+      </div>
+    ) : null
   const p = j.progress ?? {}
   const active = j.status === 'pending' || j.status === 'running'
   return (
@@ -836,19 +842,13 @@ function ChannelForm({
     }
   }
 
-  async function remove() {
-    if (
-      !channel ||
-      !confirm(
-        `Xóa kênh "${channel.name}"?
-
-Zalo của kênh sẽ được đăng xuất và kênh biến mất khỏi danh sách. ` +
-          `Hội thoại và tin nhắn cũ vẫn được giữ (xem lại trong Hội thoại, Báo cáo, Xuất dữ liệu, tên kênh kèm "(đã xóa)").`,
-      )
-    )
-      return
+  // Xóa kênh: hỏi giữ hay xóa luôn tin nhắn của kênh
+  const [askRemove, setAskRemove] = useState(false)
+  async function remove(purge: boolean) {
+    if (!channel) return
+    if (purge && !confirm(`Xóa vĩnh viễn ${(channel.conversations ?? 0).toLocaleString('vi-VN')} hội thoại và toàn bộ tin nhắn của kênh "${channel.name}"? Không khôi phục được.`)) return
     try {
-      await api(`/channels/${channel.id}`, { method: 'DELETE' })
+      await api(`/channels/${channel.id}${purge ? '?purge=1' : ''}`, { method: 'DELETE' })
       onSaved()
     } catch (err: any) {
       setError(err.message)
@@ -918,10 +918,31 @@ Zalo của kênh sẽ được đăng xuất và kênh biến mất khỏi danh 
           </label>
         )}
         {!channel && <p className="muted small">Lưu xong, bấm "Quét QR đăng nhập" trên thẻ kênh để gắn tài khoản Zalo.</p>}
+        {channel && askRemove && (
+          <div className="stack" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, gap: 8 }}>
+            <b>Xóa kênh "{channel.name}"?</b>
+            <span className="muted small">
+              Zalo của kênh sẽ được đăng xuất và kênh biến mất khỏi danh sách. Kênh có {(channel.conversations ?? 0).toLocaleString('vi-VN')} hội
+              thoại: giữ lại hay xóa luôn tin nhắn?
+            </span>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="btn outline sm" onClick={() => remove(false)}>
+                Xóa kênh, giữ tin nhắn
+              </button>
+              <button type="button" className="btn danger sm" onClick={() => remove(true)}>
+                Xóa kênh và toàn bộ tin nhắn
+              </button>
+              <button type="button" className="btn ghost sm" onClick={() => setAskRemove(false)}>
+                Thôi
+              </button>
+            </div>
+            <span className="muted small">Giữ tin nhắn: vẫn xem lại trong Hội thoại, Báo cáo, Xuất dữ liệu (tên kênh kèm "(đã xóa)").</span>
+          </div>
+        )}
         {error && <div className="form-error">{error}</div>}
         <div className="row end">
           {channel && isSuper && (
-            <button type="button" className="btn ghost" onClick={remove}>
+            <button type="button" className="btn ghost" onClick={() => setAskRemove((v) => !v)}>
               Xóa kênh
             </button>
           )}

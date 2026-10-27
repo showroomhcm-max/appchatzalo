@@ -1,5 +1,6 @@
 import { Zalo, ThreadType, LoginQRCallbackEventType, GroupMessage, type API, type Credentials, type Message, type Reaction } from "zca-js";
 import { all, get, logEvent, run } from "./db.js";
+import { requestPcSync } from "./pc-sync.js";
 import { markReceipt } from "./store.js";
 import { bus } from "./bus.js";
 import {
@@ -310,6 +311,8 @@ export class ChannelSession implements ChannelAdapter {
       if (this.pendingAutoSync) {
         this.pendingAutoSync = false;
         void this.syncHistory(90, "tự động sau khi quét QR").catch((e) => console.warn(`[zalo#${this.channelId}] Đồng bộ tin cũ lỗi:`, e?.message ?? e));
+        // Tin trước lúc gắn tài khoản chỉ còn trên Zalo PC: giao luôn cho máy đồng bộ (nếu đã cài)
+        if (requestPcSync(this.channelId, 90, null, true)) this.log("Đồng bộ tin cũ: đã giao việc cho máy đồng bộ Zalo PC (90 ngày)");
       } else if (this.history.state !== "running" && !this.catchingUp) {
         // Bù tin khách nhắn trong lúc app / NAS tắt hoặc mất mạng
         void this.catchUp(api).catch((e) => console.warn(`[zalo#${this.channelId}] Bù tin lỗi:`, e?.message ?? e));
@@ -633,7 +636,7 @@ export class ChannelSession implements ChannelAdapter {
       }
       this.log(`Lịch sử từng nhóm: ${ok} nhóm lấy được, thêm mới ${groupAdded} tin; ${st.groupsFailed} nhóm lỗi${firstError ? ` (lỗi đầu: ${firstError})` : ""}`);
       if (!st.fetched)
-        st.note = "Zalo không trả tin cũ nào. Zalo chỉ giữ tin trên máy chủ kể từ lúc tài khoản được gắn vào app; tin trước đó chỉ còn trên điện thoại.";
+        st.note = "Zalo web không trả tin cũ nào (chỉ giữ tin kể từ lúc tài khoản được gắn vào app). Tin cũ hơn lấy từ Zalo PC qua máy đồng bộ, xem dòng Zalo PC bên dưới.";
       Object.assign(st, { state: "done", step: undefined, finishedAt: Date.now() });
     } catch (e: any) {
       Object.assign(st, { state: "error", error: e?.message ?? String(e), finishedAt: Date.now() });

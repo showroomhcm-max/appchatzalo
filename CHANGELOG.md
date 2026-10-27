@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.29.2 — 27/10/2026
+
+- **Quét QR gắn tài khoản Zalo xong là tự lấy tin cũ từ Zalo PC**: nếu đã cài máy đồng bộ, app tự giao việc 90 ngày cho máy có Zalo PC cùng tài khoản, không cần bấm thêm nút. Dưới nút "Đồng bộ tin nhắn cũ" luôn hiện dòng **Zalo PC** (bao nhiêu máy đang bật), thông báo "Zalo không trả tin cũ" ghi rõ tin cũ hơn sẽ lấy từ Zalo PC.
+- **Xóa sạch dữ liệu chat** (Super Admin, qua máy chủ, phải gõ xác nhận `XOA SACH`): dùng trước khi giao app cho nhân viên. Đăng xuất và xóa mọi kênh, xóa hết hội thoại, tin nhắn, khách, ghi chú, đơn, đánh giá, dữ liệu AI, nhãn, mẫu tin, cài đặt kết nối, máy đồng bộ Zalo PC, file đính kèm, sao lưu và nhật ký; thu nhỏ file dữ liệu để tin đã xóa không còn trên ổ đĩa. Giữ tài khoản nhân viên, bộ phận, nhóm quyền. Xong app tự khởi động lại.
+- **Xóa kênh: hỏi giữ hay xóa luôn tin nhắn**. Bấm "Xóa kênh" hiện 2 lựa chọn: **Xóa kênh, giữ tin nhắn** (như trước, tên kênh kèm "(đã xóa)") hoặc **Xóa kênh và toàn bộ tin nhắn** (xóa hẳn hội thoại, tin, chỉ mục tìm kiếm của kênh, hỏi lại trước khi xóa). Xóa kênh cũng dừng việc đồng bộ Zalo PC đang chờ của kênh đó.
+
 ## v3.29.1 — 27/10/2026
 
 - **Cài máy đồng bộ Zalo PC chỉ bằng vài cú bấm**: Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC › **Thêm máy** › **Tải bộ cài** (.zip). Giải nén, bấm đúp **CAI DAT.cmd** là xong: tự cài Node.js nếu máy chưa có, tự gắn mã máy (không phải chép mã / gõ lệnh), chạy nền và tự chạy khi mở máy. Bộ cài kèm **GO CAI DAT.cmd** để gỡ. Nút **Bộ cài** cạnh mỗi máy để tải lại (đổi mã, bộ cũ hết hiệu lực).

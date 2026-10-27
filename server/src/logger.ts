@@ -54,6 +54,17 @@ function write(level: LogLevel, args: unknown[]) {
   }
 }
 
+/** Xóa nhật ký trong bộ nhớ và file nhật ký (dùng khi xóa sạch dữ liệu chat). */
+export function clearLogs() {
+  buffer.length = 0;
+  try {
+    for (const f of fs.readdirSync(LOG_DIR)) fs.writeFileSync(path.join(LOG_DIR, f), "");
+  } catch {
+    /* thư mục đã bị xóa */
+  }
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
 let installed = false;
 /** Gắn vào console một lần lúc khởi động. */
 export function installLogger() {
