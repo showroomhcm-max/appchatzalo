@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.29.0 — 27/10/2026
+
+- **Nút "Đồng bộ tin nhắn cũ" lấy luôn tin cũ từ Zalo PC**: chỉ cần một máy tính có Zalo PC đăng nhập **cùng tài khoản Zalo** với kênh. Bấm nút → app giao việc → máy đó tự đọc 90 ngày gần nhất từ Zalo PC và nhập lên; dưới nút hiện tiến độ (đang chờ máy / máy … đang đọc x/y hội thoại, đã nhập n tin / xong), có nút **Hủy**. Máy đang mở Zalo PC tài khoản khác thì không nhận và app ghi rõ lý do. Kênh đang mất kết nối (đã từng quét QR) vẫn bấm đồng bộ qua Zalo PC được.
+- **Máy đồng bộ Zalo PC** (Cài đặt › Kết nối kênh, Super Admin): **Thêm máy** → tải chương trình `dong-bo-zalo-pc.mjs` + chép một lệnh chạy trên máy có Zalo PC (cần Node.js). Chương trình chạy nền, tự chạy khi mở máy, hỏi app mỗi 10 giây; mã máy chỉ dùng được cho việc đồng bộ, xóa máy là mã hết hiệu lực. Danh sách máy hiện đang bật / tắt, Zalo PC đang mở kênh nào.
+- Hướng dẫn cập nhật: `docs/them-kenh-zalo-va-nhap-lich-su.md`.
+
 ## v3.28.1 — 27/10/2026
 
 - **Trợ lý AI dùng được DeepSeek**: ô Nhà cung cấp AI có thêm DeepSeek (cạnh Claude, Grok). Lưu khóa DeepSeek (`sk-…`) là app tự lấy danh sách model của tài khoản, chọn sẵn model nhanh ("flash") để chấm từng hội thoại và model mạnh hơn ("pro") để tổng hợp cuối ngày. Tài khoản hết tiền thì báo rõ "hết tiền, nạp thêm".

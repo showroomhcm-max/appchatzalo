@@ -21,6 +21,8 @@ COPY --from=build /app/server/package.json ./
 COPY --from=build /app/web/dist /app/web/dist
 # Script tự cập nhật trên NAS đi kèm bản build: NAS tự lấy bản mới của script này
 COPY deploy/nas/cap-nhat.sh /app/deploy/cap-nhat.sh
+# Chương trình đồng bộ Zalo PC: Super Admin tải từ app về máy có Zalo PC
+COPY scripts/dong-bo-zalo-pc.mjs /app/agent/dong-bo-zalo-pc.mjs
 VOLUME /app/data
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

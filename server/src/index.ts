@@ -9,6 +9,7 @@ import { config } from "./config.js";
 import { ensureAdmin, applySuperAdmins } from "./db.js";
 import { appRouter, publicRouter, errorHandler } from "./routes.js";
 import { linkRouter } from "./report-link.js";
+import { pcAgentRouter } from "./pc-sync.js";
 import { setupRealtime } from "./realtime.js";
 import { setupWebhooks } from "./webhooks.js";
 import { startAlerts } from "./alerts.js";
@@ -63,6 +64,8 @@ app.use("/api/oauth", oauthRouter);
 app.use("/api/v1", publicRouter);
 // App báo cáo công việc CSKH (khóa kết nối riêng, chỉ các đường /api/link/*)
 app.use("/api/link", linkRouter);
+// Chương trình đồng bộ Zalo PC trên máy nhân viên / laptop (xác thực bằng mã máy, không phải phiên đăng nhập)
+app.use("/api/pc-agent", pcAgentRouter, errorHandler);
 app.use("/api", appRouter);
 app.use("/api", errorHandler);
 

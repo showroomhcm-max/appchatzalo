@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, History, KeyRound, LogIn, LogOut, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ArrowRightCircle, CheckCircle2, ExternalLink, History, KeyRound, LogIn, LogOut, Monitor, Plus, QrCode, RefreshCw, Search, Settings2, Smartphone, Users } from 'lucide-react'
 import { api, authUrl } from '../api'
 import { useApp } from '../store'
 import type { Channel, User, ZaloStatus } from '../types'
@@ -9,7 +9,7 @@ import { fold } from '../util'
 import type { Platform } from '../types'
 
 export default function Channels({ manage = false }: { manage?: boolean }) {
-  const { channels: allChannels, chatChannels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
+  const { user, channels: allChannels, chatChannels, zaloStatuses, departments, users, reloadSettings, reloadUsers, can: allowed, workingChannelIds, setWorkingChannels } = useApp()
   // Trang Kênh Chat (chọn kênh chat) không hiện Zalo nhân viên đang giám sát; trang Kết nối kênh hiện tất cả
   const channels = manage ? allChannels : chatChannels
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
@@ -212,6 +212,7 @@ export default function Channels({ manage = false }: { manage?: boolean }) {
       </div>
 
       {isAdmin && <PublicLink />}
+      {manage && !!user.super_admin && <PcAgentsPanel />}
       {isAdmin && channels.length > 0 && <AssignmentMatrix />}
 
       <details className="card notice">
@@ -231,8 +232,8 @@ export default function Channels({ manage = false }: { manage?: boolean }) {
             tự.
           </li>
           <li>
-            <b>Zalo cá nhân:</b> mỗi tài khoản chỉ cho <b>một phiên web</b>, đừng mở chat.zalo.me hoặc Zalo PC bằng tài khoản đã gắn vào
-            app. Kết nối dùng thư viện không chính thức (zca-js), Zalo có thể khóa tài khoản nếu gửi hàng loạt.
+            <b>Zalo cá nhân:</b> mỗi tài khoản chỉ cho <b>một phiên web</b>, đừng mở chat.zalo.me bằng tài khoản đã gắn vào app (Zalo PC
+            thì dùng song song được, và cần cho việc đồng bộ tin cũ). Kết nối dùng thư viện không chính thức (zca-js), Zalo có thể khóa tài khoản nếu gửi hàng loạt.
           </li>
           <li>Tin gửi trực tiếp từ điện thoại / trang quản lý vẫn được lưu nhưng ghi "Gửi từ điện thoại", không gắn tên nhân viên.</li>
           {isAdmin && <li>Tắt kênh thì giữ nguyên lịch sử chat để training. Chỉ xóa được kênh chưa có hội thoại nào.</li>}
@@ -636,6 +637,8 @@ function ChannelCard({ channel: c, status, onEdit }: { channel: Channel; status:
                   <RefreshCw size={14} /> Thử phiên đã lưu
                 </button>
               )}
+              {/* Chưa kết nối vẫn đồng bộ tin cũ qua Zalo PC được (đã biết tài khoản từ lần quét QR trước) */}
+              {c.zalo_uid && <HistorySyncButton channelId={c.id} />}
             </>
           ) : null}
         </div>
@@ -657,6 +660,64 @@ type HistorySync = {
   groupsFailed?: number
   note?: string
   error?: string
+  /** Việc đồng bộ qua Zalo PC (chương trình chạy nền trên máy có Zalo PC cùng tài khoản) */
+  pc?: PcSync
+}
+type PcSync = {
+  job: {
+    id: number
+    status: 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+    days: number
+    created_at: number
+    started_at: number | null
+    finished_at: number | null
+    agent: string | null
+    progress: { convsDone?: number; convsTotal?: number; read?: number; added?: number; conversations?: number } | null
+    declines: { agent: string; reason: string; at: number }[]
+    error: string | null
+  } | null
+  agents: number
+  online: number
+}
+const hhmm = (t: number) => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+const nf = (n: number | undefined) => (n ?? 0).toLocaleString('vi-VN')
+
+/** Dòng trạng thái đồng bộ qua Zalo PC dưới nút "Đồng bộ tin nhắn cũ". */
+function PcSyncLine({ pc, onCancel }: { pc: PcSync; onCancel: () => void }) {
+  const j = pc.job
+  if (!j) return null
+  const p = j.progress ?? {}
+  const active = j.status === 'pending' || j.status === 'running'
+  return (
+    <div className={`small ${j.status === 'error' ? 'err-text' : 'muted'}`} style={{ flexBasis: '100%' }}>
+      <b>Zalo PC:</b>{' '}
+      {j.status === 'pending' &&
+        (pc.online
+          ? `đang chờ máy có Zalo PC cùng tài khoản nhận việc (${pc.online} máy đang bật)…`
+          : pc.agents
+            ? 'chưa có máy đồng bộ nào đang bật. Bật máy có Zalo PC (chương trình tự chạy khi mở máy).'
+            : 'chưa cài máy đồng bộ. Super Admin thêm ở mục "Máy đồng bộ Zalo PC" bên dưới.')}
+      {j.status === 'running' &&
+        (p.convsTotal
+          ? `máy "${j.agent}" đang đọc Zalo PC: ${nf(p.convsDone)}/${nf(p.convsTotal)} hội thoại, đã nhập mới ${nf(p.added)} tin.`
+          : `máy "${j.agent}" đang mở Zalo PC để đọc…`)}
+      {j.status === 'done' &&
+        `xong lúc ${hhmm(j.finished_at ?? Date.now())} (máy "${j.agent}"): nhập mới ${nf(p.added)} tin trong ${j.days} ngày gần nhất${p.read ? `, đọc ${nf(p.read)} tin` : ''}.`}
+      {j.status === 'error' && `dừng giữa chừng: ${j.error}. Đã nhập ${nf(p.added)} tin.`}
+      {j.status === 'cancelled' && `đã hủy. Đã nhập ${nf(p.added)} tin.`}
+      {j.status === 'pending' &&
+        j.declines.map((d) => (
+          <div key={d.agent}>
+            Máy "{d.agent}": {d.reason}.
+          </div>
+        ))}
+      {active && (
+        <button className="btn ghost sm" onClick={onCancel} style={{ marginLeft: 8 }}>
+          Hủy
+        </button>
+      )}
+    </div>
+  )
 }
 
 /** Kéo tin cũ Zalo còn giữ về app (tự chạy khi vừa quét QR gắn tài khoản, hoặc bấm tay). */
@@ -671,37 +732,48 @@ function HistorySyncButton({ channelId }: { channelId: number }) {
         const s = await api<HistorySync>(`/channels/${channelId}/sync-history`)
         if (!alive) return
         setSync(s)
-        if (s.state === 'running') timer = setTimeout(poll, 2000)
+        const pcActive = s.pc?.job?.status === 'pending' || s.pc?.job?.status === 'running'
+        if (s.state === 'running' || pcActive) timer = setTimeout(poll, s.state === 'running' ? 2000 : 4000)
       } catch {
         /* bỏ qua: thử lại khi bấm nút */
       }
     }
-    if (!sync || sync.state === 'running') poll()
+    if (!sync || sync.state === 'running' || pcActive) poll()
     return () => {
       alive = false
       clearTimeout(timer)
     }
-  }, [channelId, sync?.state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId, sync?.state, sync?.pc?.job?.status, sync?.pc?.job?.id])
 
   async function start() {
     try {
-      await api(`/channels/${channelId}/sync-history`, { method: 'POST' })
-      setSync({ state: 'running', step: 'Bắt đầu', fetched: 0, added: 0 })
+      const s = await api<HistorySync>(`/channels/${channelId}/sync-history`, { method: 'POST', body: { days: 90 } })
+      setSync(s.state === 'idle' ? s : { ...s, state: s.state === 'done' || s.state === 'error' ? 'running' : s.state, step: s.step ?? 'Bắt đầu', fetched: 0, added: 0 })
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+  async function cancel() {
+    try {
+      const r = await api<{ pc: PcSync }>(`/channels/${channelId}/sync-history`, { method: 'DELETE' })
+      setSync((prev) => (prev ? { ...prev, pc: r.pc } : prev))
     } catch (e: any) {
       alert(e.message)
     }
   }
 
+  const pcActive = sync?.pc?.job?.status === 'pending' || sync?.pc?.job?.status === 'running'
   const running = sync?.state === 'running'
   return (
     <>
       <button
         className="btn outline sm"
-        disabled={running}
+        disabled={running || pcActive}
         onClick={start}
-        title="Kéo các tin nhắn cũ mà Zalo còn giữ trên máy chủ về app (tin đã có thì bỏ qua)"
+        title="Kéo tin cũ về app: tin Zalo còn giữ từ lúc gắn tài khoản, và tin 90 ngày gần nhất từ Zalo PC trên máy đồng bộ cùng tài khoản (tin đã có thì bỏ qua)"
       >
-        <History size={14} className={running ? 'spin' : undefined} /> {running ? 'Đang đồng bộ tin cũ…' : 'Đồng bộ tin nhắn cũ'}
+        <History size={14} className={running || pcActive ? 'spin' : undefined} /> {running || pcActive ? 'Đang đồng bộ tin cũ…' : 'Đồng bộ tin nhắn cũ'}
       </button>
       {sync && sync.state !== 'idle' && (
         <div className={`small ${sync.state === 'error' ? 'err-text' : 'muted'}`} style={{ flexBasis: '100%' }}>
@@ -712,6 +784,7 @@ function HistorySyncButton({ channelId }: { channelId: number }) {
           {sync.state === 'error' && `Đồng bộ dừng giữa chừng: ${sync.error}. Đã thêm ${sync.added ?? 0} tin.`}
         </div>
       )}
+      {sync?.pc && <PcSyncLine pc={sync.pc} onCancel={cancel} />}
     </>
   )
 }
@@ -1081,5 +1154,138 @@ function FacebookPagePicker({ pendingKey, onClose, onDone }: { pendingKey: strin
         </div>
       </div>
     </Modal>
+  )
+}
+
+type PcAgent = { id: number; name: string; created_at: number; last_seen_at: number | null; online: boolean; channel: string | null; host: string | null; version: string | null }
+
+/** Super Admin: các máy có Zalo PC chạy chương trình đồng bộ tin cũ (nút "Đồng bộ tin nhắn cũ" giao việc cho máy này). */
+function PcAgentsPanel() {
+  const [list, setList] = useState<PcAgent[] | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [created, setCreated] = useState<{ name: string; key: string } | null>(null)
+  const reload = () => api<PcAgent[]>('/pc-agents').then(setList).catch(() => setList([]))
+  useEffect(() => {
+    reload()
+    const t = setInterval(reload, 15_000)
+    return () => clearInterval(t)
+  }, [])
+
+  async function create(e: FormEvent) {
+    e.preventDefault()
+    try {
+      const r = await api<{ name: string; key: string }>('/pc-agents', { body: { name } })
+      setCreated(r)
+      setAdding(false)
+      setName('')
+      reload()
+    } catch (err: any) {
+      alert(err.message)
+    }
+  }
+  async function remove(a: PcAgent) {
+    if (!confirm(`Xóa máy "${a.name}"? Chương trình trên máy đó sẽ không nhận việc nữa.`)) return
+    try {
+      await api(`/pc-agents/${a.id}`, { method: 'DELETE' })
+      reload()
+    } catch (err: any) {
+      alert(err.message)
+    }
+  }
+  const command = created ? `node dong-bo-zalo-pc.mjs --ket-noi ${created.key}` : ''
+
+  return (
+    <section className="card stack">
+      <div className="row wrap">
+        <h3 className="grow">
+          <Monitor size={18} /> Máy đồng bộ Zalo PC
+        </h3>
+        <button className="btn outline sm" onClick={() => setAdding(true)}>
+          <Plus size={14} /> Thêm máy
+        </button>
+      </div>
+      <p className="muted small">
+        Zalo chỉ cho app lấy tin kể từ lúc gắn tài khoản. Tin cũ hơn lấy từ <b>Zalo PC</b>: cài chương trình đồng bộ trên máy có Zalo PC, rồi bấm{' '}
+        <b>Đồng bộ tin nhắn cũ</b> ở kênh — máy nào đang mở Zalo PC <b>cùng tài khoản</b> với kênh sẽ tự đọc và nhập 90 ngày gần nhất (Zalo PC tắt / mở lại
+        vài phút trong lúc đọc).
+      </p>
+      {list && list.length > 0 ? (
+        <div className="stack sm">
+          {list.map((a) => (
+            <div key={a.id} className="row wrap member-row">
+              <span className={`status-dot ${a.online ? 'ok' : 'bad'}`} />
+              <span className="grow">
+                <b>{a.name}</b>
+                <span className="small muted">
+                  {' '}
+                  · {a.online ? 'đang bật' : a.last_seen_at ? `tắt từ ${new Date(a.last_seen_at).toLocaleString('vi-VN', { hour12: false })}` : 'chưa kết nối lần nào'}
+                  {a.channel ? ` · Zalo PC: ${a.channel}` : ''}
+                  {a.host ? ` · ${a.host}` : ''}
+                </span>
+              </span>
+              <button className="btn ghost sm" onClick={() => remove(a)}>
+                Xóa
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        list && <div className="muted small">Chưa có máy nào.</div>
+      )}
+
+      {adding && (
+        <Modal title="Thêm máy đồng bộ Zalo PC" onClose={() => setAdding(false)}>
+          <form className="stack" onSubmit={create}>
+            <label className="field">
+              <span>Tên máy</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Laptop anh Hậu" autoFocus maxLength={60} />
+            </label>
+            <div className="row end">
+              <button type="button" className="btn ghost" onClick={() => setAdding(false)}>
+                Hủy
+              </button>
+              <button className="btn primary" disabled={!name.trim()}>
+                Tạo mã máy
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {created && (
+        <Modal title={`Cài chương trình cho máy "${created.name}"`} onClose={() => setCreated(null)}>
+          <div className="stack">
+            <ol className="stack sm" style={{ paddingLeft: 18, margin: 0 }}>
+              <li>
+                Trên máy có Zalo PC: cài <b>Node.js</b> (bản LTS ở{' '}
+                <a href="https://nodejs.org" target="_blank" rel="noreferrer">
+                  nodejs.org
+                </a>
+                ) nếu máy chưa có.
+              </li>
+              <li>
+                Tải chương trình: <a href="/api/pc-agents/script">dong-bo-zalo-pc.mjs</a> (lưu vào thư mục Tải về).
+              </li>
+              <li>
+                Mở thư mục Tải về, gõ <code>powershell</code> vào thanh địa chỉ rồi Enter, dán lệnh dưới đây rồi Enter:
+                <div className="secret-box">{command}</div>
+                <button className="btn outline sm" onClick={() => navigator.clipboard.writeText(command)}>
+                  Chép lệnh
+                </button>
+              </li>
+              <li>Chương trình chạy nền và tự chạy mỗi khi mở máy. Đăng nhập Zalo PC bằng tài khoản Zalo của kênh cần đồng bộ.</li>
+            </ol>
+            <div className="banner warn inline">
+              <AlertTriangle size={16} /> Mã máy chỉ hiện một lần và cho phép gửi tin vào app — không gửi cho người ngoài. Mất mã thì xóa máy rồi tạo lại.
+            </div>
+            <div className="row end">
+              <button className="btn primary" onClick={() => setCreated(null)}>
+                Xong
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </section>
   )
 }
