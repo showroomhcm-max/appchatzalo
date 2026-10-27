@@ -7,7 +7,7 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
-## v3.28.1 — 27/10/2026 (chưa phát hành; v3.28.0 đã phát hành trước cho tính năng nhập Zalo PC)
+## v3.28.1 — 27/10/2026
 
 - **Trợ lý AI dùng được DeepSeek**: ô Nhà cung cấp AI có thêm DeepSeek (cạnh Claude, Grok). Lưu khóa DeepSeek (`sk-…`) là app tự lấy danh sách model của tài khoản, chọn sẵn model nhanh ("flash") để chấm từng hội thoại và model mạnh hơn ("pro") để tổng hợp cuối ngày. Tài khoản hết tiền thì báo rõ "hết tiền, nạp thêm".
 
