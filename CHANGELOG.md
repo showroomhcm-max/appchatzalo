@@ -7,7 +7,7 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
-## Chưa phát hành
+## v3.27.0 — 27/10/2026
 
 - **Chấm tư vấn theo kịch bản (AI)**: AI đọc từng phiên chat ở mọi kênh, chấm từng bước của kịch bản công ty (Đạt / Không đạt / Không áp dụng / Không chấm). Bước "Đạt" phải kèm câu trích nguyên văn của nhân viên, máy chủ kiểm lại; điểm do máy chủ tính (số bước đạt ÷ số bước được tính). Thiếu dữ liệu thì không chấm (chưa trả lời, khách nhắn quá ít, thiếu đoạn đầu khi Zalo mới gắn vào app). Kết quả lưu theo nội dung phiên, không có tin mới thì không chấm lại.
   - Cài đặt › Chấm tư vấn (kịch bản): sửa các bước, tiêu chí, câu mẫu, mốc Đạt chuẩn / Cần cải thiện, bật tự chấm. Sửa kịch bản thì lên bản mới.
