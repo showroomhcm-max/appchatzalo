@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## Chưa phát hành
+
+- Thao tác đúng lúc máy chủ đang khởi động lại (cập nhật bản mới) hoặc NAS mất mạng: báo "Máy chủ đang khởi động lại hoặc mất kết nối… đợi khoảng 30 giây rồi thử lại" thay vì chỉ hiện "Lỗi 530".
+
 ## v3.26.3 — 27/10/2026
 
 - NAS (`cap-nhat.sh`): tự sửa lỗi web báo Cloudflare 1033 sau khi dừng / bật tay container — container app hoặc đường hầm còn chạy trên mạng cũ của `chat-sieutoc-net` thì tự khởi động lại (mỗi phút kiểm một lần). Cần chép `cap-nhat.sh.moi` đè lên `cap-nhat.sh` trên NAS một lần. `SU-CO.md` thêm mục E (lỗi 1033).

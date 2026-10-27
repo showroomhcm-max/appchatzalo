@@ -45,6 +45,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   const res = await fetch(`/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body })
   if (res.status === 401 && !path.startsWith('/auth/login')) onUnauthorized()
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text()
+  // 502–504 / 520–530: máy chủ đang khởi động lại (cập nhật bản mới) hoặc NAS mất mạng — Cloudflare trả trang lỗi, không phải JSON
+  if (!res.ok && (data as any)?.error === undefined && (res.status === 502 || res.status === 503 || res.status === 504 || (res.status >= 520 && res.status <= 530)))
+    throw new ApiError(res.status, `Máy chủ đang khởi động lại hoặc mất kết nối (lỗi ${res.status}). Đợi khoảng 30 giây rồi thử lại.`)
   if (!res.ok) throw new ApiError(res.status, (data as any)?.error ?? `Lỗi ${res.status}`)
   return data as T
 }
