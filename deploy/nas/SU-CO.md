@@ -51,6 +51,12 @@ Tạo file `.env` trong thư mục dự án trên NAS, ghi `APP_TAG=<số bản 
 - Ngắn (dưới 30 phút): chờ. UPS giữ NAS; có mạng lại app tự kết nối và Zalo gửi bù tin.
 - Kéo dài và cần làm việc gấp: mang laptop ra chỗ có mạng, làm như mục C (lấy bản sao lưu trên Drive).
 
+### E. Web báo "Error 1033 – Cloudflare Tunnel error"
+Đường hầm Cloudflare trên NAS không kết nối (thường sau khi dừng / bật tay từng container). Dữ liệu không sao.
+- Đợi 1–2 phút: tác vụ tự cập nhật (từ v3.26.3) tự phát hiện container chạy trên mạng cũ và khởi động lại.
+- Vẫn lỗi: Container Manager › **Dự án** › `chat-sieutoc` › **Dừng** › **Hành động › Xây dựng**.
+- Muốn tắt / bật app: luôn dừng / khởi động **cả dự án**, không dừng riêng từng container.
+
 ---
 
 ## 3. Quay về NAS sau khi sửa xong

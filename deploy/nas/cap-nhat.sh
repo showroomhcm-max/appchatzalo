@@ -78,6 +78,23 @@ else
   fi
 fi
 
+# Container "lạc mạng": app và đường hầm Cloudflare dùng chung mạng của chat-sieutoc-net. Nếu riêng net bị khởi động lại
+# (dừng / bật tay trong Container Manager…), container nào còn chạy trên mạng cũ thì mất internet mà Docker vẫn báo
+# "đang chạy" → web báo lỗi Cloudflare 1033. Phát hiện bằng cách so mạng của từng container rồi khởi động lại container lạc.
+netns() {
+  pid=$(docker container inspect -f '{{if .State.Running}}{{.State.Pid}}{{end}}' "$1" 2>/dev/null)
+  [ -n "$pid" ] && [ "$pid" != "0" ] && readlink "/proc/$pid/ns/net" 2>/dev/null
+}
+base=$(netns chat-sieutoc-net)
+if [ -n "$base" ]; then
+  for name in chat-sieutoc chat-sieutoc-tunnel; do
+    ns=$(netns "$name")
+    if [ -n "$ns" ] && [ "$ns" != "$base" ]; then
+      docker restart "$name" >/dev/null 2>&1 && echo "$(now) $name chạy trên mạng cũ (net đã khởi động lại): đã khởi động lại" >> "$LOG"
+    fi
+  done
+fi
+
 # Dọn container kẹt tên tạm còn sót (vd "d0e803f0337e_chat-sieutoc") khi container đúng tên đang chạy
 for name in chat-sieutoc chat-sieutoc-net chat-sieutoc-tunnel; do
   if docker container inspect "$name" >/dev/null 2>&1; then

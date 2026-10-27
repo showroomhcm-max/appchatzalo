@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.26.3 — 27/10/2026
+
+- NAS (`cap-nhat.sh`): tự sửa lỗi web báo Cloudflare 1033 sau khi dừng / bật tay container — container app hoặc đường hầm còn chạy trên mạng cũ của `chat-sieutoc-net` thì tự khởi động lại (mỗi phút kiểm một lần). Cần chép `cap-nhat.sh.moi` đè lên `cap-nhat.sh` trên NAS một lần. `SU-CO.md` thêm mục E (lỗi 1033).
+- Đã kiểm thực tế bù tin (v3.26.2): dừng app vài phút, nhắn thử vào Zalo SR, bật lại → app bù đủ 5 tin.
+
 ## v3.26.2 — 27/10/2026
 
 - **Bù tin khi app / NAS tắt hoặc mất mạng**: kết nối lại Zalo là app hỏi Zalo các tin kể từ tin mới nhất đã có, lật tiếp đến hiện tại, rồi đưa vào hộp thư như tin mới (chưa đọc, cảnh báo). Trước đây app hỏi không kèm mốc nên Zalo luôn trả cùng một lô tin cũ (12–15/10), tin khách nhắn trong lúc tắt không được bù. Nhật ký ghi rõ mỗi lần bù: từ lúc nào, Zalo trả bao nhiêu tin, thêm mới bao nhiêu.
