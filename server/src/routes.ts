@@ -42,13 +42,14 @@ import { bus } from "./bus.js";
 import { openConversationWith, searchContacts, searchMessages } from "./people.js";
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
+import { qaRouter } from "./qa.js";
 import { alertConfig, closeAlertsOfGone, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
 import { createMonitorAccount, monitorAccounts, monitorConfig, monitorConversations, monitorFlags, reviewFlag, saveMonitorConfig, setChannelMode } from "./monitor.js";
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, isOthersMonitorChannel, scopeOf, type Scope } from "./access.js";
-import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
+import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, loadXaiModels, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
 import { workReport } from "./work-report.js";
@@ -662,6 +663,7 @@ appRouter.get("/system/public-url", (_req, res) => {
 // Kênh chat, bộ phận, tag, tin nhắn mẫu, kết nối nền tảng
 appRouter.use(settingsRouter);
 appRouter.use(platformRouter);
+appRouter.use(qaRouter);
 
 /** Lấy hội thoại và kiểm tra người đang đăng nhập có được xem không (không được xem → 404 như không tồn tại). */
 function visibleConversation(req: Request, id: string) {
@@ -1131,13 +1133,21 @@ appRouter.get(
 );
 
 // ───────────── Trợ lý AI giám sát ─────────────
-appRouter.get("/ai/config", requirePerm("integrations.manage"), (_req, res) => res.json(publicAiConfig()));
+appRouter.get(
+  "/ai/config",
+  requirePerm("integrations.manage"),
+  h(async (_req, res) => {
+    // Grok: lấy danh sách model theo khóa (lỗi thì vẫn trả cài đặt, danh sách trống)
+    if (aiConfig().provider === "xai") await loadXaiModels().catch(() => []);
+    res.json(publicAiConfig());
+  }),
+);
 appRouter.put(
   "/ai/config",
   requirePerm("integrations.manage"),
-  h((req, res) => {
+  h(async (req, res) => {
     try {
-      res.json(saveAiConfig(req.body, req.user!.id));
+      res.json(await saveAiConfig(req.body, req.user!.id));
     } catch (e: any) {
       throw new HttpError(400, e.message);
     }

@@ -249,10 +249,18 @@ export function DigestView({ channelId, holder }: { channelId: number; holder: s
   )
 }
 
+type Provider = 'anthropic' | 'xai'
 type AiCfg = {
   enabled: boolean
+  provider: Provider
+  providers: Record<Provider, string>
   apiKey: string
   hasKey: boolean
+  claudeKey: string
+  xaiKey: string
+  hasClaudeKey: boolean
+  hasXaiKey: boolean
+  modelsByProvider: Record<Provider, { id: string; label: string }[]>
   scanModel: string
   digestModel: string
   scanEveryMin: number
@@ -279,6 +287,20 @@ export function AiSettings() {
   if (denied) return null
   if (!cfg) return null
   const set = (p: Partial<AiCfg>) => setCfg({ ...cfg, ...p })
+  const pname = cfg.providers[cfg.provider]
+  const models = cfg.modelsByProvider[cfg.provider]
+  const hasKeyFor = cfg.provider === 'xai' ? cfg.hasXaiKey : cfg.hasClaudeKey
+  const savedKey = cfg.provider === 'xai' ? cfg.xaiKey : cfg.claudeKey
+  const modelSelect = (value: string, onChange: (v: string) => void) => (
+    <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+      {!models.some((m) => m.id === value) && <option value={value}>{models.length ? value : `${value} (lưu khóa để tải danh sách model)`}</option>}
+      {models.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.label}
+        </option>
+      ))}
+    </select>
+  )
 
   async function save(enabled?: boolean) {
     setBusy('save')
@@ -287,6 +309,7 @@ export function AiSettings() {
       const c = await api<AiCfg>('/ai/config', {
         method: 'PUT',
         body: {
+          provider: cfg!.provider,
           apiKey: key || undefined,
           scanModel: cfg!.scanModel,
           digestModel: cfg!.digestModel,
@@ -300,7 +323,7 @@ export function AiSettings() {
       })
       setCfg(c)
       setKey('')
-      setMsg({ ok: true, text: enabled === undefined ? 'Đã lưu' : enabled ? 'Đã bật Trợ lý AI' : 'Đã tắt Trợ lý AI' })
+      setMsg({ ok: true, text: enabled === undefined ? `Đã lưu (${c.providers[c.provider]})` : enabled ? 'Đã bật Trợ lý AI' : 'Đã tắt Trợ lý AI' })
     } catch (e: any) {
       setMsg({ ok: false, text: e.message })
     } finally {
@@ -311,8 +334,8 @@ export function AiSettings() {
     setBusy('test')
     setMsg(null)
     try {
-      const r = await api<{ ok: boolean; ms: number; model: string }>('/ai/test', { body: { apiKey: key || undefined } })
-      setMsg({ ok: true, text: `AI trả lời được (${r.ms} ms, ${r.model})` })
+      const r = await api<{ ok: boolean; ms: number; model: string; provider: string }>('/ai/test', { body: { provider: cfg!.provider, apiKey: key || undefined } })
+      setMsg({ ok: true, text: `${r.provider} trả lời được (${r.ms} ms, ${r.model})` })
     } catch (e: any) {
       setMsg({ ok: false, text: e.message })
     } finally {
@@ -329,20 +352,42 @@ export function AiSettings() {
         {cfg.enabled ? <Badge tone="green">Đang bật</Badge> : <Badge tone="warning">Chưa bật</Badge>}
       </div>
       <p className="small muted">
-        AI (Claude) đọc các hội thoại Zalo nhân viên có tin mới: tóm tắt, chấm chất lượng tư vấn, tìm dấu hiệu thu tiền riêng, kéo khách ra ngoài, giá
+        AI đọc các hội thoại Zalo nhân viên có tin mới: tóm tắt, chấm chất lượng tư vấn, tìm dấu hiệu thu tiền riêng, kéo khách ra ngoài, giá
         ngoài chính sách, thái độ, thông tin sai, bỏ lỡ khách… Vấn đề mức vừa / cao hiện ở <b>Tin cần chú ý</b>. Cuối ngày AI viết bản tổng hợp cho từng
-        nhân viên. Chỉ đọc hội thoại Zalo nhân viên đang giám sát; nội dung chat được gửi tới Anthropic để phân tích.
+        nhân viên. Chỉ đọc hội thoại Zalo nhân viên đang giám sát; nội dung chat được gửi tới {pname} để phân tích. Chấm tư vấn
+        theo kịch bản (Cài đặt › Chấm tư vấn) dùng chung khóa và giới hạn lượt ở đây.
       </p>
       <div className="grid-2">
         <label className="field">
-          <span>Khóa API Claude</span>
+          <span>Nhà cung cấp AI</span>
+          <select
+            className="select"
+            value={cfg.provider}
+            onChange={(e) => {
+              const provider = e.target.value as Provider
+              const list = cfg.modelsByProvider[provider]
+              setKey('')
+              set({ provider, scanModel: list[0]?.id ?? '', digestModel: list[list.length > 1 ? 1 : 0]?.id ?? '' })
+            }}
+          >
+            {(Object.keys(cfg.providers) as Provider[]).map((p) => (
+              <option key={p} value={p}>
+                {cfg.providers[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Khóa API {pname}</span>
           <input
             name="ai-api-key"
             type="password"
             autoComplete="new-password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder={cfg.hasKey ? `Đã lưu (${cfg.apiKey}). Để trống nếu không đổi` : 'sk-ant-… (console.anthropic.com › API Keys)'}
+            placeholder={
+              hasKeyFor ? `Đã lưu (${savedKey}). Để trống nếu không đổi` : cfg.provider === 'xai' ? 'xai-… (console.x.ai › API Keys)' : 'sk-ant-… (console.anthropic.com › API Keys)'
+            }
           />
         </label>
         <label className="field">
@@ -354,23 +399,11 @@ export function AiSettings() {
         </label>
         <label className="field">
           <span>AI quét từng hội thoại</span>
-          <select className="select" value={cfg.scanModel} onChange={(e) => set({ scanModel: e.target.value })}>
-            {cfg.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          {modelSelect(cfg.scanModel, (v) => set({ scanModel: v }))}
         </label>
         <label className="field">
           <span>AI viết tổng hợp cuối ngày</span>
-          <select className="select" value={cfg.digestModel} onChange={(e) => set({ digestModel: e.target.value })}>
-            {cfg.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          {modelSelect(cfg.digestModel, (v) => set({ digestModel: v }))}
         </label>
         <label className="field">
           <span>Quét mỗi (phút)</span>
@@ -397,7 +430,7 @@ export function AiSettings() {
         />
       </label>
       <div className="row wrap">
-        <button className="btn outline" disabled={!!busy || (!cfg.hasKey && !key)} onClick={test}>
+        <button className="btn outline" disabled={!!busy || (!hasKeyFor && !key)} onClick={test}>
           <PlugZap size={16} /> {busy === 'test' ? 'Đang thử…' : 'Thử kết nối AI'}
         </button>
         {msg && (
@@ -414,7 +447,7 @@ export function AiSettings() {
             Tắt
           </button>
         ) : (
-          <button className="btn primary" disabled={!!busy || (!cfg.hasKey && !key)} onClick={() => save(true)}>
+          <button className="btn primary" disabled={!!busy || (!hasKeyFor && !key)} onClick={() => save(true)}>
             Bật Trợ lý AI
           </button>
         )}

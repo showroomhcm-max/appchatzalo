@@ -37,6 +37,8 @@ export const config = {
   webDist: path.resolve(process.env.WEB_DIST ?? path.join(process.cwd(), "..", "web", "dist")),
   // API Claude (Anthropic) cho Trợ lý AI giám sát; đổi địa chỉ chỉ khi chạy thử với máy giả lập
   aiBaseUrl: (process.env.AI_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, ""),
+  // API Grok (xAI): đổi địa chỉ chỉ khi chạy thử với máy giả lập
+  xaiBaseUrl: (process.env.XAI_BASE_URL ?? "https://api.x.ai").replace(/\/+$/, ""),
 };
 
 fs.mkdirSync(config.uploadDir, { recursive: true });

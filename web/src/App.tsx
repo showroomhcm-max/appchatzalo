@@ -212,8 +212,8 @@ function Shell() {
   const [moreOpen, setMoreOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const { can: allowed } = useApp()
-  const canData = allowed('data.view') || allowed('data.export') || allowed('monitor.view')
-  const canSettings = (['channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
+  const canData = allowed('data.view') || allowed('data.export') || allowed('monitor.view') || allowed('qa.view')
+  const canSettings = (['qa.manage', 'channels.manage', 'alerts.manage', 'users.manage', 'departments.manage', 'tags.manage', 'templates.manage', 'integrations.manage', 'logs.view', 'permissions.manage'] as const).some((p) => allowed(p))
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash())

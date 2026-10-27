@@ -6,6 +6,8 @@ export type Permission =
   | 'messages.undo_any'
   | 'conversations.delete'
   | 'reviews.manage'
+  | 'qa.view'
+  | 'qa.manage'
   | 'data.view'
   | 'data.export'
   | 'channels.manage'

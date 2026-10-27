@@ -17,7 +17,8 @@ import SapoSettings from './SapoSettings'
 import OdooPosSettings from './OdooPosSettings'
 import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
-import { Link2, ScrollText, ShieldCheck } from 'lucide-react'
+import { Link2, ScrollText, ShieldCheck, Sparkles } from 'lucide-react'
+import { QaSettings } from './qa'
 import LinkedApps from './LinkedApps'
 
 export type SettingsTab =
@@ -35,6 +36,7 @@ export type SettingsTab =
   | 'departments'
   | 'users'
   | 'permissions'
+  | 'qa'
 type Tab = SettingsTab
 
 type MenuItem = { id: Tab; label: string; icon: React.ReactNode; perms: Permission[] }
@@ -61,6 +63,7 @@ const MENU: { title: string; items: MenuItem[] }[] = [
       { id: 'templates', label: 'Câu trả lời mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
       { id: 'tags', label: 'Tag hội thoại', icon: <TagIcon size={18} />, perms: ['tags.manage'] },
       { id: 'departments', label: 'Bộ phận - phân chia hội thoại', icon: <Building2 size={18} />, perms: ['departments.manage'] },
+      { id: 'qa', label: 'Chấm tư vấn (kịch bản)', icon: <Sparkles size={18} />, perms: ['qa.manage'] },
     ],
   },
   {
@@ -222,6 +225,7 @@ export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
         {tab === 'departments' && allowed('departments') && <DepartmentsTab />}
         {tab === 'users' && allowed('users') && <UsersPage embedded />}
         {tab === 'permissions' && allowed('permissions') && <PermissionsTab />}
+        {tab === 'qa' && allowed('qa') && <QaSettings />}
       </div>
     </div>
   )

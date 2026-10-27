@@ -18,6 +18,7 @@ import { startBackups } from "./backup.js";
 import { startSearchIndex } from "./search-index.js";
 import { startMonitor } from "./monitor.js";
 import { startAiMonitor } from "./ai-monitor.js";
+import { startQa } from "./qa.js";
 import { zalo } from "./zalo.js";
 import { appVersion } from "./version.js";
 import { oauthRouter, webhookRouter, zaloVerifierHandler } from "./platform-routes.js";
@@ -87,6 +88,7 @@ startBackups();
 startSearchIndex();
 startMonitor();
 startAiMonitor();
+startQa();
 
 server.listen(config.port, () => {
   console.log(`[server] Chat Siêu Tốc chạy tại http://localhost:${config.port}`);

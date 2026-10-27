@@ -9,6 +9,12 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 
 ## Chưa phát hành
 
+- **Chấm tư vấn theo kịch bản (AI)**: AI đọc từng phiên chat ở mọi kênh, chấm từng bước của kịch bản công ty (Đạt / Không đạt / Không áp dụng / Không chấm). Bước "Đạt" phải kèm câu trích nguyên văn của nhân viên, máy chủ kiểm lại; điểm do máy chủ tính (số bước đạt ÷ số bước được tính). Thiếu dữ liệu thì không chấm (chưa trả lời, khách nhắn quá ít, thiếu đoạn đầu khi Zalo mới gắn vào app). Kết quả lưu theo nội dung phiên, không có tin mới thì không chấm lại.
+  - Cài đặt › Chấm tư vấn (kịch bản): sửa các bước, tiêu chí, câu mẫu, mốc Đạt chuẩn / Cần cải thiện, bật tự chấm. Sửa kịch bản thì lên bản mới.
+  - Báo cáo › Chất lượng tư vấn: điểm trung bình, số phiên Đạt chuẩn / Cần cải thiện / Chưa đạt, khách chưa được trả lời, khách chưa nhắn lại, % đạt từng bước, theo từng nhân viên; bấm số / bước / nhân viên là ra đúng các phiên đó; xem chi tiết từng bước kèm câu trích (bấm để mở đúng tin); quản lý sửa kết quả hoặc cho AI chấm lại; chấm khoảng ngày cũ; xuất Excel.
+  - Quyền mới: "Xem chất lượng tư vấn" và "Sửa kịch bản chấm tư vấn…" (cấp sẵn cho nhóm Quản trị). Nhân viên không xem được.
+- **Trợ lý AI dùng được Grok (xAI)**: Cài đặt › Zalo nhân viên (giám sát) › Trợ lý AI có ô chọn nhà cung cấp Claude (Anthropic) hoặc Grok (xAI), mỗi bên một khóa riêng (khóa bên kia vẫn giữ). Lưu khóa Grok là app tự lấy danh sách model của tài khoản. Giám sát Zalo nhân viên và chấm tư vấn đều dùng bên đang chọn, chung giới hạn lượt mỗi ngày.
+- Bản demo: `node scripts/demo.mjs --mock-ai` dùng máy AI giả (Claude và Grok) để thử các tính năng AI, không tốn tiền.
 - Thao tác đúng lúc máy chủ đang khởi động lại (cập nhật bản mới) hoặc NAS mất mạng: báo "Máy chủ đang khởi động lại hoặc mất kết nối… đợi khoảng 30 giây rồi thử lại" thay vì chỉ hiện "Lỗi 530".
 
 ## v3.26.3 — 27/10/2026

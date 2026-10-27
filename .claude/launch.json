@@ -6,6 +6,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/demo.mjs"],
       "port": 5173
+    },
+    {
+      "name": "chat-demo-ai",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/demo.mjs", "--mock-ai"],
+      "port": 5173
     }
   ]
 }

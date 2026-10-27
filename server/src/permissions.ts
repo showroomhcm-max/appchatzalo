@@ -15,6 +15,8 @@ export const PERMISSIONS = [
   { key: "messages.undo_any", group: "Hội thoại", label: "Thu hồi tin nhắn do người khác gửi" },
   { key: "conversations.delete", group: "Hội thoại", label: "Xóa hội thoại khỏi hộp thư (dữ liệu vẫn giữ)" },
   { key: "reviews.manage", group: "Dữ liệu", label: "Chấm điểm chất lượng tư vấn", hidden: true },
+  { key: "qa.view", group: "Dữ liệu", label: "Xem chất lượng tư vấn (AI chấm theo kịch bản)" },
+  { key: "qa.manage", group: "Dữ liệu", label: "Sửa kịch bản chấm tư vấn, sửa kết quả chấm, chấm lại" },
   { key: "data.view", group: "Dữ liệu", label: "Xem trang Dữ liệu (thống kê nhân viên)" },
   { key: "data.export", group: "Dữ liệu", label: "Xuất dữ liệu hội thoại (TXT, CSV, JSONL, JSON)" },
   { key: "channels.manage", group: "Cài đặt", label: "Kết nối, cài đặt kênh chat và phân công nhân viên vào kênh" },
@@ -185,3 +187,16 @@ export function requirePerm(perm: Permission) {
     next();
   };
 }
+
+/** Chấm tư vấn theo kịch bản: cấp sẵn cho nhóm Quản trị (một lần). */
+(function grantQaPermission() {
+  if (get("SELECT 1 FROM settings WHERE key = 'perm.migrated.qa'")) return;
+  const g = get<{ id: number; permissions: string }>("SELECT id, permissions FROM permission_groups WHERE name = 'Quản trị'");
+  if (g) {
+    const list = new Set<string>(JSON.parse(g.permissions || "[]"));
+    list.add("qa.view");
+    list.add("qa.manage");
+    run("UPDATE permission_groups SET permissions = ? WHERE id = ?", JSON.stringify([...list]), g.id);
+  }
+  run("INSERT OR REPLACE INTO settings(key, value) VALUES('perm.migrated.qa', '1')");
+})();

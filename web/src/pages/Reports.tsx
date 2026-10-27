@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, ClipboardList, Download, ExternalLink, Eye, FileJson, FileSpreadsheet, FileText, MessageCircleReply, Users as UsersIcon } from 'lucide-react'
+import { BarChart3, ClipboardList, Download, ExternalLink, Eye, Sparkles, FileJson, FileSpreadsheet, FileText, MessageCircleReply, Users as UsersIcon } from 'lucide-react'
 import { api, exportUrl } from '../api'
 import { useApp } from '../store'
 import { Empty } from '../components'
@@ -10,6 +10,7 @@ import { PLATFORM_LABEL } from '../platform'
 import type { Platform } from '../types'
 import { BarChart, CHART_COLORS, Donut, HBars, Heatmap, Legend, LineChart } from '../charts'
 import { ISSUE_LABEL } from './monitor-ai'
+import { QaTab } from './qa'
 
 type AgentStat = {
   agent_id: number | null
@@ -41,7 +42,7 @@ type MonitorDash = {
   issue_types: { type: string; n: number }[]
 }
 
-export type ReportTab = 'overview' | 'staff' | 'monitor' | 'export'
+export type ReportTab = 'overview' | 'staff' | 'qa' | 'monitor' | 'export'
 const ALERT_LABEL: Record<string, string> = { no_reply: 'Chưa phản hồi', no_order: 'Chưa tạo đơn', no_shipping: 'Chưa đẩy vận chuyển' }
 const SOURCE_LABEL: Record<string, string> = { odoo_pos: 'POS Odoo (lên từ chat)', sapo: 'Sapo', api: 'Web / API' }
 const money = (n: number) => (n >= 1e6 ? `${(n / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} tr₫` : `${n.toLocaleString('vi-VN')}₫`)
@@ -53,9 +54,11 @@ export default function Reports({ tab: linkTab }: { tab?: string | null }) {
   const canView = can(user, 'data.view')
   const canExport = can(user, 'data.export')
   const canMonitor = can(user, 'monitor.view')
+  const canQa = can(user, 'qa.view')
   const tabs: { id: ReportTab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { id: 'overview', label: 'Tổng quan', icon: <BarChart3 size={16} />, show: canView },
     { id: 'staff', label: 'Nhân viên', icon: <UsersIcon size={16} />, show: canView },
+    { id: 'qa', label: 'Chất lượng tư vấn', icon: <Sparkles size={16} />, show: canQa },
     { id: 'monitor', label: 'Giám sát', icon: <Eye size={16} />, show: canMonitor },
     { id: 'export', label: 'Xuất dữ liệu & báo cáo', icon: <Download size={16} />, show: canExport || canMonitor },
   ]
@@ -69,7 +72,8 @@ export default function Reports({ tab: linkTab }: { tab?: string | null }) {
   const [to, setTo] = useState(isoDate(new Date()))
   const [channelId, setChannelId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const sharedChannels = channels.filter((c) => c.mode !== 'monitor')
+  // Chất lượng tư vấn chấm mọi kênh (kể cả Zalo nhân viên); các tab khác chỉ kênh chung
+  const sharedChannels = tab === 'qa' ? channels : channels.filter((c) => c.mode !== 'monitor')
   const presets: [string, number][] = [
     ['Hôm nay', 0],
     ['7 ngày', 6],
@@ -82,7 +86,7 @@ export default function Reports({ tab: linkTab }: { tab?: string | null }) {
       <div className="page-head">
         <div>
           <h1>Báo cáo</h1>
-          <p className="muted">Biểu đồ hoạt động chat, hiệu suất nhân viên, giám sát Zalo nhân viên và xuất dữ liệu / báo cáo Excel ở một chỗ.</p>
+          <p className="muted">Biểu đồ hoạt động chat, hiệu suất nhân viên, chất lượng tư vấn, giám sát Zalo nhân viên và xuất dữ liệu / báo cáo Excel ở một chỗ.</p>
         </div>
       </div>
       <div className="report-tabs seg" role="tablist">
@@ -115,7 +119,7 @@ export default function Reports({ tab: linkTab }: { tab?: string | null }) {
             ))}
           </select>
         )}
-        {tab !== 'monitor' && canView && departments.length > 0 && (
+        {tab !== 'monitor' && tab !== 'qa' && canView && departments.length > 0 && (
           <select className="select sm" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} aria-label="Bộ phận">
             <option value="">Mọi bộ phận</option>
             {departments.map((d) => (
@@ -128,6 +132,7 @@ export default function Reports({ tab: linkTab }: { tab?: string | null }) {
       </div>
       {tab === 'overview' && <OverviewTab from={from} to={to} channelId={channelId} departmentId={departmentId} />}
       {tab === 'staff' && <StaffTab from={from} to={to} channelId={channelId} departmentId={departmentId} />}
+      {tab === 'qa' && <QaTab from={from} to={to} channelId={channelId} />}
       {tab === 'monitor' && <MonitorTab from={from} to={to} />}
       {tab === 'export' && <ExportTab from={from} to={to} channelId={channelId} departmentId={departmentId} />}
     </div>
