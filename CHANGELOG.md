@@ -7,6 +7,17 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.29.3 — 28/10/2026
+
+- **Sắp xếp lại menu Cài đặt theo thứ tự thiết lập**, mỗi nhóm một việc:
+  - **Kênh chat**: Kết nối kênh.
+  - **Hội thoại**: Bộ phận - phân chia hội thoại, Câu trả lời mẫu, Tag hội thoại.
+  - **Giám sát & chất lượng**: Zalo nhân viên (giám sát), Trợ lý AI, Chấm tư vấn (kịch bản), Gắn cờ tin cần chú ý, Cảnh báo đơn "rơi".
+  - **Kết nối hệ thống**: Đồng bộ đơn hàng, Kết nối app & API.
+  - **Nhân viên & bảo mật**: Nhân viên, Nhóm quyền, Nhật ký hệ thống.
+- **Trợ lý AI có mục riêng** (trước nằm cuối trang Zalo nhân viên). Chia 2 khung: **Kết nối AI** (nhà cung cấp, khóa, giới hạn lượt, dùng chung cho cả Chấm tư vấn) và **AI đọc tin Zalo nhân viên** (model, giờ tổng hợp, quy định công ty, bật / tắt).
+- **Gắn cờ tin cần chú ý** (số tài khoản, SĐT khác, từ khóa) tách khỏi trang Zalo nhân viên thành mục riêng. Trang Zalo nhân viên giờ chỉ còn quản lý SIM / tài khoản, có link sang 2 mục trên. Link cũ `#/settings/company` vẫn mở được.
+
 ## v3.29.2 — 27/10/2026
 
 - **Quét QR gắn tài khoản Zalo xong là tự lấy tin cũ từ Zalo PC**: nếu đã cài máy đồng bộ, app tự giao việc 90 ngày cho máy có Zalo PC cùng tài khoản, không cần bấm thêm nút. Dưới nút "Đồng bộ tin nhắn cũ" luôn hiện dòng **Zalo PC** (bao nhiêu máy đang bật), thông báo "Zalo không trả tin cũ" ghi rõ tin cũ hơn sẽ lấy từ Zalo PC.

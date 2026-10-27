@@ -5,7 +5,6 @@ import { useApp, useSocketEvent } from '../store'
 import type { ZaloStatus } from '../types'
 import { Avatar, Badge, Modal } from '../components'
 import { fullTime } from '../util'
-import { AiSettings } from './monitor-ai'
 
 type Account = {
   channel_id: number
@@ -217,8 +216,10 @@ export default function CompanyZalo() {
         })}
       </div>
 
-      <AiSettings />
-      <KeywordSettings />
+      <div className="banner info inline small">
+        Trợ lý AI đọc tin Zalo nhân viên và quy tắc gắn cờ tin (số tài khoản, SĐT khác, từ khóa) nằm ở nhóm Giám sát & chất lượng:{' '}
+        <a href="#/settings/ai">Trợ lý AI</a> · <a href="#/settings/flags">Gắn cờ tin cần chú ý</a>.
+      </div>
 
       <div className="card notice">
         <h3>
@@ -362,8 +363,8 @@ function AddMonitorModal({
   )
 }
 
-/** Từ khóa / dấu hiệu gắn cờ tin nhắn */
-function KeywordSettings() {
+/** Cài đặt › Gắn cờ tin cần chú ý: từ khóa / dấu hiệu gắn cờ tin Zalo nhân viên */
+export function KeywordSettings() {
   const [cfg, setCfg] = useState<{ bank: boolean; otherPhone: boolean; checkCustomer: boolean; keywords: string[] } | null>(null)
   const [text, setText] = useState('')
   const [msg, setMsg] = useState('')
@@ -385,7 +386,9 @@ function KeywordSettings() {
   }
   return (
     <div className="card stack">
-      <h3>Gắn cờ tin cần chú ý</h3>
+      <p className="small muted">
+        Áp dụng cho Zalo nhân viên đang giám sát. Tin khớp quy tắc hiện ở Giám sát › <b>Tin cần chú ý</b> (cùng các tin Trợ lý AI tự phát hiện).
+      </p>
       <label className="check">
         <input type="checkbox" checked={cfg.bank} onChange={(e) => setCfg({ ...cfg, bank: e.target.checked })} />
         Nhân viên gửi số tài khoản ngân hàng / ví

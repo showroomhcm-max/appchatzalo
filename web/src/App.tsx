@@ -344,7 +344,7 @@ function Shell() {
         </Suspense>
         {((route.page === 'data' && !canData) || (route.page === 'settings' && !canSettings)) && (
           <div className="page">
-            <div className="card center pad">Bạn chưa được cấp quyền vào trang này. Nhờ quản lý cấp quyền trong Cài đặt › Phân quyền.</div>
+            <div className="card center pad">Bạn chưa được cấp quyền vào trang này. Nhờ quản lý cấp quyền trong Cài đặt › Nhóm quyền.</div>
           </div>
         )}
       </main>

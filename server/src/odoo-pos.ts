@@ -1,6 +1,6 @@
 /**
  * Lên đơn hàng POS trên Odoo (erp.sieutoc.com, Odoo 17) từ hội thoại chat.
- * - Dùng một tài khoản Odoo "tích hợp" + API key (quản trị nhập ở Cài đặt › Tích hợp › Đồng bộ đơn hàng).
+ * - Dùng một tài khoản Odoo "tích hợp" + API key (quản trị nhập ở Cài đặt › Đồng bộ đơn hàng).
  * - Đơn tạo ở trạng thái nháp (draft) trong ca POS đang mở của điểm bán được chọn; thu ngân mở ca và thanh toán như đơn thường.
  * - Ca POS chưa mở → đơn xếp hàng chờ trong app, tự đẩy lên khi ca mở (quét mỗi 2 phút).
  * - Khách tìm theo số điện thoại (res.partner), chưa có thì tạo mới.
@@ -104,7 +104,7 @@ async function uidOf(c: OdooPosConfig) {
 }
 
 async function call<T = any>(model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}, cfg = odooPosConfig()): Promise<T> {
-  if (!cfg.url || !cfg.login || !cfg.apiKey) throw new Error("Chưa nhập tài khoản Odoo tích hợp (Cài đặt › Tích hợp › Đồng bộ đơn hàng)");
+  if (!cfg.url || !cfg.login || !cfg.apiKey) throw new Error("Chưa nhập tài khoản Odoo tích hợp (Cài đặt › Đồng bộ đơn hàng)");
   const uid = await uidOf(cfg);
   return rpc(cfg, "object", "execute_kw", [cfg.db, uid, cfg.apiKey, model, method, args, kwargs]);
 }
@@ -235,7 +235,7 @@ async function pushToOdoo(input: PosOrderInput, localRef: string) {
 
 export async function createPosOrder(input: PosOrderInput) {
   const cfg = odooPosConfig();
-  if (!cfg.enabled) throw new Error("Chưa bật lên đơn POS (Cài đặt › Tích hợp › Đồng bộ đơn hàng)");
+  if (!cfg.enabled) throw new Error("Chưa bật lên đơn POS (Cài đặt › Đồng bộ đơn hàng)");
   if (!input.lines.length) throw new Error("Chọn ít nhất 1 sản phẩm");
   if (!input.customer.phone.replace(/\D/g, "")) throw new Error("Nhập số điện thoại khách");
   const localRef = `CHAT-${Date.now().toString(36).toUpperCase()}`;

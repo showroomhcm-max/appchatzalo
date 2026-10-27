@@ -358,7 +358,7 @@ function FlagsView({ channelId, compact }: { channelId: number | null; compact?:
     <section className="monitor-flags">
       <h2>Tin cần chú ý</h2>
       <p className="muted small">
-        Tin có dấu hiệu đáng ngờ do AI phát hiện (biểu tượng lấp lánh) hoặc do quy tắc: từ khóa, số điện thoại khác, số tài khoản. Chỉnh ở Cài đặt › Zalo nhân viên.
+        Tin có dấu hiệu đáng ngờ do AI phát hiện (biểu tượng lấp lánh) hoặc do quy tắc: từ khóa, số điện thoại khác, số tài khoản. Chỉnh ở Cài đặt › Gắn cờ tin cần chú ý và Trợ lý AI.
       </p>
       {list}
     </section>

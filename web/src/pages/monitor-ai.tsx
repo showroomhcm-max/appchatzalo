@@ -194,7 +194,7 @@ export function DigestView({ channelId, holder }: { channelId: number; holder: s
         )}
       </div>
       {err && <div className="small err-text">{err}</div>}
-      {!status?.enabled && <div className="banner info inline small">Chưa bật Trợ lý AI. Bật ở Cài đặt › Zalo nhân viên (giám sát) › Trợ lý AI.</div>}
+      {!status?.enabled && <div className="banner info inline small">Chưa bật Trợ lý AI. Bật ở Cài đặt › Trợ lý AI.</div>}
       {loading ? (
         <div className="muted small">Đang tải…</div>
       ) : !d ? (
@@ -275,11 +275,11 @@ const KEY_HINT: Record<Provider, string> = {
   deepseek: 'sk-… (platform.deepseek.com › API keys)',
 }
 
-/** Cài đặt › Zalo nhân viên › Trợ lý AI */
+/** Cài đặt › Giám sát & chất lượng › Trợ lý AI */
 export function AiSettings() {
   const [cfg, setCfg] = useState<AiCfg | null>(null)
   const [key, setKey] = useState('')
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; at: 'conn' | 'scan' } | null>(null)
   const [busy, setBusy] = useState('')
   const [denied, setDenied] = useState(false)
   useEffect(() => {
@@ -305,7 +305,7 @@ export function AiSettings() {
     </select>
   )
 
-  async function save(enabled?: boolean) {
+  async function save(enabled: boolean | undefined, at: 'conn' | 'scan') {
     setBusy('save')
     setMsg(null)
     try {
@@ -326,9 +326,9 @@ export function AiSettings() {
       })
       setCfg(c)
       setKey('')
-      setMsg({ ok: true, text: enabled === undefined ? `Đã lưu (${c.providers[c.provider]})` : enabled ? 'Đã bật Trợ lý AI' : 'Đã tắt Trợ lý AI' })
+      setMsg({ ok: true, at, text: enabled === undefined ? `Đã lưu (${c.providers[c.provider]})` : enabled ? 'Đã bật AI đọc tin Zalo nhân viên' : 'Đã tắt AI đọc tin Zalo nhân viên' })
     } catch (e: any) {
-      setMsg({ ok: false, text: e.message })
+      setMsg({ ok: false, at, text: e.message })
     } finally {
       setBusy('')
     }
@@ -338,128 +338,150 @@ export function AiSettings() {
     setMsg(null)
     try {
       const r = await api<{ ok: boolean; ms: number; model: string; provider: string }>('/ai/test', { body: { provider: cfg!.provider, apiKey: key || undefined } })
-      setMsg({ ok: true, text: `${r.provider} trả lời được (${r.ms} ms, ${r.model})` })
+      setMsg({ ok: true, at: 'conn', text: `${r.provider} trả lời được (${r.ms} ms, ${r.model})` })
     } catch (e: any) {
-      setMsg({ ok: false, text: e.message })
+      setMsg({ ok: false, at: 'conn', text: e.message })
     } finally {
       setBusy('')
     }
   }
 
+  const note = (at: 'conn' | 'scan') =>
+    msg?.at === at && (
+      <span className={`small ${msg.ok ? 'ok-text' : 'err-text'}`}>
+        {msg.ok && <CheckCircle2 size={14} className="inline-icon" />} {msg.text}
+      </span>
+    )
+
   return (
-    <div className="card stack">
-      <div className="row wrap">
-        <h3 className="grow">
-          <Sparkles size={16} className="inline-icon" /> Trợ lý AI phân tích tin nhắn
-        </h3>
-        {cfg.enabled ? <Badge tone="green">Đang bật</Badge> : <Badge tone="warning">Chưa bật</Badge>}
+    <div className="stack">
+      <div className="card stack">
+        <div className="row wrap">
+          <h3 className="grow">
+            <PlugZap size={16} className="inline-icon" /> Kết nối AI
+          </h3>
+          {hasKeyFor ? <Badge tone="green">Đã có khóa</Badge> : <Badge tone="warning">Chưa có khóa</Badge>}
+        </div>
+        <p className="small muted">
+          Một khóa AI dùng chung cho mọi tính năng AI: đọc tin Zalo nhân viên (bên dưới) và Chấm tư vấn theo kịch bản. Giới hạn lượt gọi cũng tính chung.
+          Nội dung chat được gửi tới {pname} để phân tích.
+        </p>
+        <div className="grid-2">
+          <label className="field">
+            <span>Nhà cung cấp AI</span>
+            <select
+              className="select"
+              value={cfg.provider}
+              onChange={(e) => {
+                const provider = e.target.value as Provider
+                const list = cfg.modelsByProvider[provider]
+                setKey('')
+                set({ provider, scanModel: list[0]?.id ?? '', digestModel: list[list.length > 1 ? 1 : 0]?.id ?? '' })
+              }}
+            >
+              {(Object.keys(cfg.providers) as Provider[]).map((p) => (
+                <option key={p} value={p}>
+                  {cfg.providers[p]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Khóa API {pname}</span>
+            <input
+              name="ai-api-key"
+              type="password"
+              autoComplete="new-password"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder={hasKeyFor ? `Đã lưu (${savedKey}). Để trống nếu không đổi` : KEY_HINT[cfg.provider]}
+            />
+          </label>
+          <label className="field">
+            <span>Giới hạn lượt gọi AI mỗi ngày</span>
+            <input type="number" min={10} max={5000} value={cfg.maxCallsPerDay} onChange={(e) => set({ maxCallsPerDay: Number(e.target.value) })} />
+            <span className="small muted">
+              Hôm nay đã dùng {cfg.usage.calls} lượt · {Math.round((cfg.usage.tokens_in + cfg.usage.tokens_out) / 1000)}k token
+            </span>
+          </label>
+        </div>
+        <div className="row wrap">
+          <button className="btn outline" disabled={!!busy || (!hasKeyFor && !key)} onClick={test}>
+            <PlugZap size={16} /> {busy === 'test' ? 'Đang thử…' : 'Thử kết nối AI'}
+          </button>
+          {note('conn')}
+          <span className="grow" />
+          <button className="btn primary" disabled={!!busy} onClick={() => save(undefined, 'conn')}>
+            <Save size={16} /> Lưu
+          </button>
+        </div>
       </div>
-      <p className="small muted">
-        AI đọc các hội thoại Zalo nhân viên có tin mới: tóm tắt, chấm chất lượng tư vấn, tìm dấu hiệu thu tiền riêng, kéo khách ra ngoài, giá
-        ngoài chính sách, thái độ, thông tin sai, bỏ lỡ khách… Vấn đề mức vừa / cao hiện ở <b>Tin cần chú ý</b>. Cuối ngày AI viết bản tổng hợp cho từng
-        nhân viên. Chỉ đọc hội thoại Zalo nhân viên đang giám sát; nội dung chat được gửi tới {pname} để phân tích. Chấm tư vấn
-        theo kịch bản (Cài đặt › Chấm tư vấn) dùng chung khóa và giới hạn lượt ở đây.
-      </p>
-      <div className="grid-2">
+
+      <div className="card stack">
+        <div className="row wrap">
+          <h3 className="grow">
+            <Sparkles size={16} className="inline-icon" /> AI đọc tin Zalo nhân viên
+          </h3>
+          {cfg.enabled ? <Badge tone="green">Đang bật</Badge> : <Badge tone="warning">Chưa bật</Badge>}
+        </div>
+        <p className="small muted">
+          AI đọc các hội thoại Zalo nhân viên đang giám sát có tin mới: tóm tắt, tìm dấu hiệu thu tiền riêng, kéo khách ra ngoài, giá ngoài chính sách,
+          thái độ, thông tin sai, bỏ lỡ khách… Vấn đề mức vừa / cao hiện ở <b>Tin cần chú ý</b>. Cuối ngày AI viết bản tổng hợp cho từng nhân viên.
+        </p>
+        <div className="grid-2">
+          <label className="field">
+            <span>AI quét từng hội thoại</span>
+            {modelSelect(cfg.scanModel, (v) => set({ scanModel: v }))}
+          </label>
+          <label className="field">
+            <span>AI viết tổng hợp cuối ngày</span>
+            {modelSelect(cfg.digestModel, (v) => set({ digestModel: v }))}
+          </label>
+          <label className="field">
+            <span>Quét mỗi (phút)</span>
+            <input type="number" min={5} max={240} value={cfg.scanEveryMin} onChange={(e) => set({ scanEveryMin: Number(e.target.value) })} />
+          </label>
+          <label className="field">
+            <span>Giờ tổng hợp cuối ngày</span>
+            <select className="select" value={cfg.digestHour} onChange={(e) => set({ digestHour: Number(e.target.value) })}>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {h}:00
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label className="field">
-          <span>Nhà cung cấp AI</span>
-          <select
-            className="select"
-            value={cfg.provider}
-            onChange={(e) => {
-              const provider = e.target.value as Provider
-              const list = cfg.modelsByProvider[provider]
-              setKey('')
-              set({ provider, scanModel: list[0]?.id ?? '', digestModel: list[list.length > 1 ? 1 : 0]?.id ?? '' })
-            }}
-          >
-            {(Object.keys(cfg.providers) as Provider[]).map((p) => (
-              <option key={p} value={p}>
-                {cfg.providers[p]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Khóa API {pname}</span>
-          <input
-            name="ai-api-key"
-            type="password"
-            autoComplete="new-password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder={
-              hasKeyFor ? `Đã lưu (${savedKey}). Để trống nếu không đổi` : KEY_HINT[cfg.provider]
-            }
+          <span>Quy định riêng của công ty (AI chấm theo)</span>
+          <textarea
+            rows={4}
+            value={cfg.rules}
+            onChange={(e) => set({ rules: e.target.value })}
+            placeholder={'VD:\n- Chỉ nhận chuyển khoản vào tài khoản Công ty CP Siêu Tốc, Vietcombank …\n- Giảm giá quá 5% phải có quản lý duyệt\n- Trả lời khách trong 5 phút giờ làm việc'}
           />
         </label>
-        <label className="field">
-          <span>Giới hạn lượt gọi AI mỗi ngày</span>
-          <input type="number" min={10} max={5000} value={cfg.maxCallsPerDay} onChange={(e) => set({ maxCallsPerDay: Number(e.target.value) })} />
-          <span className="small muted">
-            Hôm nay đã dùng {cfg.usage.calls} lượt · {Math.round((cfg.usage.tokens_in + cfg.usage.tokens_out) / 1000)}k token
-          </span>
-        </label>
-        <label className="field">
-          <span>AI quét từng hội thoại</span>
-          {modelSelect(cfg.scanModel, (v) => set({ scanModel: v }))}
-        </label>
-        <label className="field">
-          <span>AI viết tổng hợp cuối ngày</span>
-          {modelSelect(cfg.digestModel, (v) => set({ digestModel: v }))}
-        </label>
-        <label className="field">
-          <span>Quét mỗi (phút)</span>
-          <input type="number" min={5} max={240} value={cfg.scanEveryMin} onChange={(e) => set({ scanEveryMin: Number(e.target.value) })} />
-        </label>
-        <label className="field">
-          <span>Giờ tổng hợp cuối ngày</span>
-          <select className="select" value={cfg.digestHour} onChange={(e) => set({ digestHour: Number(e.target.value) })}>
-            {Array.from({ length: 24 }, (_, h) => (
-              <option key={h} value={h}>
-                {h}:00
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="field">
-        <span>Quy định riêng của công ty (AI chấm theo)</span>
-        <textarea
-          rows={4}
-          value={cfg.rules}
-          onChange={(e) => set({ rules: e.target.value })}
-          placeholder={'VD:\n- Chỉ nhận chuyển khoản vào tài khoản Công ty CP Siêu Tốc, Vietcombank …\n- Giảm giá quá 5% phải có quản lý duyệt\n- Trả lời khách trong 5 phút giờ làm việc'}
-        />
-      </label>
-      <div className="row wrap">
-        <button className="btn outline" disabled={!!busy || (!hasKeyFor && !key)} onClick={test}>
-          <PlugZap size={16} /> {busy === 'test' ? 'Đang thử…' : 'Thử kết nối AI'}
-        </button>
-        {msg && (
-          <span className={`small ${msg.ok ? 'ok-text' : 'err-text'}`}>
-            {msg.ok && <CheckCircle2 size={14} className="inline-icon" />} {msg.text}
-          </span>
-        )}
-        <span className="grow" />
-        <button className="btn outline" disabled={!!busy} onClick={() => save()}>
-          <Save size={16} /> Lưu
-        </button>
-        {cfg.enabled ? (
-          <button className="btn danger" disabled={!!busy} onClick={() => save(false)}>
-            Tắt
+        <div className="row wrap">
+          {note('scan')}
+          <span className="grow" />
+          <button className="btn outline" disabled={!!busy} onClick={() => save(undefined, 'scan')}>
+            <Save size={16} /> Lưu
           </button>
-        ) : (
-          <button className="btn primary" disabled={!!busy || (!hasKeyFor && !key)} onClick={() => save(true)}>
-            Bật Trợ lý AI
-          </button>
-        )}
+          {cfg.enabled ? (
+            <button className="btn danger" disabled={!!busy} onClick={() => save(false, 'scan')}>
+              Tắt
+            </button>
+          ) : (
+            <button className="btn primary" disabled={!!busy || (!hasKeyFor && !key)} onClick={() => save(true, 'scan')}>
+              Bật AI đọc tin
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-/** Nút "Xuất báo cáo" trang Giám sát: Excel theo khoảng ngày, một hoặc mọi nhân viên. */
 export function MonitorReportButton({ accounts, current }: { accounts: { channel_id: number; name: string; holder_name: string | null }[]; current: number | null }) {
   const [open, setOpen] = useState(false)
   const today = vnToday()

@@ -85,7 +85,7 @@ export default function PosOrderModal({ conv, onClose, onDone }: { conv: Convers
       {!status ? (
         <div className="muted">Đang tải…</div>
       ) : !status.enabled ? (
-        <div className="banner warn inline">Chưa bật lên đơn POS. Quản trị bật ở Cài đặt › Tích hợp › Đồng bộ đơn hàng.</div>
+        <div className="banner warn inline">Chưa bật lên đơn POS. Quản trị bật ở Cài đặt › Đồng bộ đơn hàng.</div>
       ) : (
         <div className="stack pos-order">
           <div className="grid-2 tight">

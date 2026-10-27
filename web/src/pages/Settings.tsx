@@ -12,12 +12,13 @@ import LogsTab from './Logs'
 import PermissionsTab from './Permissions'
 import { BulkDeptBar, ListFilter, matchDept, matchText, SelectAllBox, useSelection, type DeptFilter } from './bulk-manage'
 import AlertsSettings from './AlertsSettings'
-import CompanyZalo from './CompanyZalo'
+import CompanyZalo, { KeywordSettings } from './CompanyZalo'
+import { AiSettings } from './monitor-ai'
 import SapoSettings from './SapoSettings'
 import OdooPosSettings from './OdooPosSettings'
 import Channels from './Channels'
 import { canAny, type Permission } from '../perm'
-import { Link2, ScrollText, ShieldCheck, Sparkles } from 'lucide-react'
+import { Bot, Flag, Link2, ScrollText, ShieldCheck, Sparkles } from 'lucide-react'
 import { QaSettings } from './qa'
 import LinkedApps from './LinkedApps'
 
@@ -37,40 +38,50 @@ export type SettingsTab =
   | 'users'
   | 'permissions'
   | 'qa'
+  | 'ai'
+  | 'flags'
 type Tab = SettingsTab
 
 type MenuItem = { id: Tab; label: string; icon: React.ReactNode; perms: Permission[] }
+/** Sắp theo thứ tự thiết lập: kênh chat → cách xử lý hội thoại → giám sát chất lượng → kết nối hệ thống khác → nhân viên & bảo mật. */
 const MENU: { title: string; items: MenuItem[] }[] = [
   {
-    title: 'Tích hợp',
+    title: 'Kênh chat',
     items: [
       { id: 'channels', label: 'Kết nối kênh', icon: <Radio size={18} />, perms: ['channels.manage'] },
-      { id: 'connect', label: 'Kết nối app & API', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
-      { id: 'orders', label: 'Đồng bộ đơn hàng', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
     ],
   },
   {
-    title: 'Quản lý chung',
+    title: 'Hội thoại',
     items: [
-      { id: 'alerts', label: 'Cảnh báo đơn "rơi"', icon: <AlertTriangle size={18} />, perms: ['alerts.manage'] },
-      { id: 'company', label: 'Zalo nhân viên (giám sát)', icon: <Smartphone size={18} />, perms: ['channels.manage'] },
-      { id: 'logs', label: 'Nhật ký hệ thống', icon: <ScrollText size={18} />, perms: ['logs.view'] },
-    ],
-  },
-  {
-    title: 'Quản lý hội thoại',
-    items: [
+      { id: 'departments', label: 'Bộ phận - phân chia hội thoại', icon: <Building2 size={18} />, perms: ['departments.manage'] },
       { id: 'templates', label: 'Câu trả lời mẫu', icon: <MessageSquareText size={18} />, perms: ['templates.manage'] },
       { id: 'tags', label: 'Tag hội thoại', icon: <TagIcon size={18} />, perms: ['tags.manage'] },
-      { id: 'departments', label: 'Bộ phận - phân chia hội thoại', icon: <Building2 size={18} />, perms: ['departments.manage'] },
-      { id: 'qa', label: 'Chấm tư vấn (kịch bản)', icon: <Sparkles size={18} />, perms: ['qa.manage'] },
     ],
   },
   {
-    title: 'Phân quyền',
+    title: 'Giám sát & chất lượng',
+    items: [
+      { id: 'company', label: 'Zalo nhân viên (giám sát)', icon: <Smartphone size={18} />, perms: ['channels.manage'] },
+      { id: 'ai', label: 'Trợ lý AI', icon: <Bot size={18} />, perms: ['integrations.manage'] },
+      { id: 'qa', label: 'Chấm tư vấn (kịch bản)', icon: <Sparkles size={18} />, perms: ['qa.manage'] },
+      { id: 'flags', label: 'Gắn cờ tin cần chú ý', icon: <Flag size={18} />, perms: ['channels.manage'] },
+      { id: 'alerts', label: 'Cảnh báo đơn "rơi"', icon: <AlertTriangle size={18} />, perms: ['alerts.manage'] },
+    ],
+  },
+  {
+    title: 'Kết nối hệ thống',
+    items: [
+      { id: 'orders', label: 'Đồng bộ đơn hàng', icon: <RefreshCw size={18} />, perms: ['integrations.manage'] },
+      { id: 'connect', label: 'Kết nối app & API', icon: <PlugZap size={18} />, perms: ['integrations.manage'] },
+    ],
+  },
+  {
+    title: 'Nhân viên & bảo mật',
     items: [
       { id: 'users', label: 'Nhân viên', icon: <UsersIcon size={18} />, perms: ['users.manage', 'permissions.manage'] },
       { id: 'permissions', label: 'Nhóm quyền', icon: <ShieldCheck size={18} />, perms: ['permissions.manage'] },
+      { id: 'logs', label: 'Nhật ký hệ thống', icon: <ScrollText size={18} />, perms: ['logs.view'] },
     ],
   },
 ]
@@ -226,6 +237,8 @@ export default function SettingsPage({ tab: rawLink }: { tab?: Tab }) {
         {tab === 'users' && allowed('users') && <UsersPage embedded />}
         {tab === 'permissions' && allowed('permissions') && <PermissionsTab />}
         {tab === 'qa' && allowed('qa') && <QaSettings />}
+        {tab === 'ai' && allowed('ai') && <AiSettings />}
+        {tab === 'flags' && allowed('flags') && <KeywordSettings />}
       </div>
     </div>
   )

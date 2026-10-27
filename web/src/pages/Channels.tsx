@@ -20,7 +20,7 @@ export default function Channels({ manage = false }: { manage?: boolean }) {
   const [tab, setTab] = useState<Platform | 'all'>('all')
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
-  // Trang Kênh Chat (menu trên) chỉ để chọn kênh chat; kết nối / cài đặt kênh nằm ở Cài đặt › Tích hợp › Kết nối kênh
+  // Trang Kênh Chat (menu trên) chỉ để chọn kênh chat; kết nối / cài đặt kênh nằm ở Cài đặt › Kênh chat › Kết nối kênh
   const isAdmin = manage && allowed('channels.manage')
 
   // Quay về từ trang đăng nhập Facebook / TikTok / Zalo OA: #/channels/<kết quả>
@@ -106,7 +106,7 @@ export default function Channels({ manage = false }: { manage?: boolean }) {
           </p>
           {!manage && allowed('channels.manage') && (
             <p className="small">
-              Kết nối kênh mới, quét QR, phân quyền kênh: <a href="#/settings/channels">Cài đặt › Tích hợp › Kết nối kênh</a>
+              Kết nối kênh mới, quét QR, phân quyền kênh: <a href="#/settings/channels">Cài đặt › Kênh chat › Kết nối kênh</a>
             </p>
           )}
         </div>
@@ -1000,10 +1000,10 @@ function AddChannelModal({ onClose, onZalo, onConnected }: { onClose: () => void
       Chưa nhập thông tin app {label}.{' '}
       {allowed('integrations.manage') ? (
         <a href="#/settings/apps" onClick={onClose}>
-          Nhập ở Cài đặt › Tích hợp › App nền tảng
+          Nhập ở Cài đặt › Kết nối app & API › App nền tảng
         </a>
       ) : (
-        'Nhờ quản trị viên nhập ở Cài đặt › Tích hợp.'
+        'Nhờ quản trị viên nhập ở Cài đặt › Kết nối app & API.'
       )}
     </div>
   )
