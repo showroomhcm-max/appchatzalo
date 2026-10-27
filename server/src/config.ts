@@ -39,6 +39,8 @@ export const config = {
   aiBaseUrl: (process.env.AI_BASE_URL ?? "https://api.anthropic.com").replace(/\/+$/, ""),
   // API Grok (xAI): đổi địa chỉ chỉ khi chạy thử với máy giả lập
   xaiBaseUrl: (process.env.XAI_BASE_URL ?? "https://api.x.ai").replace(/\/+$/, ""),
+  // API DeepSeek: đổi địa chỉ chỉ khi chạy thử với máy giả lập
+  deepseekBaseUrl: (process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com").replace(/\/+$/, ""),
 };
 
 fs.mkdirSync(config.uploadDir, { recursive: true });

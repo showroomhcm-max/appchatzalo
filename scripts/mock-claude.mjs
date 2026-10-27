@@ -1,4 +1,4 @@
-// Máy AI giả (giống API Claude và API Grok) cho bản demo: trả kết quả chấm / phân tích dựng từ chính đoạn chat gửi lên.
+// Máy AI giả (giống API Claude, Grok và DeepSeek) cho bản demo: trả kết quả chấm / phân tích dựng từ chính đoạn chat gửi lên.
 // Không gọi ra internet, không tốn tiền. Dùng: node scripts/demo.mjs --mock-ai (tự bật máy này ở cổng 3994).
 import http from "node:http";
 import crypto from "node:crypto";
@@ -60,7 +60,9 @@ http
     res.setHeader("Content-Type", "application/json");
     // Grok (xAI): danh sách model và chat/completions kiểu OpenAI
     if (req.url === "/v1/models") return res.end(JSON.stringify({ data: ["grok-4", "grok-4-fast-non-reasoning", "grok-4-fast-reasoning", "grok-2-image"].map((id) => ({ id })) }));
-    if (req.url === "/v1/chat/completions" && req.method === "POST") {
+    // DeepSeek: cùng kiểu OpenAI nhưng không có /v1
+    if (req.url === "/models") return res.end(JSON.stringify({ data: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-reasoner"].map((id) => ({ id })) }));
+    if ((req.url === "/v1/chat/completions" || req.url === "/chat/completions") && req.method === "POST") {
       const b = JSON.parse(raw);
       const fn = b.tools[0].function;
       const input = answer({ tools: [{ name: fn.name, input_schema: fn.parameters }], messages: [{ content: b.messages.find((m) => m.role === "user")?.content }] });

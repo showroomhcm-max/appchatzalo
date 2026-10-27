@@ -249,17 +249,14 @@ export function DigestView({ channelId, holder }: { channelId: number; holder: s
   )
 }
 
-type Provider = 'anthropic' | 'xai'
+type Provider = 'anthropic' | 'xai' | 'deepseek'
 type AiCfg = {
   enabled: boolean
   provider: Provider
   providers: Record<Provider, string>
   apiKey: string
   hasKey: boolean
-  claudeKey: string
-  xaiKey: string
-  hasClaudeKey: boolean
-  hasXaiKey: boolean
+  keyInfo: Record<Provider, { has: boolean; masked: string }>
   modelsByProvider: Record<Provider, { id: string; label: string }[]>
   scanModel: string
   digestModel: string
@@ -270,6 +267,12 @@ type AiCfg = {
   rules: string
   models: { id: string; label: string }[]
   usage: { calls: number; tokens_in: number; tokens_out: number }
+}
+
+const KEY_HINT: Record<Provider, string> = {
+  anthropic: 'sk-ant-… (console.anthropic.com › API Keys)',
+  xai: 'xai-… (console.x.ai › API Keys)',
+  deepseek: 'sk-… (platform.deepseek.com › API keys)',
 }
 
 /** Cài đặt › Zalo nhân viên › Trợ lý AI */
@@ -289,8 +292,8 @@ export function AiSettings() {
   const set = (p: Partial<AiCfg>) => setCfg({ ...cfg, ...p })
   const pname = cfg.providers[cfg.provider]
   const models = cfg.modelsByProvider[cfg.provider]
-  const hasKeyFor = cfg.provider === 'xai' ? cfg.hasXaiKey : cfg.hasClaudeKey
-  const savedKey = cfg.provider === 'xai' ? cfg.xaiKey : cfg.claudeKey
+  const hasKeyFor = cfg.keyInfo[cfg.provider].has
+  const savedKey = cfg.keyInfo[cfg.provider].masked
   const modelSelect = (value: string, onChange: (v: string) => void) => (
     <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
       {!models.some((m) => m.id === value) && <option value={value}>{models.length ? value : `${value} (lưu khóa để tải danh sách model)`}</option>}
@@ -386,7 +389,7 @@ export function AiSettings() {
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder={
-              hasKeyFor ? `Đã lưu (${savedKey}). Để trống nếu không đổi` : cfg.provider === 'xai' ? 'xai-… (console.x.ai › API Keys)' : 'sk-ant-… (console.anthropic.com › API Keys)'
+              hasKeyFor ? `Đã lưu (${savedKey}). Để trống nếu không đổi` : KEY_HINT[cfg.provider]
             }
           />
         </label>

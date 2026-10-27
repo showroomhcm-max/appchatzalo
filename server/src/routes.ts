@@ -49,7 +49,7 @@ import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handove
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
 import { createPosOrder, odooPosConfig, posConfigs, publicOdooPosConfig, saveOdooPosConfig, searchProducts, syncPosOrders, testOdooPos } from "./odoo-pos.js";
 import { canSeeConversation, canUseChannel, departmentItemFilter, isOthersMonitorChannel, scopeOf, type Scope } from "./access.js";
-import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, loadXaiModels, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
+import { aiConfig, analyzeConversation, buildDigest, getAnalysis, getDigest, loadModels, publicAiConfig, saveAiConfig, testAi } from "./ai-monitor.js";
 import { dvktConfig, dvktCustomer, publicDvktConfig, rotateDvktKey, saveDvktConfig, testDvkt } from "./dvkt.js";
 import { normalizeOrderPhone } from "./orders.js";
 import { workReport } from "./work-report.js";
@@ -1137,8 +1137,9 @@ appRouter.get(
   "/ai/config",
   requirePerm("integrations.manage"),
   h(async (_req, res) => {
-    // Grok: lấy danh sách model theo khóa (lỗi thì vẫn trả cài đặt, danh sách trống)
-    if (aiConfig().provider === "xai") await loadXaiModels().catch(() => []);
+    // Grok / DeepSeek: lấy danh sách model theo khóa (lỗi thì vẫn trả cài đặt, danh sách trống)
+    const c = aiConfig();
+    await loadModels(c.provider).catch(() => []);
     res.json(publicAiConfig());
   }),
 );

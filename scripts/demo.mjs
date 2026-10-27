@@ -51,7 +51,7 @@ const child = spawn("npm run dev", {
   shell: true,
   // PORT cố định 3000 cho máy chủ (trình xem trước có thể gán PORT=5173, trùng cổng giao diện)
   // WEB_DIST trỏ chỗ trống: giao diện do Vite phục vụ, khỏi so với bản build cũ rồi hiện thanh "có phiên bản mới"
-  env: { ...process.env, DATA_DIR: dir, PORT: "3000", PUBLIC_URL: "http://localhost:5173", WEB_DIST: path.join(dir, "no-web"), ...(mockAi ? { AI_BASE_URL: "http://127.0.0.1:3994", XAI_BASE_URL: "http://127.0.0.1:3994" } : {}) },
+  env: { ...process.env, DATA_DIR: dir, PORT: "3000", PUBLIC_URL: "http://localhost:5173", WEB_DIST: path.join(dir, "no-web"), ...(mockAi ? { AI_BASE_URL: "http://127.0.0.1:3994", XAI_BASE_URL: "http://127.0.0.1:3994", DEEPSEEK_BASE_URL: "http://127.0.0.1:3994" } : {}) },
 });
 child.on("exit", (code) => process.exit(code ?? 0));
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));

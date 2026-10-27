@@ -582,7 +582,7 @@ export function QaSettings() {
           viên, máy chủ kiểm lại; điểm = số bước đạt ÷ số bước được tính. Thiếu dữ liệu (chưa trả lời, thiếu đoạn đầu…) thì không chấm. Chỉ người có quyền
           "Xem chất lượng tư vấn" xem kết quả ở Báo cáo › Chất lượng tư vấn. Nội dung chat được gửi tới {cfg.provider} để chấm.
         </p>
-        {!cfg.hasKey && <div className="banner warn inline">Chưa có khóa API AI. Chọn nhà cung cấp (Claude hoặc Grok) và nhập khóa ở Cài đặt › Zalo nhân viên (giám sát) › Trợ lý AI phân tích tin nhắn.</div>}
+        {!cfg.hasKey && <div className="banner warn inline">Chưa có khóa API AI. Chọn nhà cung cấp (Claude, Grok hoặc DeepSeek) và nhập khóa ở Cài đặt › Zalo nhân viên (giám sát) › Trợ lý AI phân tích tin nhắn.</div>}
         <div className="grid-2">
           <label className="field">
             <span>Đạt chuẩn từ (%)</span>

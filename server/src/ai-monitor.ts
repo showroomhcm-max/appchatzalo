@@ -1,5 +1,5 @@
 /**
- * Trợ lý AI giám sát Zalo nhân viên (Claude của Anthropic, hoặc Grok của xAI).
+ * Trợ lý AI giám sát Zalo nhân viên (Claude của Anthropic, Grok của xAI hoặc DeepSeek).
  * - Quét: hội thoại giám sát có tin mới (đã ngừng nhắn vài phút) → AI đọc đoạn chat, chấm rủi ro, tóm tắt, chỉ ra tin có vấn đề
  *   (chuyển khoản riêng, kéo khách ra ngoài, giá riêng, thái độ, thông tin sai, bỏ lỡ khách…). Vấn đề mức vừa / cao thành
  *   "Tin cần chú ý" (nguồn AI) cạnh các cờ từ khóa sẵn có.
@@ -55,17 +55,42 @@ export const AI_MODELS = [
   { id: "claude-opus-5-5", label: "Opus 5.5 — kỹ nhất, đắt nhất" },
 ];
 
-/** Nhà cung cấp AI: Claude (Anthropic) hoặc Grok (xAI). Mỗi bên một khóa riêng, dùng bên đang chọn. */
-export type AiProvider = "anthropic" | "xai";
-export const AI_PROVIDERS: Record<AiProvider, string> = { anthropic: "Claude (Anthropic)", xai: "Grok (xAI)" };
+/** Nhà cung cấp AI: Claude (Anthropic), Grok (xAI) hoặc DeepSeek. Mỗi bên một khóa riêng, dùng bên đang chọn. */
+export type AiProvider = "anthropic" | "xai" | "deepseek";
+export const AI_PROVIDERS: Record<AiProvider, string> = { anthropic: "Claude (Anthropic)", xai: "Grok (xAI)", deepseek: "DeepSeek" };
+const isProvider = (v: unknown): v is AiProvider => typeof v === "string" && v in AI_PROVIDERS;
+
+/** Grok và DeepSeek dùng API kiểu OpenAI (chat/completions + function calling); danh sách model lấy theo khóa. */
+type Compat = "xai" | "deepseek";
+const COMPAT: Record<Compat, { base: () => string; prefix: string; key: RegExp; keyHint: string; models: RegExp; scan: RegExp[]; digest: RegExp[]; fallback: [string, string] }> = {
+  xai: {
+    base: () => config.xaiBaseUrl,
+    prefix: "/v1",
+    key: /^xai-[A-Za-z0-9_\-]{20,}$/,
+    keyHint: "bắt đầu bằng xai-",
+    models: /^grok(?!.*(image|imagine|video|vision))/,
+    scan: [/fast.*non-reasoning/, /fast/, /mini/],
+    digest: [/^grok-4(?!.*(fast|mini|code))/],
+    fallback: ["grok-4-fast-non-reasoning", "grok-4"],
+  },
+  deepseek: {
+    base: () => config.deepseekBaseUrl,
+    prefix: "",
+    key: /^sk-[A-Za-z0-9]{20,}$/,
+    keyHint: "bắt đầu bằng sk-",
+    models: /^deepseek/,
+    scan: [/flash/, /chat/, /^(?!.*reason)/],
+    digest: [/pro/, /flash/, /chat/],
+    fallback: ["deepseek-chat", "deepseek-chat"],
+  },
+};
 
 export type AiConfig = {
   enabled: boolean;
   provider: AiProvider;
   /** Khóa của nhà cung cấp đang chọn */
   apiKey: string;
-  claudeKey: string;
-  xaiKey: string;
+  keys: Record<AiProvider, string>;
   scanModel: string;
   digestModel: string;
   /** Quét mỗi bao nhiêu phút */
@@ -80,20 +105,33 @@ export type AiConfig = {
   rules: string;
 };
 
+const defaultModel = (p: AiProvider, kind: "scan" | "digest") => {
+  if (p === "anthropic") return kind === "scan" ? "claude-haiku-5-5" : "claude-sonnet-5-5";
+  const c = COMPAT[p];
+  const ids = compatModels[p].ids;
+  for (const re of kind === "scan" ? c.scan : c.digest) {
+    const hit = ids.find((id) => re.test(id));
+    if (hit) return hit;
+  }
+  return ids[0] ?? c.fallback[kind === "scan" ? 0 : 1];
+};
+
 export function aiConfig(): AiConfig {
-  const c = getSetting<Partial<AiConfig>>("ai.config") ?? {};
-  const provider: AiProvider = c.provider === "xai" ? "xai" : "anthropic";
+  const c = getSetting<Partial<AiConfig> & { claudeKey?: string; xaiKey?: string; deepseekKey?: string }>("ai.config") ?? {};
+  const provider: AiProvider = isProvider(c.provider) ? c.provider : "anthropic";
   // Bản cũ chỉ có apiKey (khóa Claude)
-  const claudeKey = c.claudeKey ?? (c.provider ? "" : c.apiKey) ?? "";
-  const xaiKey = c.xaiKey ?? "";
+  const keys: Record<AiProvider, string> = {
+    anthropic: c.claudeKey ?? (c.provider ? "" : c.apiKey) ?? "",
+    xai: c.xaiKey ?? "",
+    deepseek: c.deepseekKey ?? "",
+  };
   return {
     enabled: !!c.enabled,
     provider,
-    apiKey: provider === "xai" ? xaiKey : claudeKey,
-    claudeKey,
-    xaiKey,
-    scanModel: c.scanModel ?? (provider === "xai" ? defaultXaiModel("scan") : "claude-haiku-5-5"),
-    digestModel: c.digestModel ?? (provider === "xai" ? defaultXaiModel("digest") : "claude-sonnet-5-5"),
+    apiKey: keys[provider],
+    keys,
+    scanModel: c.scanModel ?? defaultModel(provider, "scan"),
+    digestModel: c.digestModel ?? defaultModel(provider, "digest"),
     scanEveryMin: c.scanEveryMin ?? 15,
     quietMin: c.quietMin ?? 5,
     digestHour: c.digestHour ?? 20,
@@ -102,50 +140,43 @@ export function aiConfig(): AiConfig {
   };
 }
 
-// ───────── Danh sách model của xAI (lấy theo tài khoản, lưu đệm 1 giờ) ─────────
-let xaiModels: { ids: string[]; at: number; key: string } = { ids: [], at: 0, key: "" };
-function defaultXaiModel(kind: "scan" | "digest") {
-  const ids = xaiModels.ids;
-  const pick = (re: RegExp) => ids.find((id) => re.test(id));
-  if (kind === "scan") return pick(/fast.*non-reasoning/) ?? pick(/fast/) ?? pick(/mini/) ?? ids[0] ?? "grok-4-fast-non-reasoning";
-  return pick(/^grok-4(?!.*(fast|mini|code))/) ?? ids[0] ?? "grok-4";
-}
-/** Lấy danh sách model Grok mà khóa này dùng được (chỉ model chat chữ). */
-export async function loadXaiModels(key = aiConfig().xaiKey) {
-  if (!key) return [];
-  if (xaiModels.key === key && Date.now() - xaiModels.at < 3600_000 && xaiModels.ids.length) return xaiModels.ids;
+// ───────── Danh sách model Grok / DeepSeek (lấy theo khóa, lưu đệm 1 giờ) ─────────
+const compatModels: Record<Compat, { ids: string[]; at: number; key: string }> = { xai: { ids: [], at: 0, key: "" }, deepseek: { ids: [], at: 0, key: "" } };
+export async function loadModels(p: AiProvider, key = aiConfig().keys[p]) {
+  if (p === "anthropic" || !key) return [];
+  const c = COMPAT[p];
+  const cache = compatModels[p];
+  if (cache.key === key && Date.now() - cache.at < 3600_000 && cache.ids.length) return cache.ids;
   let res: Response;
   try {
-    res = await fetch(`${config.xaiBaseUrl}/v1/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
+    res = await fetch(`${c.base()}${c.prefix}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) });
   } catch {
-    throw new AiError("Không gọi được máy chủ Grok (xAI)");
+    throw new AiError(`Không gọi được máy chủ ${AI_PROVIDERS[p]}`);
   }
-  if (!res.ok) throw new AiError(res.status === 401 || res.status === 403 ? "Khóa API Grok không đúng hoặc đã bị thu hồi" : `Không lấy được danh sách model Grok (mã ${res.status})`);
+  if (!res.ok) throw new AiError(res.status === 401 || res.status === 403 ? `Khóa API ${AI_PROVIDERS[p]} không đúng hoặc đã bị thu hồi` : `Không lấy được danh sách model ${AI_PROVIDERS[p]} (mã ${res.status})`);
   const body: any = await res.json().catch(() => null);
   const ids = ((body?.data ?? []) as { id: string }[])
     .map((m) => String(m.id))
-    .filter((id) => /^grok/.test(id) && !/image|imagine|video|vision/.test(id))
+    .filter((id) => c.models.test(id))
     .sort();
-  xaiModels = { ids, at: Date.now(), key };
+  compatModels[p] = { ids, at: Date.now(), key };
   return ids;
 }
-const modelLabel = (id: string) => (/mini|fast/.test(id) ? `${id} — nhanh, rẻ` : id);
+const modelLabel = (id: string) => (/mini|fast|flash/.test(id) ? `${id} — nhanh, rẻ` : /reason/.test(id) ? `${id} — suy luận (chậm hơn)` : id);
+const modelsOf = (p: AiProvider) => (p === "anthropic" ? AI_MODELS : compatModels[p].ids.map((id) => ({ id, label: modelLabel(id) })));
 
 const mask = (k: string) => (k ? `•••${k.slice(-4)}` : "");
 export function publicAiConfig() {
-  const c = aiConfig();
-  const xai = xaiModels.ids.map((id) => ({ id, label: modelLabel(id) }));
+  const { keys, ...c } = aiConfig();
+  const all = Object.keys(AI_PROVIDERS) as AiProvider[];
   return {
     ...c,
     apiKey: mask(c.apiKey),
-    claudeKey: mask(c.claudeKey),
-    xaiKey: mask(c.xaiKey),
     hasKey: !!c.apiKey,
-    hasClaudeKey: !!c.claudeKey,
-    hasXaiKey: !!c.xaiKey,
     providers: AI_PROVIDERS,
-    models: c.provider === "xai" ? xai : AI_MODELS,
-    modelsByProvider: { anthropic: AI_MODELS, xai },
+    keyInfo: Object.fromEntries(all.map((p) => [p, { has: !!keys[p], masked: mask(keys[p]) }])),
+    models: modelsOf(c.provider),
+    modelsByProvider: Object.fromEntries(all.map((p) => [p, modelsOf(p)])),
     usage: usageToday(),
     usage7: usageDays(7),
   };
@@ -156,40 +187,40 @@ const clampInt = (v: unknown, min: number, max: number, def: number) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 };
 
-const KEY_FORMAT: Record<AiProvider, { re: RegExp; msg: string }> = {
-  anthropic: { re: /^sk-ant-[A-Za-z0-9_\-]{20,}$/, msg: "Khóa API Claude không đúng dạng (bắt đầu bằng sk-ant-)" },
-  xai: { re: /^xai-[A-Za-z0-9_\-]{20,}$/, msg: "Khóa API Grok không đúng dạng (bắt đầu bằng xai-)" },
+const checkKeyFormat = (p: AiProvider, key: string) => {
+  const ok = p === "anthropic" ? /^sk-ant-[A-Za-z0-9_\-]{20,}$/.test(key) : COMPAT[p].key.test(key);
+  if (!ok) throw new Error(`Khóa API ${AI_PROVIDERS[p]} không đúng dạng (${p === "anthropic" ? "bắt đầu bằng sk-ant-" : COMPAT[p].keyHint})`);
 };
 
 export async function saveAiConfig(input: any, userId: number) {
   const cur = aiConfig();
-  const provider: AiProvider = input?.provider === "xai" || input?.provider === "anthropic" ? input.provider : cur.provider;
+  const provider: AiProvider = isProvider(input?.provider) ? input.provider : cur.provider;
   const key = typeof input?.apiKey === "string" ? input.apiKey.trim() : "";
-  if (key && !KEY_FORMAT[provider].re.test(key)) throw new Error(KEY_FORMAT[provider].msg);
-  const claudeKey = provider === "anthropic" ? key || (input?.clearKey ? "" : cur.claudeKey) : cur.claudeKey;
-  const xaiKey = provider === "xai" ? key || (input?.clearKey ? "" : cur.xaiKey) : cur.xaiKey;
-  // Khóa Grok mới: lấy danh sách model ngay (khóa sai thì báo luôn, không lưu)
-  if (provider === "xai" && key) await loadXaiModels(key);
-  else if (provider === "xai" && xaiKey) await loadXaiModels(xaiKey).catch(() => []);
+  if (key) checkKeyFormat(provider, key);
+  const keys = { ...cur.keys, [provider]: key || (input?.clearKey ? "" : cur.keys[provider]) };
+  // Khóa mới: lấy danh sách model ngay (khóa sai thì báo luôn, không lưu)
+  if (key) await loadModels(provider, key);
+  else if (keys[provider]) await loadModels(provider, keys[provider]).catch(() => []);
+  const list = provider === "anthropic" ? [] : compatModels[provider].ids;
   const valid = (v: unknown): v is string =>
-    typeof v === "string" &&
-    (provider === "anthropic" ? AI_MODELS.some((m) => m.id === v) : xaiModels.ids.length ? xaiModels.ids.includes(v) : /^grok[a-z0-9.\-]{0,60}$/.test(v));
+    typeof v === "string" && (provider === "anthropic" ? AI_MODELS.some((m) => m.id === v) : list.length ? list.includes(v) : /^[a-z0-9][a-z0-9.\-]{1,60}$/.test(v));
   const switched = provider !== cur.provider;
   const model = (v: unknown, prev: string, def: string) => (valid(v) ? v : !switched && valid(prev) ? prev : def);
   const next = {
     enabled: input?.enabled !== undefined ? !!input.enabled : cur.enabled,
     provider,
-    claudeKey,
-    xaiKey,
-    scanModel: model(input?.scanModel, cur.scanModel, provider === "xai" ? defaultXaiModel("scan") : "claude-haiku-5-5"),
-    digestModel: model(input?.digestModel, cur.digestModel, provider === "xai" ? defaultXaiModel("digest") : "claude-sonnet-5-5"),
+    claudeKey: keys.anthropic,
+    xaiKey: keys.xai,
+    deepseekKey: keys.deepseek,
+    scanModel: model(input?.scanModel, cur.scanModel, defaultModel(provider, "scan")),
+    digestModel: model(input?.digestModel, cur.digestModel, defaultModel(provider, "digest")),
     scanEveryMin: input?.scanEveryMin !== undefined ? clampInt(input.scanEveryMin, 5, 240, cur.scanEveryMin) : cur.scanEveryMin,
     quietMin: input?.quietMin !== undefined ? clampInt(input.quietMin, 1, 120, cur.quietMin) : cur.quietMin,
     digestHour: input?.digestHour !== undefined ? clampInt(input.digestHour, 0, 23, cur.digestHour) : cur.digestHour,
     maxCallsPerDay: input?.maxCallsPerDay !== undefined ? clampInt(input.maxCallsPerDay, 10, 5000, cur.maxCallsPerDay) : cur.maxCallsPerDay,
     rules: input?.rules !== undefined ? String(input.rules).slice(0, 3000) : cur.rules,
   };
-  if (next.enabled && !(provider === "xai" ? xaiKey : claudeKey)) throw new Error(`Nhập khóa API ${AI_PROVIDERS[provider]} trước khi bật`);
+  if (next.enabled && !keys[provider]) throw new Error(`Nhập khóa API ${AI_PROVIDERS[provider]} trước khi bật`);
   setSetting("ai.config", next);
   logEvent(null, userId, "ai.config", { enabled: next.enabled, provider, keyChanged: !!key || !!input?.clearKey, scanModel: next.scanModel, digestModel: next.digestModel });
   return publicAiConfig();
@@ -209,74 +240,87 @@ export class AiError extends Error {}
 
 type AiCall = { model: string; system: string; user: string; tool: { name: string; description: string; input_schema: any }; maxTokens: number; cfg?: AiConfig };
 
-/** Gọi AI (Claude hoặc Grok theo cài đặt), bắt trả kết quả qua công cụ (tool) để có dữ liệu đúng khuôn. */
+async function post(url: string, headers: Record<string, string>, body: unknown, timeoutMs: number) {
+  try {
+    return await fetch(url, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e: any) {
+    throw new AiError(e?.name === "TimeoutError" ? "AI trả lời quá lâu" : "Không gọi được máy chủ AI");
+  }
+}
+
+/** Gọi AI (Claude, Grok hoặc DeepSeek theo cài đặt), bắt trả kết quả qua công cụ (tool) để có dữ liệu đúng khuôn. */
 export async function callAi(opts: AiCall) {
   const cfg = opts.cfg ?? aiConfig();
   const name = AI_PROVIDERS[cfg.provider];
   if (!cfg.apiKey) throw new AiError(`Chưa nhập khóa API ${name}`);
   if (usageToday().calls >= cfg.maxCallsPerDay) throw new AiError(`Đã hết ${cfg.maxCallsPerDay} lượt AI hôm nay (giới hạn trong Cài đặt)`);
   run("INSERT INTO ai_usage(date, calls) VALUES(?, 1) ON CONFLICT(date) DO UPDATE SET calls = calls + 1", vnDate());
-  const xai = cfg.provider === "xai";
+  const compat = cfg.provider === "anthropic" ? null : COMPAT[cfg.provider];
   let res: Response;
-  try {
-    res = xai
-      ? // Grok: API kiểu OpenAI (chat/completions + function calling)
-        await fetch(`${config.xaiBaseUrl}/v1/chat/completions`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${cfg.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            model: opts.model,
-            max_tokens: opts.maxTokens,
-            messages: [
-              { role: "system", content: opts.system },
-              { role: "user", content: opts.user },
-            ],
-            tools: [{ type: "function", function: { name: opts.tool.name, description: opts.tool.description, parameters: opts.tool.input_schema } }],
-            tool_choice: { type: "function", function: { name: opts.tool.name } },
-          }),
-          signal: AbortSignal.timeout(120_000),
-        })
-      : await fetch(`${config.aiBaseUrl}/v1/messages`, {
-          method: "POST",
-          headers: { "x-api-key": cfg.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({
-            model: opts.model,
-            max_tokens: opts.maxTokens,
-            // Phần hướng dẫn cố định được lưu đệm (prompt caching) để giảm chi phí các lượt sau
-            system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
-            messages: [{ role: "user", content: opts.user }],
-            tools: [opts.tool],
-            tool_choice: { type: "tool", name: opts.tool.name },
-          }),
-          signal: AbortSignal.timeout(90_000),
-        });
-  } catch (e: any) {
-    throw new AiError(e?.name === "TimeoutError" ? "AI trả lời quá lâu" : "Không gọi được máy chủ AI");
+  if (compat) {
+    const url = `${compat.base()}${compat.prefix}/chat/completions`;
+    const base = {
+      model: opts.model,
+      max_tokens: opts.maxTokens,
+      messages: [
+        { role: "system", content: opts.system },
+        { role: "user", content: opts.user },
+      ],
+      tools: [{ type: "function", function: { name: opts.tool.name, description: opts.tool.description, parameters: opts.tool.input_schema } }],
+    };
+    const auth = { Authorization: `Bearer ${cfg.apiKey}` };
+    res = await post(url, auth, { ...base, tool_choice: { type: "function", function: { name: opts.tool.name } } }, 120_000);
+    // Model không nhận "bắt buộc gọi đúng công cụ này" (vd model suy luận) → thử lại để model tự gọi công cụ
+    if (res.status === 400) {
+      const err = await res.clone().text().catch(() => "");
+      if (/tool_choice|tool choice/i.test(err)) res = await post(url, auth, { ...base, tool_choice: "auto" }, 120_000);
+    }
+  } else {
+    res = await post(
+      `${config.aiBaseUrl}/v1/messages`,
+      { "x-api-key": cfg.apiKey, "anthropic-version": "2023-06-01" },
+      {
+        model: opts.model,
+        max_tokens: opts.maxTokens,
+        // Phần hướng dẫn cố định được lưu đệm (prompt caching) để giảm chi phí các lượt sau
+        system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: opts.user }],
+        tools: [opts.tool],
+        tool_choice: { type: "tool", name: opts.tool.name },
+      },
+      90_000,
+    );
   }
   const body: any = await res.json().catch(() => null);
   if (!res.ok) {
     const raw = body?.error?.message ?? body?.error ?? body?.message;
     const msg = raw ? String(typeof raw === "string" ? raw : JSON.stringify(raw)).slice(0, 200) : `mã ${res.status}`;
-    if (res.status === 401 || (xai && res.status === 403)) throw new AiError(`Khóa API ${name} không đúng hoặc đã bị thu hồi`);
+    if (res.status === 401 || (compat && res.status === 403)) throw new AiError(`Khóa API ${name} không đúng hoặc đã bị thu hồi`);
+    if (res.status === 402) throw new AiError(`Tài khoản ${name} hết tiền, nạp thêm rồi thử lại`);
     if (res.status === 429) throw new AiError("AI đang quá tải hoặc hết hạn mức, thử lại sau");
     throw new AiError(`AI lỗi: ${msg}`);
   }
   const u = body?.usage ?? {};
   run(
     "UPDATE ai_usage SET tokens_in = tokens_in + ?, tokens_out = tokens_out + ? WHERE date = ?",
-    xai ? Number(u.prompt_tokens ?? 0) : Number(u.input_tokens ?? 0) + Number(u.cache_read_input_tokens ?? 0) + Number(u.cache_creation_input_tokens ?? 0),
-    xai ? Number(u.completion_tokens ?? 0) : Number(u.output_tokens ?? 0),
+    compat ? Number(u.prompt_tokens ?? 0) : Number(u.input_tokens ?? 0) + Number(u.cache_read_input_tokens ?? 0) + Number(u.cache_creation_input_tokens ?? 0),
+    compat ? Number(u.completion_tokens ?? 0) : Number(u.output_tokens ?? 0),
     vnDate(),
   );
-  if (xai) {
-    const call = (body?.choices?.[0]?.message?.tool_calls ?? []).find((c: any) => c?.function?.name === opts.tool.name);
-    let input: any = null;
-    try {
-      input = JSON.parse(call?.function?.arguments ?? "");
-    } catch {
-      input = null;
-    }
-    if (!input || typeof input !== "object") throw new AiError("AI trả về không đúng định dạng");
+  if (compat) {
+    const msg = body?.choices?.[0]?.message ?? {};
+    const call = (msg.tool_calls ?? []).find((c: any) => c?.function?.name === opts.tool.name);
+    const parse = (s: unknown) => {
+      try {
+        const v = JSON.parse(String(s ?? "").replace(/^```(?:json)?\s*|\s*```$/g, ""));
+        return v && typeof v === "object" ? v : null;
+      } catch {
+        return null;
+      }
+    };
+    // Không gọi công cụ mà trả JSON trong nội dung thì vẫn nhận
+    const input = parse(call?.function?.arguments) ?? parse(msg.content);
+    if (!input) throw new AiError("AI trả về không đúng định dạng");
     return input as any;
   }
   const block = (body?.content ?? []).find((b: any) => b?.type === "tool_use" && b?.name === opts.tool.name);
@@ -286,15 +330,18 @@ export async function callAi(opts: AiCall) {
 
 export async function testAi(input?: any) {
   const cur = aiConfig();
-  const provider: AiProvider = input?.provider === "xai" || input?.provider === "anthropic" ? input.provider : cur.provider;
+  const provider: AiProvider = isProvider(input?.provider) ? input.provider : cur.provider;
   const typed = typeof input?.apiKey === "string" ? input.apiKey.trim() : "";
-  const key = typed || (provider === "xai" ? cur.xaiKey : cur.claudeKey);
+  if (typed) checkKeyFormat(provider, typed);
+  const key = typed || cur.keys[provider];
   if (!key) throw new AiError(`Chưa nhập khóa API ${AI_PROVIDERS[provider]}`);
   let model = typeof input?.model === "string" && input.model ? input.model : provider === cur.provider ? cur.scanModel : "";
-  if (provider === "xai") {
-    const ids = await loadXaiModels(key);
-    if (!ids.includes(model)) model = defaultXaiModel("scan");
-  } else if (!AI_MODELS.some((m) => m.id === model)) model = "claude-haiku-5-5";
+  if (provider === "anthropic") {
+    if (!AI_MODELS.some((m) => m.id === model)) model = defaultModel(provider, "scan");
+  } else {
+    const ids = await loadModels(provider, key);
+    if (!ids.includes(model)) model = defaultModel(provider, "scan");
+  }
   const t0 = Date.now();
   const r = await callAi({
     model,
