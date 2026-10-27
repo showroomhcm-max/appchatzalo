@@ -6,20 +6,21 @@ import { can } from '../perm'
 import { Badge, Empty, Modal } from '../components'
 import { fullTime } from '../util'
 import { CHART_COLORS, HBars } from '../charts'
+import { DeptChips, DeptPicker } from './Settings'
 
 /** Chấm tư vấn theo kịch bản (AI): báo cáo trong mục Báo cáo, chi tiết từng phiên chat, cài đặt kịch bản. */
 
 type Result = 'pass' | 'fail' | 'na' | 'skip'
 type Step = { key: string; name: string; criteria: string; sample: string; when: 'always' | 'sale'; opening: boolean }
+type Script = { id: string; name: string; use: string; departmentIds: number[]; steps: Step[]; version: number }
 type QaCfg = {
   enabled: boolean
-  steps: Step[]
+  scripts: Script[]
   passPct: number
   improvePct: number
   quietMin: number
   gapHours: number
   notes: string
-  version: number
   hasKey: boolean
   provider: string
   model: string
@@ -27,11 +28,11 @@ type QaCfg = {
 }
 type Report = {
   totals: { sessions: number; scored: number; avg: number | null; dat: number; cai_thien: number; chua_dat: number; no_reply: number; waiting_customer: number; outdated: number }
-  steps: { key: string; name: string; pass: number; fail: number; na: number; skip: number; pct: number | null }[]
+  scripts: { id: string; name: string; n: number; avg: number | null; steps: { key: string; name: string; pass: number; fail: number; na: number; skip: number; pct: number | null }[] }[]
   agents: { agent_id: number | null; name: string; n: number; avg: number; dat: number; cai_thien: number; chua_dat: number }[]
   kinds: { key: string; label: string; n: number }[]
   skipped: { key: string; label: string; n: number }[]
-  config: { enabled: boolean; hasKey: boolean; version: number; passPct: number; improvePct: number }
+  config: { enabled: boolean; hasKey: boolean; scripts: number; passPct: number; improvePct: number }
 }
 type Item = {
   conversation_id: string
@@ -51,6 +52,7 @@ type Item = {
   score_pct: number | null
   grade: 'dat' | 'cai_thien' | 'chua_dat' | null
   agent_name: string | null
+  script_name: string | null
   summary: string | null
   outdated: boolean
   edited: boolean
@@ -97,12 +99,19 @@ export function QaTab({ from, to, channelId }: { from: string; to: string; chann
   const { user, users } = useApp()
   const canManage = can(user, 'qa.manage')
   const [agentId, setAgentId] = useState('')
+  const [scriptId, setScriptId] = useState('')
+  const [scripts, setScripts] = useState<{ id: string; name: string }[]>([])
   const [rep, setRep] = useState<Report | null>(null)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<ListFilter | null>(null)
   const [open, setOpen] = useState<{ conv: string; start: number } | null>(null)
   const [reload, setReload] = useState(0)
-  const base = `from=${from}&to=${to}${channelId ? `&channelId=${channelId}` : ''}${agentId ? `&agentId=${agentId}` : ''}`
+  const base = `from=${from}&to=${to}${channelId ? `&channelId=${channelId}` : ''}${agentId ? `&agentId=${agentId}` : ''}${scriptId ? `&scriptId=${scriptId}` : ''}`
+  useEffect(() => {
+    api<QaCfg>('/qa/config')
+      .then((c) => setScripts(c.scripts))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -138,11 +147,21 @@ export function QaTab({ from, to, channelId }: { from: string; to: string; chann
           ))}
           <option value="none">Chưa rõ (gửi từ điện thoại)</option>
         </select>
+        {scripts.length > 1 && (
+          <select className="select sm" value={scriptId} onChange={(e) => setScriptId(e.target.value)} aria-label="Kịch bản">
+            <option value="">Mọi kịch bản</option>
+            {scripts.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="grow muted small">
           {!rep.config.hasKey ? (
             'Chưa có khóa API AI nên chưa chấm được (Cài đặt › Trợ lý AI).'
           ) : rep.config.enabled ? (
-            <>AI tự chấm phiên chat đã ngừng nhắn · kịch bản bản {rep.config.version}</>
+            <>AI tự chấm phiên chat đã ngừng nhắn · {rep.config.scripts} kịch bản</>
           ) : (
             'Tự chấm đang tắt (bật ở Cài đặt › Chấm tư vấn).'
           )}
@@ -172,23 +191,34 @@ export function QaTab({ from, to, channelId }: { from: string; to: string; chann
                 <h3>Tỉ lệ đạt từng bước</h3>
                 <span className="small muted">bấm một bước để xem các phiên không đạt</span>
               </div>
-              <div className="hbars">
-                {rep.steps.map((s) => (
-                  <button key={s.key} className="hbar qa-step-row" onClick={() => pick(`Không đạt bước "${s.name}"`, { step: s.key, result: 'fail' })}>
-                    <div className="hbar-head">
-                      <span className="hbar-label">{s.name}</span>
-                      <b>{s.pct != null ? `${s.pct}%` : '—'}</b>
-                    </div>
-                    <div className="hbar-track">
-                      <div className="hbar-fill" style={{ width: `${s.pct ?? 0}%`, background: s.pct == null ? 'var(--mz-ink-300)' : s.pct >= rep.config.passPct ? GRADE_UI.dat.color : s.pct >= rep.config.improvePct ? GRADE_UI.cai_thien.color : GRADE_UI.chua_dat.color }} />
-                    </div>
-                    <span className="small muted">
-                      đạt {s.pass} · không đạt {s.fail} · không áp dụng {s.na}
-                      {s.skip ? ` · không chấm ${s.skip}` : ''}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              {rep.scripts.map((sc) => (
+                <div key={sc.id} className="hbars">
+                  {rep.scripts.length > 1 && (
+                    <button className="link-row qa-script-head" onClick={() => pick(`Kịch bản "${sc.name}"`, { script: sc.id, status: 'scored' })}>
+                      <b className="grow">{sc.name}</b>
+                      <span className="small muted">
+                        {sc.n} phiên{sc.avg != null ? ` · TB ${sc.avg}%` : ''}
+                      </span>
+                    </button>
+                  )}
+                  {sc.steps.map((s) => (
+                    <button key={s.key} className="hbar qa-step-row" onClick={() => pick(`Không đạt bước "${s.name}"${rep.scripts.length > 1 ? ` (${sc.name})` : ''}`, { script: sc.id, step: s.key, result: 'fail' })}>
+                      <div className="hbar-head">
+                        <span className="hbar-label">{s.name}</span>
+                        <b>{s.pct != null ? `${s.pct}%` : '—'}</b>
+                      </div>
+                      <div className="hbar-track">
+                        <div className="hbar-fill" style={{ width: `${s.pct ?? 0}%`, background: s.pct == null ? 'var(--mz-ink-300)' : s.pct >= rep.config.passPct ? GRADE_UI.dat.color : s.pct >= rep.config.improvePct ? GRADE_UI.cai_thien.color : GRADE_UI.chua_dat.color }} />
+                      </div>
+                      <span className="small muted">
+                        đạt {s.pass} · không đạt {s.fail} · không áp dụng {s.na}
+                        {s.skip ? ` · không chấm ${s.skip}` : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {!rep.scripts.length && <div className="muted small">Chưa có phiên được chấm</div>}
             </section>
             <section className="card chart-card">
               <div className="chart-head">
@@ -322,6 +352,7 @@ function QaList({ id, base, filter, onClear, onOpen, reload }: { id: string; bas
               </div>
               <div className="small muted">
                 {time(i.start_ts)} · {i.channel_name} · {i.agent_name ?? 'Chưa rõ'} · {i.msg_in} tin khách / {i.msg_out} tin NV
+                {i.script_name ? ` · ${i.script_name}` : ''}
                 {i.kind_label ? ` · ${i.kind_label}` : ''}
                 {i.status === 'skipped' && i.skip_label ? ` · ${i.skip_label}` : ''}
                 {i.edited ? ' · đã sửa tay' : ''}
@@ -440,6 +471,7 @@ export function QaDetail({ conv, start, onClose, onChanged }: { conv: string; st
         <div className="stack qa-detail">
           <div className="row wrap">
             <ScoreBadge i={d} />
+            {d.script_name && <Badge>{d.script_name}</Badge>}
             {d.kind_label && <Badge tone="info">{d.kind_label}</Badge>}
             {d.missing_start && <Badge tone="warning">Thiếu đoạn đầu</Badge>}
             {d.outdated && <Badge tone="warning">Chấm theo kịch bản cũ</Badge>}
@@ -533,8 +565,11 @@ export function QaDetail({ conv, start, onClose, onChanged }: { conv: string; st
 }
 
 // ───────── Cài đặt kịch bản ─────────
+const newStep = (): Step => ({ key: '', name: '', criteria: '', sample: '', when: 'always', opening: false })
+
 export function QaSettings() {
   const [cfg, setCfg] = useState<QaCfg | null>(null)
+  const [cur, setCur] = useState(0)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -544,11 +579,22 @@ export function QaSettings() {
   }, [])
   if (!cfg) return msg ? <div className="banner warn inline">{msg.text}</div> : <div className="muted pad">Đang tải…</div>
   const set = (p: Partial<QaCfg>) => setCfg({ ...cfg, ...p })
-  const setStep = (i: number, p: Partial<Step>) => set({ steps: cfg.steps.map((s, k) => (k === i ? { ...s, ...p } : s)) })
+  const sc = cfg.scripts[Math.min(cur, cfg.scripts.length - 1)]
+  const setScript = (p: Partial<Script>) => set({ scripts: cfg.scripts.map((x) => (x === sc ? { ...x, ...p } : x)) })
+  const setStep = (i: number, p: Partial<Step>) => setScript({ steps: sc.steps.map((s, k) => (k === i ? { ...s, ...p } : s)) })
   const move = (i: number, d: number) => {
-    const steps = [...cfg.steps]
+    const steps = [...sc.steps]
     ;[steps[i], steps[i + d]] = [steps[i + d], steps[i]]
-    set({ steps })
+    setScript({ steps })
+  }
+  function addScript() {
+    set({ scripts: [...cfg!.scripts, { id: '', name: `Kịch bản ${cfg!.scripts.length + 1}`, use: '', departmentIds: [], steps: [newStep()], version: 0 }] })
+    setCur(cfg!.scripts.length)
+  }
+  function removeScript() {
+    if (!confirm(`Xóa kịch bản "${sc.name}"? Phiên đã chấm theo kịch bản này vẫn giữ kết quả (ghi "kịch bản đã xóa").`)) return
+    set({ scripts: cfg!.scripts.filter((x) => x !== sc) })
+    setCur(0)
   }
 
   async function save(enabled?: boolean) {
@@ -557,10 +603,10 @@ export function QaSettings() {
     try {
       const c = await api<QaCfg>('/qa/config', {
         method: 'PUT',
-        body: { steps: cfg!.steps, passPct: cfg!.passPct, improvePct: cfg!.improvePct, quietMin: cfg!.quietMin, gapHours: cfg!.gapHours, notes: cfg!.notes, ...(enabled !== undefined ? { enabled } : {}) },
+        body: { scripts: cfg!.scripts, passPct: cfg!.passPct, improvePct: cfg!.improvePct, quietMin: cfg!.quietMin, gapHours: cfg!.gapHours, notes: cfg!.notes, ...(enabled !== undefined ? { enabled } : {}) },
       })
       setCfg(c)
-      setMsg({ ok: true, text: enabled === undefined ? `Đã lưu (kịch bản bản ${c.version})` : enabled ? 'Đã bật tự chấm' : 'Đã tắt tự chấm' })
+      setMsg({ ok: true, text: enabled === undefined ? `Đã lưu ${c.scripts.length} kịch bản` : enabled ? 'Đã bật tự chấm' : 'Đã tắt tự chấm' })
     } catch (e: any) {
       setMsg({ ok: false, text: e.message })
     } finally {
@@ -578,7 +624,7 @@ export function QaSettings() {
           {cfg.enabled ? <Badge tone="green">Đang tự chấm</Badge> : <Badge tone="warning">Chưa bật</Badge>}
         </div>
         <p className="small muted">
-          AI đọc từng phiên chat ở mọi kênh đã kết nối, chấm từng bước của kịch bản bên dưới. Bước "Đạt" phải kèm câu trích nguyên văn của nhân
+          AI đọc từng phiên chat ở mọi kênh đã kết nối, chọn kịch bản hợp với phiên đó rồi chấm từng bước. Bước "Đạt" phải kèm câu trích nguyên văn của nhân
           viên, máy chủ kiểm lại; điểm = số bước đạt ÷ số bước được tính. Thiếu dữ liệu (chưa trả lời, thiếu đoạn đầu…) thì không chấm. Chỉ người có quyền
           "Xem chất lượng tư vấn" xem kết quả ở Báo cáo › Chất lượng tư vấn. Nội dung chat được gửi tới {cfg.provider} để chấm.
         </p>
@@ -603,7 +649,7 @@ export function QaSettings() {
           </label>
         </div>
         <label className="field">
-          <span>Ghi chú chung cho AI khi chấm</span>
+          <span>Ghi chú chung cho AI khi chấm (áp dụng mọi kịch bản)</span>
           <textarea rows={3} value={cfg.notes} onChange={(e) => set({ notes: e.target.value })} placeholder={'VD:\n- Xưng "em", gọi khách "anh/chị"\n- Báo giá phải kèm thời gian bảo hành'} />
         </label>
         <p className="small muted">
@@ -613,39 +659,81 @@ export function QaSettings() {
 
       <div className="card stack">
         <div className="row wrap">
-          <h3 className="grow">Các bước của kịch bản (bản {cfg.version})</h3>
-          <button className="btn outline sm" onClick={() => set({ steps: [...cfg.steps, { key: '', name: '', criteria: '', sample: '', when: 'always', opening: false }] })} disabled={cfg.steps.length >= 15}>
-            <Plus size={14} /> Thêm bước
+          <h3 className="grow">Kịch bản ({cfg.scripts.length})</h3>
+          <button className="btn outline sm" onClick={addScript} disabled={cfg.scripts.length >= 10}>
+            <Plus size={14} /> Thêm kịch bản
           </button>
         </div>
-        <p className="small muted">Sửa bước, tiêu chí hoặc mốc điểm thì kịch bản lên bản mới; phiên đã chấm theo bản cũ được ghi chú "kịch bản cũ", chấm lại bằng nút "Chấm khoảng ngày này" ở Báo cáo.</p>
-        {cfg.steps.map((s, i) => (
-          <div key={i} className="qa-step-edit">
-            <div className="row wrap">
-              <b className="qa-step-no">{i + 1}</b>
-              <input className="input grow" value={s.name} onChange={(e) => setStep(i, { name: e.target.value })} placeholder="Tên bước, VD: Chào khách" maxLength={80} aria-label={`Tên bước ${i + 1}`} />
-              <select className="select" value={s.when} onChange={(e) => setStep(i, { when: e.target.value as Step['when'] })} aria-label="Áp dụng khi">
-                <option value="always">Mọi phiên chat</option>
-                <option value="sale">Chỉ khi khách hỏi mua</option>
-              </select>
-              <button className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Lên trên">
-                <ArrowUp size={16} />
-              </button>
-              <button className="icon-btn" onClick={() => move(i, 1)} disabled={i === cfg.steps.length - 1} aria-label="Xuống dưới">
-                <ArrowDown size={16} />
-              </button>
-              <button className="icon-btn" onClick={() => set({ steps: cfg.steps.filter((_, k) => k !== i) })} disabled={cfg.steps.length <= 1} aria-label="Xóa bước">
-                <Trash2 size={16} />
-              </button>
-            </div>
-            <textarea rows={2} value={s.criteria} onChange={(e) => setStep(i, { criteria: e.target.value })} placeholder="Tiêu chí: thế nào là đạt" maxLength={600} aria-label="Tiêu chí" />
-            <input className="input" value={s.sample} onChange={(e) => setStep(i, { sample: e.target.value })} placeholder="Câu mẫu (không bắt buộc)" maxLength={400} aria-label="Câu mẫu" />
-            <label className="check small">
-              <input type="checkbox" checked={s.opening} onChange={(e) => setStep(i, { opening: e.target.checked })} />
-              Bước mở đầu (không chấm khi thiếu đoạn đầu hội thoại)
+        <p className="small muted">
+          Mỗi loại tư vấn (bán hàng, bảo hành, đơn hàng…) hoặc mỗi bộ phận một kịch bản. Phiên chat chỉ được chấm bằng kịch bản của bộ phận hội thoại đó
+          (kịch bản không chọn bộ phận dùng cho mọi bộ phận); khớp nhiều kịch bản thì AI chọn theo mục "Dùng khi". Sửa bước hoặc mốc điểm thì phiên đã chấm
+          theo bản cũ được ghi "kịch bản cũ", chấm lại bằng nút "Chấm khoảng ngày này" ở Báo cáo.
+        </p>
+        <div className="seg qa-script-tabs" role="tablist" aria-label="Kịch bản">
+          {cfg.scripts.map((x, i) => (
+            <button key={i} role="tab" aria-selected={x === sc} className={x === sc ? 'on' : ''} onClick={() => setCur(i)}>
+              {x.name || `Kịch bản ${i + 1}`}
+            </button>
+          ))}
+        </div>
+
+        <div className="qa-script stack">
+          <div className="grid-2">
+            <label className="field">
+              <span>Tên kịch bản</span>
+              <input value={sc.name} onChange={(e) => setScript({ name: e.target.value })} maxLength={60} placeholder="VD: Bảo hành / kỹ thuật" />
+            </label>
+            <label className="field">
+              <span>Dùng khi (AI đọc để chọn kịch bản)</span>
+              <input value={sc.use} onChange={(e) => setScript({ use: e.target.value })} maxLength={300} placeholder="VD: Khách hỏi bảo hành, báo lỗi sản phẩm, đổi trả" />
             </label>
           </div>
-        ))}
+          <DeptPicker value={sc.departmentIds} onChange={(v) => setScript({ departmentIds: v })} hint="Không chọn bộ phận nào = áp dụng cho mọi bộ phận." />
+          <div className="row wrap small muted">
+            Đang áp dụng cho: <DeptChips ids={sc.departmentIds} empty="mọi bộ phận" />
+          </div>
+
+          <div className="row wrap">
+            <h4 className="grow">Các bước ({sc.steps.length})</h4>
+            <button className="btn outline sm" onClick={() => setScript({ steps: [...sc.steps, newStep()] })} disabled={sc.steps.length >= 15}>
+              <Plus size={14} /> Thêm bước
+            </button>
+          </div>
+          {sc.steps.map((s, i) => (
+            <div key={i} className="qa-step-edit">
+              <div className="row wrap">
+                <b className="qa-step-no">{i + 1}</b>
+                <input className="input grow" value={s.name} onChange={(e) => setStep(i, { name: e.target.value })} placeholder="Tên bước, VD: Chào khách" maxLength={80} aria-label={`Tên bước ${i + 1}`} />
+                <select className="select" value={s.when} onChange={(e) => setStep(i, { when: e.target.value as Step['when'] })} aria-label="Áp dụng khi">
+                  <option value="always">Mọi phiên chat</option>
+                  <option value="sale">Chỉ khi khách hỏi mua</option>
+                </select>
+                <button className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Lên trên">
+                  <ArrowUp size={16} />
+                </button>
+                <button className="icon-btn" onClick={() => move(i, 1)} disabled={i === sc.steps.length - 1} aria-label="Xuống dưới">
+                  <ArrowDown size={16} />
+                </button>
+                <button className="icon-btn" onClick={() => setScript({ steps: sc.steps.filter((_, k) => k !== i) })} disabled={sc.steps.length <= 1} aria-label="Xóa bước">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              <textarea rows={2} value={s.criteria} onChange={(e) => setStep(i, { criteria: e.target.value })} placeholder="Tiêu chí: thế nào là đạt" maxLength={600} aria-label="Tiêu chí" />
+              <input className="input" value={s.sample} onChange={(e) => setStep(i, { sample: e.target.value })} placeholder="Câu mẫu (không bắt buộc)" maxLength={400} aria-label="Câu mẫu" />
+              <label className="check small">
+                <input type="checkbox" checked={s.opening} onChange={(e) => setStep(i, { opening: e.target.checked })} />
+                Bước mở đầu (không chấm khi thiếu đoạn đầu hội thoại)
+              </label>
+            </div>
+          ))}
+          <div className="row">
+            <span className="grow" />
+            <button className="btn ghost sm err-text" onClick={removeScript} disabled={cfg.scripts.length <= 1}>
+              <Trash2 size={14} /> Xóa kịch bản này
+            </button>
+          </div>
+        </div>
+
         <div className="row wrap">
           {msg && <span className={`small ${msg.ok ? 'ok-text' : 'err-text'}`}>{msg.text}</span>}
           <span className="grow" />

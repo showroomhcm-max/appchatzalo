@@ -35,7 +35,11 @@ function grade(body) {
     if (r < 0.92) return { key, result: "fail", note: "Chưa thấy nhân viên làm bước này (máy AI giả lập)" };
     return { key, result: "pass", message_id: nv[0]?.id ?? 0, quote: "câu này không có trong hội thoại" };
   });
+  // Nhiều kịch bản: chọn theo nội dung khách nhắn (giống AI thật chọn theo "Dùng khi")
+  const ids = tool.input_schema.properties.script?.enum ?? [];
+  const want = /bảo hành|lỗi|hỏng|sửa/.test(kh) ? "bao_hanh" : /đơn|giao|ship|hóa đơn/.test(kh) ? "don_hang" : "ban_hang";
   return {
+    ...(ids.length ? { script: ids.includes(want) ? want : ids[0] } : {}),
     kind: sale ? "hoi_mua" : rand(seed) < 0.5 ? "bao_hanh" : "khac",
     missing_start: false,
     steps,

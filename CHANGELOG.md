@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.30.0 — 28/10/2026
+
+- **Chấm tư vấn có nhiều kịch bản** (Cài đặt › Chấm tư vấn (kịch bản)): thêm tối đa 10 kịch bản, mỗi kịch bản có tên, mục **Dùng khi** và các bước riêng. Có thể **chọn bộ phận** cho từng kịch bản; không chọn bộ phận thì kịch bản dùng cho mọi bộ phận.
+  - Mỗi phiên chat chỉ chấm bằng kịch bản của bộ phận hội thoại đó. Khớp nhiều kịch bản thì AI chọn kịch bản hợp nhất theo mục "Dùng khi", vẫn chỉ tốn 1 lượt AI.
+  - Bộ phận chưa có kịch bản nào thì phiên chat ghi "Bộ phận chưa có kịch bản chấm", không tốn lượt AI.
+  - Có sẵn 3 kịch bản mẫu: **Tư vấn bán hàng** (giữ nguyên các bước anh đã sửa trước đây), **Bảo hành / kỹ thuật**, **Đơn hàng / giao hàng**. Sửa hoặc xóa tùy ý.
+  - Sửa bước của kịch bản nào thì chỉ các phiên chấm theo kịch bản đó ghi "kịch bản cũ".
+- **Báo cáo › Chất lượng tư vấn**: có bộ lọc **kịch bản**. Phần "Tỉ lệ đạt từng bước" chia theo từng kịch bản (số phiên, điểm trung bình). Danh sách phiên và chi tiết ghi tên kịch bản đã dùng. File Excel thêm cột "Kịch bản" và cột từng bước theo từng kịch bản.
+
 ## v3.29.3 — 28/10/2026
 
 - **Sắp xếp lại menu Cài đặt theo thứ tự thiết lập**, mỗi nhóm một việc:

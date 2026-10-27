@@ -3529,3 +3529,8 @@ button.me.on { box-shadow: 0 0 0 2px var(--mz-lime-600); }
 .qa-quote:hover { text-decoration: underline; }
 .qa-step-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
 .qa-step-no { width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--mz-green-100); color: var(--primary-text); font-size: 13px; }
+.qa-script-tabs { flex-wrap: wrap; align-self: flex-start; max-width: 100%; }
+.qa-script { padding: 16px; border: 1px solid var(--mz-ink-200); border-radius: 8px; }
+.qa-script h4 { margin: 0; font-size: 16px; }
+.qa-script-head { margin-top: 8px; }
+.qa-script-head:first-child { margin-top: 0; }
