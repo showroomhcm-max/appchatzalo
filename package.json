@@ -1,6 +1,6 @@
 {
   "name": "zalo-cskh",
-  "version": "3.27.0",
+  "version": "3.28.0",
   "private": true,
   "description": "Chat Siêu Tốc (MemoryZone): chat đa kênh cho đội chăm sóc khách hàng",
   "scripts": {
@@ -16,6 +16,7 @@
     "prod:status": "pm2 status",
     "prod:url": "node scripts/public-url.mjs",
     "release": "node scripts/release.mjs",
+    "nhap-zalo-pc": "node scripts/nhap-tu-zalo-pc.mjs",
     "nas:export": "node scripts/nas-export.mjs"
   },
   "devDependencies": {

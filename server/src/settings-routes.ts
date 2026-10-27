@@ -15,6 +15,7 @@ import { zalo } from "./zalo.js";
 import { bus } from "./bus.js";
 import { fetchTemplateFile, fetchTemplateImage } from "./template-media.js";
 import { publicBaseUrl } from "./platforms/common.js";
+import { importHistory } from "./history-import.js";
 
 export const settingsRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
@@ -112,6 +113,13 @@ settingsRouter.post(
     bus.emit("settings.changed", "channels");
     res.json(channelPayload(true).find((c) => c.id === id));
   }),
+);
+
+/** Nhập lịch sử đọc từ Zalo PC (công cụ scripts/nhap-tu-zalo-pc.mjs gửi lên từng lô, mỗi lô dưới 2 MB). */
+settingsRouter.post(
+  "/channels/:id/import-history",
+  requireSuperAdmin,
+  h((req, res) => res.json(importHistory(Number(req.params.id), req.body, req.user!.id))),
 );
 
 settingsRouter.patch(

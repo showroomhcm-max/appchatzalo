@@ -7,9 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
-## v3.27.1 — 27/10/2026
+## v3.28.1 — 27/10/2026 (chưa phát hành; v3.28.0 đã phát hành trước cho tính năng nhập Zalo PC)
 
 - **Trợ lý AI dùng được DeepSeek**: ô Nhà cung cấp AI có thêm DeepSeek (cạnh Claude, Grok). Lưu khóa DeepSeek (`sk-…`) là app tự lấy danh sách model của tài khoản, chọn sẵn model nhanh ("flash") để chấm từng hội thoại và model mạnh hơn ("pro") để tổng hợp cuối ngày. Tài khoản hết tiền thì báo rõ "hết tiền, nạp thêm".
+
+## v3.28.0 — 27/10/2026
+
+- **Nhập lịch sử tin nhắn cũ từ Zalo PC**: Zalo web (cách app kết nối) chỉ cho lấy tin kể từ lúc tài khoản được gắn vào app; Zalo PC thì có lịch sử điện thoại đồng bộ sang. Công cụ mới `npm run nhap-zalo-pc` (chạy trên laptop có Zalo PC đăng nhập đúng tài khoản của kênh) mở lại Zalo PC ở chế độ đọc dữ liệu chỉ trong máy, đọc tin mọi hội thoại cá nhân + nhóm trong 90 ngày (đổi bằng `-- --ngay 30`), gửi lên app rồi mở lại Zalo PC bình thường. `-- --thu`: chỉ đọc và đếm.
+  - App chỉ nhận đúng tài khoản Zalo của kênh, chỉ Super Admin; tin cũ lưu lặng lẽ (không chưa đọc, không cảnh báo / webhook), tin đã có bỏ qua; tên + ảnh khách, tên nhóm lấy từ Zalo PC. Ảnh, file, video, sticker, link, vị trí, trích dẫn hiển thị như tin thường; tin thu hồi bỏ qua.
+  - Đã thử với acc ZALO HAU: 90 ngày = khoảng 99.000 tin / 285 hội thoại; đọc khoảng 4–5 phút.
 
 ## v3.27.0 — 27/10/2026
 
