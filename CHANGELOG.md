@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.26.2 — 27/10/2026
+
+- **Bù tin khi app / NAS tắt hoặc mất mạng**: kết nối lại Zalo là app hỏi Zalo các tin kể từ tin mới nhất đã có, lật tiếp đến hiện tại, rồi đưa vào hộp thư như tin mới (chưa đọc, cảnh báo). Trước đây app hỏi không kèm mốc nên Zalo luôn trả cùng một lô tin cũ (12–15/10), tin khách nhắn trong lúc tắt không được bù. Nhật ký ghi rõ mỗi lần bù: từ lúc nào, Zalo trả bao nhiêu tin, thêm mới bao nhiêu.
+
 ## v3.26.1 — 26/10/2026
 
 - Cài đặt: đổi tên mục "Bộ phận (phân chia hội thoại)" thành "Bộ phận - phân chia hội thoại".

@@ -310,10 +310,9 @@ export class ChannelSession implements ChannelAdapter {
       if (this.pendingAutoSync) {
         this.pendingAutoSync = false;
         void this.syncHistory(90, "tự động sau khi quét QR").catch((e) => console.warn(`[zalo#${this.channelId}] Đồng bộ tin cũ lỗi:`, e?.message ?? e));
-      } else if (this.history.state !== "running") {
-        // Đồng bộ các tin gần đây mà Zalo còn giữ (bù tin lúc mất kết nối).
-        listener.requestOldMessages(ThreadType.User);
-        listener.requestOldMessages(ThreadType.Group);
+      } else if (this.history.state !== "running" && !this.catchingUp) {
+        // Bù tin khách nhắn trong lúc app / NAS tắt hoặc mất mạng
+        void this.catchUp(api).catch((e) => console.warn(`[zalo#${this.channelId}] Bù tin lỗi:`, e?.message ?? e));
       }
     });
     listener.on("message", (m) => this.handleMessage(m, false));
@@ -442,6 +441,56 @@ export class ChannelSession implements ChannelAdapter {
       });
     }
     return a.__groupCloud({ groupId, globalMsgId, old, count });
+  }
+
+  private catchingUp = false;
+
+  /**
+   * Bù tin lúc mất kết nối: Zalo trả tin theo chiều xuôi kể từ mã tin được hỏi, nên hỏi từ tin mới nhất app đã có
+   * rồi lật tiếp đến hiện tại. (Trước đây hỏi không kèm mã tin → Zalo luôn trả lô cũ nhất, không bù được tin vừa lỡ.)
+   * Tin bù lưu như tin mới (chưa đọc, cảnh báo, webhook); tin đã có thì bỏ qua.
+   */
+  private async catchUp(api: API) {
+    this.catchingUp = true;
+    const started = Date.now();
+    try {
+      for (const type of [ThreadType.User, ThreadType.Group]) {
+        const label = type === ThreadType.User ? "tin cá nhân" : "tin nhóm";
+        const anchor = get<{ zalo_msg_id: string; ts: number }>(
+          `SELECT m.zalo_msg_id, m.ts FROM messages m JOIN conversations c ON c.id = m.conversation_id
+           WHERE c.channel_id = ? AND c.type = ? AND m.zalo_msg_id GLOB '[0-9]*' ORDER BY m.ts DESC LIMIT 1`,
+          this.channelId,
+          type === ThreadType.Group ? 1 : 0,
+        );
+        // Kênh chưa có tin nào: không có mốc để bù (tin cũ dùng "Đồng bộ tin cũ")
+        if (!anchor) continue;
+        let lastId = anchor.zalo_msg_id;
+        const asked = new Set<string>([lastId]);
+        let read = 0, added = 0, newest = anchor.ts;
+        for (let page = 1; page <= 30 && this.api === api; page++) {
+          const batch = await this.requestOld(api, type, lastId);
+          if (!batch?.length) break;
+          read += batch.length;
+          for (const m of batch) {
+            // Tin trước mốc là tin Zalo trả lại thừa: lưu im lặng (đã có thì bỏ qua)
+            const fresh = Number(m.data.ts) > anchor.ts;
+            if (this.handleMessage(m, !fresh, !fresh)?.isNew) added++;
+            newest = Math.max(newest, Number(m.data.ts) || 0);
+          }
+          const last = batch.reduce((a, m) => (Number(m.data.ts) > Number(a.data.ts) ? m : a), batch[0]);
+          const next = String(last.data.msgId ?? "");
+          if (!next || asked.has(next) || Number(last.data.ts) <= anchor.ts) break;
+          asked.add(next);
+          lastId = next;
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        const fmt = (t: number) => new Date(t).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false });
+        this.log(`Bù ${label} lúc mất kết nối: từ ${fmt(anchor.ts)}, Zalo trả ${read} tin, thêm mới ${added}${read ? ` (mới nhất ${fmt(newest)})` : ""}`);
+      }
+    } finally {
+      this.catchingUp = false;
+      if (Date.now() - started > 60_000) this.log(`Bù tin mất ${Math.round((Date.now() - started) / 1000)} giây`);
+    }
   }
 
   /** Xin một lô tin cũ (cá nhân hoặc nhóm) qua kết nối Zalo; hết 20 giây không có trả lời thì null. */
