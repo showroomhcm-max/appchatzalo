@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.30.1 — 28/10/2026
+
+- **Sao lưu lên Google Drive chạy lại**: từ v3.23.0 app trên NAS chạy bằng tài khoản thường nên Cloud Sync không đọc được thư mục `data`, bản sao lưu trên Drive dừng ở 23/10. Tác vụ tự cập nhật (`cap-nhat.sh`) nay chép bản sao lưu mỗi giờ + 7 bản theo ngày sang `sao-luu-drive/` để Cloud Sync đẩy lên Drive. Cần chép đè `cap-nhat.sh.moi` lên `cap-nhat.sh` một lần (kèm luôn bản tự sửa lỗi 1033).
+- **Bộ dự phòng khi NAS chết hẳn** (`node scripts/tao-bo-du-phong.mjs`, lưu ở Drive › Backup Chat Siêu Tốc › Bo du phong): file .zip chạy app trên máy Windows bất kỳ, không cần cài gì (có sẵn Node.js, app, đường hầm Cloudflare). Bấm đúp `CHAY DU PHONG.cmd` là tên miền trỏ về máy đó; `GOI DU LIEU VE NAS.cmd` gói dữ liệu để chuyển về NAS; `CHAY THU.cmd` để diễn tập không ảnh hưởng NAS. Hướng dẫn: `deploy/nas/SU-CO.md`.
+
 ## v3.30.0 — 28/10/2026
 
 - **Chấm tư vấn có nhiều kịch bản** (Cài đặt › Chấm tư vấn (kịch bản)): thêm tối đa 10 kịch bản, mỗi kịch bản có tên, mục **Dùng khi** và các bước riêng. Có thể **chọn bộ phận** cho từng kịch bản; không chọn bộ phận thì kịch bản dùng cho mọi bộ phận.

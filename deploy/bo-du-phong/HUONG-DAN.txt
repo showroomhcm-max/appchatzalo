@@ -1,0 +1,80 @@
+BỘ DỰ PHÒNG CHAT SIÊU TỐC  (app v{{VERSION}}, tạo ngày {{CREATED}})
+=====================================================================
+
+Dùng khi NAS chết hẳn (hỏng, cháy, mất trộm, không lên) mà cần chạy app ngay.
+Chạy được trên MỌI máy Windows 10/11 (64-bit), không cần cài gì. Trong bộ đã có sẵn
+Node.js, app, đường hầm Cloudflare: chạy xong thì cskhzalo.sieutoc.com trỏ về máy đó,
+nhân viên vào đúng địa chỉ cũ, không phải đăng nhập lại, Zalo không phải quét QR lại.
+
+BỘ NÀY CHỨA TOKEN TÊN MIỀN VÀ CẤU HÌNH APP: chỉ cất ở Google Drive riêng / USB của anh,
+KHÔNG gửi cho ai.
+
+
+1. CẦN 2 THỨ (đều nằm trên Google Drive showroomhcm@sieutoc.com)
+---------------------------------------------------------------------
+  a) Bộ này:  Drive > Backup Chat Siêu Tốc > Bo du phong > "Chat Sieu Toc - Bo du phong vX.Y.Z.zip"
+  b) Dữ liệu: Drive > Backup Chat Siêu Tốc > VPS Chat Sieu Toc > sao-luu-drive > app-moi-nhat.db
+     (bản sao lưu NAS tự đẩy lên mỗi giờ; các file app-NGÀY.db là bản cuối mỗi ngày, 7 ngày gần nhất)
+
+  Máy nào cũng được: laptop, PC văn phòng, máy ở nhà. Nên chọn máy cắm điện, mạng ổn định.
+
+
+2. CHẠY THAY NAS (khoảng 10 phút)
+---------------------------------------------------------------------
+  Bước 1. CHẮC CHẮN NAS ĐÃ TẮT HẲN: tắt nguồn NAS hoặc rút dây mạng NAS.
+          (NAS còn chạy mà máy khác cũng chạy thì Zalo đá nhau, tin khách bị chia đôi.)
+
+  Bước 2. Tải file .zip ở mục 1a về máy > chuột phải > "Giải nén tất cả" (Extract All).
+          Để thư mục giải nén ở chỗ cố định, ví dụ  D:\Chat Sieu Toc - Bo du phong
+          (KHÔNG chạy thẳng trong file .zip).
+
+  Bước 3. Tải file app-moi-nhat.db ở mục 1b > bỏ vào thư mục  du-lieu-sao-luu  trong bộ
+          (để trong thư mục Downloads cũng được, bộ tự tìm).
+
+  Bước 4. Bấm đúp  CHAY DU PHONG.cmd
+          - Windows hỏi "Windows protected your PC": bấm "More info" > "Run anyway".
+          - Windows hỏi tường lửa (Firewall) cho node.exe: bấm "Allow" (hoặc Cancel cũng được).
+          - Cửa sổ hiện danh sách file sao lưu tìm được: bấm Enter để dùng file mới nhất.
+          - Chờ dòng "Đường hầm Cloudflare đã kết nối" và khung "ĐANG CHẠY THAY NAS".
+
+  Bước 5. Mở https://cskhzalo.sieutoc.com kiểm tra: đăng nhập, Cài đặt > Kết nối kênh,
+          các kênh Zalo "Đã kết nối". Tin khách nhắn trong lúc NAS chết, app tự lấy bù.
+          Báo nhân viên tải lại trang (F5) là làm việc tiếp.
+
+  LƯU Ý KHI ĐANG CHẠY:
+  - KHÔNG đóng cửa sổ đen "CHAY DU PHONG" (đóng = tắt app). Thu nhỏ xuống thanh tác vụ được.
+  - Máy cắm sạc, không tắt máy. Bộ tự giữ máy không ngủ trong lúc chạy.
+  - Lỡ tắt máy / mất điện: bật máy, bấm đúp CHAY DU PHONG.cmd lại, Enter để CHẠY TIẾP dữ liệu
+    đang có (đừng gõ MOI, gõ MOI là nạp lại bản sao lưu cũ, mất tin từ lúc chạy dự phòng).
+  - Nhắn Claude: em kiểm tra từ xa được qua tên miền như bình thường.
+
+
+3. NAS SỬA XONG: CHUYỂN VỀ NAS
+---------------------------------------------------------------------
+  Làm ngoài giờ, mất khoảng 15 phút.
+  Bước 1. Đóng cửa sổ "CHAY DU PHONG" (app dự phòng tắt, tên miền tạm thời không vào được).
+  Bước 2. Bấm đúp  GOI DU LIEU VE NAS.cmd  > tạo thư mục  CHEP VE NAS\data  (app.db + uploads).
+  Bước 3. Trên NAS: Container Manager > Dự án > chat-sieutoc > Dừng.
+  Bước 4. File Station > Chat Sieu Toc > VPS Chat Sieu Toc > data:
+          - đổi tên app.db hiện có thành app.db.cu (để phòng), xóa app.db-wal và app.db-shm;
+          - tải lên app.db và thư mục uploads từ  CHEP VE NAS\data  (ghi đè).
+  Bước 5. Bảng điều khiển > Bộ lập lịch tác vụ > "Doi chu thu muc chat" > Chạy.
+  Bước 6. Container Manager > chat-sieutoc > Chạy. Mở tên miền kiểm tra, kênh Zalo đã kết nối.
+  Bước 7. Xóa thư mục bộ dự phòng trên máy đã chạy (có dữ liệu khách + token).
+
+
+4. CHẠY THỬ (diễn tập, KHÔNG ảnh hưởng NAS đang chạy)
+---------------------------------------------------------------------
+  Bỏ một file sao lưu vào du-lieu-sao-luu > bấm đúp  CHAY THU.cmd  > mở http://localhost:4919
+  Bản thử không mở tên miền, tự gỡ đăng nhập Zalo trong dữ liệu thử (không đá phiên NAS).
+  Xem được hội thoại, đăng nhập bình thường. Đóng cửa sổ là tắt. Xóa thư mục he-thong\data-thu sau khi thử.
+
+
+5. GẶP LỖI
+---------------------------------------------------------------------
+  - "Tên miền vẫn đang trả lời": NAS (hoặc một máy khác) còn chạy app. Tắt hẳn NAS rồi chạy lại.
+  - "Cổng 3000 đang có app khác chạy": đã có cửa sổ CHAY DU PHONG đang mở, hoặc máy đang chạy app
+    khác ở cổng 3000. Đóng nó rồi chạy lại.
+  - "Không tìm thấy file sao lưu": làm lại bước 3 (file phải tên app-moi-nhat.db hoặc app-NGÀY.db).
+  - Trang web báo lỗi Cloudflare 1033: chờ 1 phút; vẫn lỗi thì đóng cửa sổ, chạy lại CHAY DU PHONG.cmd.
+  - Nhật ký chi tiết: thư mục he-thong\nhat-ky. Gửi file này cho Claude để xem lỗi.

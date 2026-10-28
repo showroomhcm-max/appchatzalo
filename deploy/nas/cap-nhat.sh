@@ -107,5 +107,24 @@ done
 if docker image inspect chat-sieutoc:latest >/dev/null 2>&1 && docker image rm chat-sieutoc:latest >/dev/null 2>&1; then
   echo "$(now) Đã xóa ảnh cũ chat-sieutoc:latest" >> "$LOG"
 fi
+# Sao lưu ra ngoài NAS: app chạy bằng uid 1000 nên Cloud Sync không đọc được data/backups. Chép bản mới nhất
+# sang sao-luu-drive/ (tạo bằng root, quyền theo thư mục chia sẻ) để Cloud Sync đẩy lên Google Drive.
+# Khi NAS chết hẳn: tải app-moi-nhat.db ở đây về, chạy bằng "Bộ dự phòng" (xem SU-CO.md).
+mkdir -p sao-luu-drive
+# Bản mỗi giờ + 7 bản theo ngày gần nhất; bản nào mới hơn bản đã chép thì chép lại
+keep="app-moi-nhat.db $(ls -1 data/backups/auto/ 2>/dev/null | grep -E '^app-20[0-9-]+\.db$' | sort -r | head -n 7 | tr '\n' ' ')"
+for name in $keep; do
+  f="data/backups/auto/$name"
+  [ -f "$f" ] || continue
+  dst="sao-luu-drive/$name"
+  if [ ! -f "$dst" ] || [ "$f" -nt "$dst" ]; then
+    cp -f "$f" "$dst.tmp" && chmod 644 "$dst.tmp" && mv -f "$dst.tmp" "$dst"
+  fi
+done
+for old in sao-luu-drive/*.db; do
+  [ -f "$old" ] || continue
+  case " $keep " in *" $(basename "$old") "*) ;; *) rm -f "$old" ;; esac
+done
+
 # Giữ nhật ký gọn
 tail -n 500 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
