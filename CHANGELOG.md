@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.30.2 — 28/10/2026
+
+- **Sửa: app trên NAS khởi động lại mỗi phút** sau khi dùng `cap-nhat.sh` mới. Bước "cấu hình đổi thì dựng lại container" so mã cấu hình của Docker, mà app và đường hầm dùng mạng của container net nên mã không bao giờ khớp. Nay so nội dung `docker-compose.yml` + `.env` với lần dựng trước.
+- **Xóa sạch dữ liệu / xóa kênh kèm tin nhắn: dọn hẳn chỉ mục tìm kiếm.** Trước đây chữ của tin đã xóa vẫn còn trong chỉ mục tìm kiếm (không hiện trong app nhưng còn trong file dữ liệu và bản sao lưu). Nay dựng lại chỉ mục sau khi xóa.
+
 ## v3.30.1 — 28/10/2026
 
 - **Sao lưu lên Google Drive chạy lại**: từ v3.23.0 app trên NAS chạy bằng tài khoản thường nên Cloud Sync không đọc được thư mục `data`, bản sao lưu trên Drive dừng ở 23/10. Tác vụ tự cập nhật (`cap-nhat.sh`) nay chép bản sao lưu mỗi giờ + 7 bản theo ngày sang `sao-luu-drive/` để Cloud Sync đẩy lên Drive. Cần chép đè `cap-nhat.sh.moi` lên `cap-nhat.sh` một lần (kèm luôn bản tự sửa lỗi 1033).

@@ -86,6 +86,8 @@ export function purgeChannelData(channelId: number) {
     db.exec("ROLLBACK");
     throw e;
   }
+  // Dựng lại chỉ mục tìm kiếm: DELETE chỉ đánh dấu xóa, chữ của tin vừa xóa vẫn còn trong chỉ mục
+  if (n) db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
   return n;
 }
 
@@ -116,7 +118,8 @@ export async function wipeChatData(userId: number) {
   } finally {
     db.exec("PRAGMA foreign_keys = ON");
   }
-  // 3. Thu nhỏ file dữ liệu để tin đã xóa không còn nằm trong ổ đĩa
+  // 3. Dựng lại chỉ mục tìm kiếm (DELETE chỉ đánh dấu xóa, chữ của tin cũ vẫn nằm trong chỉ mục), rồi thu nhỏ file
+  db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   db.exec("VACUUM");
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
