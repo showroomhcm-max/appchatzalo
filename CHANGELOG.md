@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.30.3 — 28/10/2026
+
+- **Sửa: mỗi lần tải lại trang (F5) hiện thoáng dòng "Mất kết nối realtime với máy chủ"** dù kết nối vẫn bình thường (app báo trước khi kịp nối, mất khoảng nửa giây). Nay chỉ báo khi mất kết nối quá 5 giây.
+
 ## v3.30.2 — 28/10/2026
 
 - **Sửa: app trên NAS khởi động lại mỗi phút** sau khi dùng `cap-nhat.sh` mới. Bước "cấu hình đổi thì dựng lại container" so mã cấu hình của Docker, mà app và đường hầm dùng mạng của container net nên mã không bao giờ khớp. Nay so nội dung `docker-compose.yml` + `.env` với lần dựng trước.

@@ -78,7 +78,8 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
     setWorkingIds(r.working_channel_ids)
   }, [])
   const [socket, setSocket] = useState<Socket | null>(null)
-  const [socketConnected, setSocketConnected] = useState(false)
+  // Chỉ báo mất kết nối khi chưa nối lại được sau vài giây (mới tải trang / máy chủ khởi động lại nhanh thì không báo)
+  const [socketConnected, setSocketConnected] = useState(true)
 
   const logout = () => {
     setToken(null)
@@ -108,8 +109,17 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
     reloadAlerts()
     const s = connectSocket()
     s.on('alerts:changed', reloadAlerts)
-    s.on('connect', () => setSocketConnected(true))
-    s.on('disconnect', () => setSocketConnected(false))
+    let lostTimer: ReturnType<typeof setTimeout> | undefined
+    const watchLost = () => {
+      clearTimeout(lostTimer)
+      lostTimer = setTimeout(() => setSocketConnected(s.connected), 5000)
+    }
+    watchLost()
+    s.on('connect', () => {
+      clearTimeout(lostTimer)
+      setSocketConnected(true)
+    })
+    s.on('disconnect', watchLost)
     s.on('connect_error', (e) => {
       if (e.message === 'unauthorized') logout()
     })
@@ -129,6 +139,7 @@ export function AppProvider({ user: initialUser, onLogout, children }: { user: U
     s.on('presence', setPresence)
     setSocket(s)
     return () => {
+      clearTimeout(lostTimer)
       s.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
