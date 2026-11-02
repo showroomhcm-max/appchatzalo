@@ -3,7 +3,7 @@
  * (trả lời, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú), hộp chọn sticker, chuyển tiếp.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CheckSquare, Copy, FileText, Forward, Info, MoreHorizontal, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
+import { CheckSquare, Copy, FileText, Forward, Info, MessageCircle, MoreHorizontal, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import { useApp } from '../store'
 import type { Conversation, Message, Sticker, Capabilities } from '../types'
@@ -63,6 +63,8 @@ export function canForward(m: Message) {
 /** Chữ để sao chép: tin chữ lấy nội dung; ảnh / tệp / video / link lấy đường link */
 export function copyText(m: Message) {
   if (!m.msg_type || m.msg_type === 'webchat') return m.text ?? ''
+  const card = contactCard(m)
+  if (card) return [card.name, card.phone].filter(Boolean).join(' - ')
   const href = String(m.raw?.href || m.raw?.thumb || '')
   if (href) return href.startsWith('/') ? window.location.origin + href : href
   return m.text ?? ''
@@ -80,7 +82,8 @@ const KIND_LABEL: Record<string, string> = {
   'chat.location.new': 'Vị trí',
 }
 /** Loại tin cho mục "Xem chi tiết" */
-export const messageKind = (m: Message) => (!m.msg_type || m.msg_type === 'webchat' ? 'Tin nhắn chữ' : KIND_LABEL[m.msg_type] ?? m.msg_type)
+export const messageKind = (m: Message) =>
+  !m.msg_type || m.msg_type === 'webchat' ? 'Tin nhắn chữ' : contactCard(m) ? 'Danh thiếp' : KIND_LABEL[m.msg_type] ?? m.msg_type
 
 export type MessageAction = 'reply' | 'copy' | 'forward' | 'undo' | 'note' | 'select' | 'details'
 
@@ -165,6 +168,7 @@ export function Bubble({
   onToggleSelect,
   members,
   onMention,
+  onContact,
 }: {
   m: Message
   grouped: boolean
@@ -192,6 +196,8 @@ export function Bubble({
   /** Thành viên nhóm (tô "@Tên" ở tin cũ) và bấm "@Tên" để nhắn riêng */
   members?: MentionMember[]
   onMention?: (uid: string, name: string) => void
+  /** Bấm "Nhắn tin" trên danh thiếp Zalo */
+  onContact?: (card: ContactCardInfo) => void
 }) {
   const out = m.direction === 'out'
   const raw = m.raw ?? {}
@@ -199,6 +205,7 @@ export function Bubble({
   const isImage = m.msg_type === 'chat.photo' && (raw.href || raw.thumb)
   const isSticker = m.msg_type === 'chat.sticker' && raw.id
   const isFile = m.msg_type === 'share.file'
+  const card = contactCard(m)
   const isLink = (m.msg_type === 'chat.recommended' || m.msg_type === 'chat.link') && raw.href
   const actionable = !readOnly && !selecting && !m.undone && !!m.zalo_msg_id
   const [menu, setMenuState] = useState<'react' | 'more' | null>(null)
@@ -310,6 +317,29 @@ export function Bubble({
       <a href={safeUrl(raw.href)} target="_blank" rel="noreferrer" className="msg-file">
         <FileText size={18} /> {raw.title || 'Tệp đính kèm'}
       </a>
+    )
+  } else if (card) {
+    body = (
+      <span className="msg-contact">
+        <Avatar name={card.name} src={card.avatar} size={44} />
+        <span className="msg-contact-main">
+          <small className="muted">Danh thiếp Zalo</small>
+          <b>{card.name}</b>
+          {card.phone && <span className="msg-contact-phone">{card.phone}</span>}
+        </span>
+        {onContact && !readOnly && (card.uid || card.phone) && (
+          <button
+            type="button"
+            className="btn outline sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              onContact(card)
+            }}
+          >
+            <MessageCircle size={14} /> Nhắn tin
+          </button>
+        )}
+      </span>
     )
   } else if (isLink) {
     body = (
@@ -447,7 +477,7 @@ export function Bubble({
                 <div className="more-pop" role="menu">
                   {!!copyText(m) && (
                     <button onClick={() => act('copy')}>
-                      <Copy size={14} /> {!m.msg_type || m.msg_type === 'webchat' ? 'Sao chép' : 'Sao chép link'}
+                      <Copy size={14} /> {!m.msg_type || m.msg_type === 'webchat' || card ? 'Sao chép' : 'Sao chép link'}
                     </button>
                   )}
                   {(caps?.forward ?? true) && canForward(m) && (
@@ -490,6 +520,30 @@ export function Bubble({
       {receipt && <div className="msg-receipt">{receipt}</div>}
     </div>
   )
+}
+
+export type ContactCardInfo = { name: string; avatar: string | null; phone: string | null; uid: string | null }
+
+const parseJson = (v: unknown): Record<string, any> => {
+  if (v && typeof v === 'object') return v as Record<string, any>
+  try {
+    const o = typeof v === 'string' && v.trim().startsWith('{') ? JSON.parse(v) : null
+    return o && typeof o === 'object' ? o : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Danh thiếp Zalo (khách gửi thông tin liên hệ của một người): tên, ảnh, SĐT, id Zalo nếu có */
+export function contactCard(m: Pick<Message, 'msg_type' | 'raw'>): ContactCardInfo | null {
+  const raw = m.raw ?? {}
+  if (m.msg_type !== 'chat.recommended') return null
+  const desc = parseJson(raw.description)
+  const params = parseJson(raw.params)
+  if (raw.action !== 'recommened.user' && !desc.gUid && !desc.phone && !params.contactUid) return null
+  const uid = [params.uid, params.contactUid, desc.uid, desc.contactUid, raw.uid].map((x) => String(x ?? '')).find((x) => /^\d{5,25}$/.test(x)) ?? null
+  const phone = String(desc.phone || params.phone || '').trim() || null
+  return { name: String(raw.title || desc.caption || 'Danh thiếp'), avatar: raw.thumb ? String(raw.thumb) : null, phone, uid }
 }
 
 /** Chữ gửi kèm ảnh (bỏ tên tệp ảnh và dữ liệu kỹ thuật) */

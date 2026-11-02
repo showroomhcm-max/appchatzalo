@@ -7,6 +7,14 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.32.1 — 02/11/2026
+
+- **Sửa: khách gửi danh thiếp Zalo thì hiện ra một chuỗi dữ liệu thô.** Nay danh thiếp hiện thành thẻ gồm ảnh, tên, số điện thoại và nút **Nhắn tin**: bấm vào là mở hội thoại với người trong danh thiếp (app tra số điện thoại trên Zalo). Sao chép / chuyển tiếp danh thiếp thì lấy tên + số điện thoại. Xem trước hội thoại và tìm kiếm ghi "[Danh thiếp] Tên - SĐT".
+- **Xem ảnh: phóng to, thu nhỏ, kéo, xoay.**
+  - Phóng to: bấm vào ảnh (phóng to tại chỗ bấm, bấm lại để thu về), lăn chuột, chụm / mở 2 ngón trên điện thoại, hoặc phím + và -.
+  - Đang phóng to thì kéo để xem phần khác của ảnh.
+  - Thanh trên cùng có nút thu nhỏ, phóng to (hiện %), xoay ảnh 90° và nút về cỡ vừa màn hình (phím 0).
+
 ## v3.32.0 — 02/11/2026
 
 - **Máy đồng bộ Zalo PC tự lấy lại tin bị rớt.** Nếu kênh Zalo mất kết nối từ 10 phút trở lên (NAS tắt, mất mạng, bị Zalo ngắt phiên), lúc kết nối lại app vừa xin Zalo gửi bù như trước, vừa tự giao việc cho máy đang mở Zalo PC cùng tài khoản. Máy đó chỉ đọc lại đúng số ngày bị rớt (không đọc cả 90 ngày); tin đã có thì tự bỏ qua.

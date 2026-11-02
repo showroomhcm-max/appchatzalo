@@ -6,7 +6,7 @@ import { imageSize } from "image-size";
 import { get, logEvent, run } from "./db.js";
 import { bus } from "./bus.js";
 import { config } from "./config.js";
-import { getConversation, type Source } from "./store.js";
+import { contactCardOf, getConversation, type Source } from "./store.js";
 import { safeRequest } from "./net-guard.js";
 import { zalo, type OutgoingAttachment, type StoredMessage } from "./zalo.js";
 
@@ -278,7 +278,11 @@ export async function forwardItems(msgs: { id: number; msg_type: string | null; 
     const t = m.msg_type;
     if (!t || t === "webchat") items.push({ kind: "text", text: (m.text ?? "").trim() });
     else if (t === "chat.sticker") items.push({ kind: "sticker", sticker: { id: Number(m.raw.id), cateId: Number(m.raw.catId ?? m.raw.cateId), type: Number(m.raw.type ?? 0) } });
-    else if (t === "chat.recommended" || t === "chat.link") items.push({ kind: "text", text: String(m.raw?.href || m.text) });
+    else if (t === "chat.recommended" || t === "chat.link") {
+      // Danh thiếp: gửi tên + SĐT (link của danh thiếp chỉ là trang chủ Zalo)
+      const card = contactCardOf(m.raw ?? {});
+      items.push({ kind: "text", text: card ? `Danh thiếp: ${[card.name, card.phone].filter(Boolean).join(" - ")}` : String(m.raw?.href || m.text) });
+    }
     else {
       try {
         items.push({ kind: "file", attachment: await loadMedia(m) });

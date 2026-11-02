@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Download, Search, UserPlus, UsersRound, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Maximize, RotateCw, Search, UserPlus, UsersRound, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import type { Conversation, Message } from '../types'
 import { Avatar, Modal } from '../components'
@@ -11,35 +11,109 @@ export const isImageMessage = (m: Message) => m.msg_type === 'chat.photo' && !m.
 
 export function Lightbox({ images, index, onClose }: { images: Message[]; index: number; onClose: () => void }) {
   const [i, setI] = useState(index)
-  const startX = useRef<number | null>(null)
+  // Phóng to / thu nhỏ / xoay: lăn chuột, bấm vào ảnh, chụm 2 ngón; đang phóng to thì kéo để xem phần khác
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0, rotate: 0 })
+  const pointers = useRef(new Map<number, { x: number; y: number }>())
+  const gesture = useRef<{ startX: number; startY: number; moved: boolean; pinch: number | null; base: typeof view; onImg: boolean } | null>(null)
   const m = images[i]
   const go = (d: number) => setI((v) => Math.min(images.length - 1, Math.max(0, v + d)))
+  useEffect(() => setView({ scale: 1, x: 0, y: 0, rotate: 0 }), [i])
+
+  /** Phóng to quanh điểm (px, py) tính từ tâm màn hình, giữ điểm đó đứng yên dưới con trỏ */
+  const zoomAt = (next: number, px = 0, py = 0) =>
+    setView((v) => {
+      const scale = Math.min(6, Math.max(1, next))
+      if (scale === 1) return { ...v, scale: 1, x: 0, y: 0 }
+      const k = scale / v.scale
+      return { ...v, scale, x: px - (px - v.x) * k, y: py - (py - v.y) * k }
+    })
+  const fromCenter = (e: { clientX: number; clientY: number }) => [e.clientX - window.innerWidth / 2, e.clientY - window.innerHeight / 2] as const
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowLeft') go(-1)
       if (e.key === 'ArrowRight') go(1)
+      if (e.key === '+' || e.key === '=') zoomAt(view.scale * 1.25)
+      if (e.key === '-') zoomAt(view.scale / 1.25)
+      if (e.key === '0') setView({ scale: 1, x: 0, y: 0, rotate: 0 })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images.length, onClose])
+  }, [images.length, onClose, view.scale])
   if (!m) return null
   const src = safeUrl(m.raw?.href || m.raw?.thumb)
+  const zoomed = view.scale > 1
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button, a')) return
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pts = [...pointers.current.values()]
+    gesture.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+      pinch: pts.length === 2 ? Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) : null,
+      base: view,
+      // Bắt con trỏ rồi thì lúc thả, target là khung xem ảnh: ghi lại lúc nhấn có nhấn vào ảnh không
+      onImg: (e.target as HTMLElement).tagName === 'IMG',
+    }
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    const g = gesture.current
+    if (!g || !pointers.current.has(e.pointerId)) return
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pts = [...pointers.current.values()]
+    if (pts.length === 2 && g.pinch) {
+      // Chụm / mở 2 ngón
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+      const scale = Math.min(6, Math.max(1, (g.base.scale * d) / g.pinch))
+      setView(scale === 1 ? { ...g.base, scale: 1, x: 0, y: 0 } : { ...g.base, scale })
+      g.moved = true
+      return
+    }
+    const dx = e.clientX - g.startX
+    const dy = e.clientY - g.startY
+    if (Math.abs(dx) + Math.abs(dy) > 6) g.moved = true
+    // Đang phóng to: kéo để xem phần khác của ảnh
+    if (g.base.scale > 1) setView({ ...g.base, x: g.base.x + dx, y: g.base.y + dy })
+  }
+  const onPointerUp = (e: React.PointerEvent) => {
+    const g = gesture.current
+    pointers.current.delete(e.pointerId)
+    if (!g || pointers.current.size) return
+    gesture.current = null
+    const dx = e.clientX - g.startX
+    if (!g.moved) {
+      // Bấm vào ảnh: phóng to 2,5 lần tại chỗ bấm, bấm lại để thu về; bấm ra ngoài ảnh (chưa phóng to) để đóng
+      if (g.onImg) {
+        const [px, py] = fromCenter(e)
+        zoomAt(g.base.scale > 1 ? 1 : 2.5, px, py)
+      } else if (g.base.scale === 1) onClose()
+      return
+    }
+    // Chưa phóng to: vuốt ngang để chuyển ảnh
+    if (g.base.scale === 1 && !g.pinch && Math.abs(dx) > 50) go(dx < 0 ? 1 : -1)
+  }
+
   return (
     <div
-      className="lightbox"
+      className={`lightbox ${zoomed ? 'zoomed' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label="Xem ảnh"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-      onPointerDown={(e) => (startX.current = e.clientX)}
-      onPointerUp={(e) => {
-        // Vuốt ngang trên điện thoại để chuyển ảnh
-        if (startX.current === null) return
-        const dx = e.clientX - startX.current
-        startX.current = null
-        if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1)
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={(e) => {
+        pointers.current.delete(e.pointerId)
+        gesture.current = null
+      }}
+      onWheel={(e) => {
+        const [px, py] = fromCenter(e)
+        zoomAt(view.scale * (e.deltaY < 0 ? 1.2 : 1 / 1.2), px, py)
       }}
     >
       <div className="lightbox-bar">
@@ -47,6 +121,27 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
           {m.direction === 'in' ? m.sender_name ?? 'Khách' : m.agent_name ?? m.holder_name ?? 'Shop'} · {fullTime(m.ts)}
           {images.length > 1 && ` · ${i + 1}/${images.length}`}
         </span>
+        <button className="icon-btn" onClick={() => zoomAt(view.scale / 1.5)} disabled={!zoomed} aria-label="Thu nhỏ" title="Thu nhỏ (phím -)">
+          <ZoomOut size={20} />
+        </button>
+        <span className="lightbox-zoom">{Math.round(view.scale * 100)}%</span>
+        <button
+          className="icon-btn"
+          onClick={() => zoomAt(view.scale * 1.5)}
+          disabled={view.scale >= 6}
+          aria-label="Phóng to"
+          title="Phóng to (phím +, lăn chuột hoặc bấm vào ảnh)"
+        >
+          <ZoomIn size={20} />
+        </button>
+        <button className="icon-btn" onClick={() => setView((v) => ({ ...v, rotate: (v.rotate + 90) % 360 }))} aria-label="Xoay ảnh" title="Xoay ảnh">
+          <RotateCw size={20} />
+        </button>
+        {(zoomed || view.rotate !== 0) && (
+          <button className="icon-btn" onClick={() => setView({ scale: 1, x: 0, y: 0, rotate: 0 })} aria-label="Về cỡ vừa màn hình" title="Về cỡ vừa màn hình (phím 0)">
+            <Maximize size={20} />
+          </button>
+        )}
         {src && (
           <a className="icon-btn" href={src} target="_blank" rel="noreferrer" download aria-label="Tải ảnh" title="Mở ảnh gốc / tải về">
             <Download size={20} />
@@ -56,13 +151,21 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
           <X size={22} />
         </button>
       </div>
-      {i > 0 && (
+      {i > 0 && !zoomed && (
         <button className="lightbox-nav prev" onClick={() => go(-1)} aria-label="Ảnh trước">
           <ChevronLeft size={28} />
         </button>
       )}
-      {src && <img src={src} alt="" referrerPolicy="no-referrer" draggable={false} />}
-      {i < images.length - 1 && (
+      {src && (
+        <img
+          src={src}
+          alt=""
+          referrerPolicy="no-referrer"
+          draggable={false}
+          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale}) rotate(${view.rotate}deg)` }}
+        />
+      )}
+      {i < images.length - 1 && !zoomed && (
         <button className="lightbox-nav next" onClick={() => go(1)} aria-label="Ảnh sau">
           <ChevronRight size={28} />
         </button>

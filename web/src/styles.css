@@ -3559,3 +3559,17 @@ button.msg-mention:focus-visible { outline: 3px solid rgba(15, 149, 87, 0.55); o
 .pc-auto { border-top: 1px solid var(--mz-ink-200); padding-top: 12px; }
 .pc-auto .row { gap: 8px; align-items: center; }
 .input.inline-num { width: 80px; }
+/* Xem ảnh: phóng to / kéo / xoay */
+.lightbox { touch-action: none; }
+.lightbox img { transition: transform 0.12s ease-out; cursor: zoom-in; will-change: transform; }
+.lightbox.zoomed img { cursor: grab; transition: none; }
+.lightbox.zoomed img:active { cursor: grabbing; }
+.lightbox-zoom { min-width: 44px; text-align: center; font-size: 13px; color: #fff; opacity: 0.85; }
+.lightbox-bar .icon-btn:disabled { opacity: 0.35; }
+/* Danh thiếp Zalo */
+.msg-contact { display: flex; align-items: center; gap: 12px; min-width: 240px; padding: 4px 2px; white-space: normal; }
+.msg-contact-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.msg-contact-main b { color: var(--mz-green-700); overflow-wrap: anywhere; }
+.msg-contact-phone { font-variant-numeric: tabular-nums; user-select: all; }
+.lightbox-bar, .lightbox-nav { z-index: 2; }
+.lightbox.zoomed .lightbox-bar { background: rgba(8, 14, 11, 0.8); }

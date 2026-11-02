@@ -45,7 +45,18 @@ import type { Alert, Conversation, ConvStatus, Message, Note, Order, Review, Sti
 import { Avatar, Badge, Empty } from '../components'
 import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
-import { Bubble, ForwardModal, MessageDetails, StickerPicker, canForward, copyText, messageSummary, type MentionMember, type MessageAction } from './chat-parts'
+import {
+  Bubble,
+  ForwardModal,
+  MessageDetails,
+  StickerPicker,
+  canForward,
+  copyText,
+  messageSummary,
+  type ContactCardInfo,
+  type MentionMember,
+  type MessageAction,
+} from './chat-parts'
 import PosOrderModal from './PosOrderModal'
 import DvktPanel from './dvkt-panel'
 import { AiPanel } from './monitor-ai'
@@ -1120,6 +1131,31 @@ function ChatView({
     }
   }
 
+  /** Danh thiếp Zalo: mở hội thoại với người trong danh thiếp (có id Zalo thì mở thẳng, không thì tra số điện thoại) */
+  async function openCard(card: ContactCardInfo) {
+    if (!conv) return
+    try {
+      let uid = card.uid
+      let existing: string | null = null
+      if (!uid && card.phone) {
+        const r = await api<{ contacts: { uid: string; is_group: boolean; conversation_id: string | null; phone: string | null; source: string }[] }>(
+          `/search/contacts?q=${encodeURIComponent(card.phone)}&channelId=${conv.channel_id}`,
+        )
+        const hit = r.contacts.find((c) => !c.is_group && (c.source === 'phone' || c.phone === card.phone)) ?? null
+        uid = hit?.uid ?? null
+        existing = hit?.conversation_id ?? null
+      }
+      if (existing) return void (window.location.hash = `#/inbox/${encodeURIComponent(existing)}`)
+      if (!uid) return setToast('Không tìm thấy tài khoản Zalo của số này (chưa dùng Zalo hoặc đã tắt cho tìm qua số điện thoại)')
+      const c = await api<Conversation>('/zalo/people/open', {
+        body: { uid, channel_id: conv.channel_id, name: card.name, avatar: card.avatar, phone: card.phone },
+      })
+      window.location.hash = `#/inbox/${encodeURIComponent(c.id)}`
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
   const pickedMsgs = selected ? messages.filter((m) => selected.includes(m.id)) : []
   function toggleSelect(m: Message) {
     setSelected((cur) => (cur ? (cur.includes(m.id) ? cur.filter((x) => x !== m.id) : [...cur, m.id]) : [m.id]))
@@ -1516,6 +1552,7 @@ function ChatView({
                   onToggleSelect={toggleSelect}
                   members={members}
                   onMention={isZaloGroup ? openMention : undefined}
+                  onContact={platformOf(conv?.platform) === 'zalo' && !watchOnly ? openCard : undefined}
                 />
               </Fragment>
             )

@@ -56,6 +56,18 @@ export function cleanMentions(list: unknown, textLength: number): MessageMention
 
 export type ReactionSummary = { icon: string; count: number; names: string[]; mine: boolean };
 
+/** Danh thiếp Zalo (tin "chat.recommended", action "recommened.user"): tên + SĐT nằm trong title / description (JSON). */
+export function contactCardOf(c: Record<string, any>): { name: string; phone: string | null } | null {
+  let desc: Record<string, any> = {};
+  try {
+    desc = typeof c.description === "string" && c.description.trim().startsWith("{") ? JSON.parse(c.description) : {};
+  } catch {
+    /* không phải JSON */
+  }
+  if (c.action !== "recommened.user" && !desc.gUid && !desc.phone) return null;
+  return { name: String(c.title || desc.caption || "").trim(), phone: String(desc.phone || "").trim() || null };
+}
+
 /** Rút gọn nội dung tin nhắn Zalo thành chữ để hiển thị, tìm kiếm và xuất dữ liệu training. */
 export function extractText(msgType: string | null | undefined, content: unknown): string {
   if (typeof content === "string") return content;
@@ -76,8 +88,11 @@ export function extractText(msgType: string | null | undefined, content: unknown
     case "chat.location.new":
       return "[Vị trí]";
     case "chat.recommended":
-    case "chat.link":
+    case "chat.link": {
+      const card = contactCardOf(c);
+      if (card) return `[Danh thiếp] ${[card.name, card.phone].filter(Boolean).join(" - ")}`.trim();
       return [c.title, c.href].filter(Boolean).join(" — ") || "[Liên kết]";
+    }
     case "chat.todo":
       return `[Công việc] ${c.title ?? ""}`.trim();
     default:
