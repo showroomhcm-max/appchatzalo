@@ -1203,6 +1203,66 @@ async function downloadInstaller(path: string, body?: unknown) {
   return name
 }
 
+/** Tự lấy lại tin bị rớt: kênh mất kết nối từ N phút trở lên rồi kết nối lại → máy Zalo PC tự đọc lại khoảng đó. */
+function PcAutoSettings() {
+  const [cfg, setCfg] = useState<{ enabled: boolean; minMinutes: number } | null>(null)
+  const [minutes, setMinutes] = useState('')
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    api<{ enabled: boolean; minMinutes: number }>('/pc-agents/auto')
+      .then((c) => {
+        setCfg(c)
+        setMinutes(String(c.minMinutes))
+      })
+      .catch(() => setCfg(null))
+  }, [])
+  if (!cfg) return null
+  async function save(next: { enabled: boolean; minMinutes: number }) {
+    setMsg('')
+    try {
+      const c = await api<{ enabled: boolean; minMinutes: number }>('/pc-agents/auto', { method: 'PUT', body: next })
+      setCfg(c)
+      setMinutes(String(c.minMinutes))
+      setMsg('Đã lưu')
+    } catch (e: any) {
+      setMsg(e.message)
+    }
+  }
+  const dirty = Number(minutes) !== cfg.minMinutes
+  return (
+    <div className="stack sm pc-auto">
+      <div className="row wrap">
+        <label className="row">
+          <input type="checkbox" checked={cfg.enabled} onChange={(e) => void save({ ...cfg, enabled: e.target.checked })} />
+          <b>Tự lấy lại tin bị rớt</b>
+        </label>
+        <span>khi kênh mất kết nối từ</span>
+        <input
+          className="input sm inline-num"
+          type="number"
+          min={2}
+          max={1440}
+          value={minutes}
+          disabled={!cfg.enabled}
+          onChange={(e) => setMinutes(e.target.value)}
+          aria-label="Số phút mất kết nối"
+        />
+        <span>phút trở lên</span>
+        {dirty && cfg.enabled && (
+          <button type="button" className="btn primary sm" onClick={() => void save({ ...cfg, minMinutes: Number(minutes) })}>
+            Lưu
+          </button>
+        )}
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        Kênh kết nối lại sau khi NAS tắt / mất mạng / bị Zalo ngắt quá thời gian trên → app tự giao việc cho máy đang mở Zalo PC cùng tài khoản, đọc
+        lại đúng số ngày bị rớt (tin đã có tự bỏ qua). Zalo PC trên máy đó sẽ tắt / mở lại vài phút trong lúc đọc.
+      </p>
+      {msg && <div className={msg === 'Đã lưu' ? 'muted small' : 'form-error'}>{msg}</div>}
+    </div>
+  )
+}
+
 /** Super Admin: các máy có Zalo PC chạy chương trình đồng bộ tin cũ (nút "Đồng bộ tin nhắn cũ" giao việc cho máy này). */
 function PcAgentsPanel() {
   const [list, setList] = useState<PcAgent[] | null>(null)
@@ -1292,6 +1352,7 @@ function PcAgentsPanel() {
       ) : (
         list && <div className="muted small">Chưa có máy nào. Bấm "Thêm máy" để tải bộ cài.</div>
       )}
+      {list && list.length > 0 && <PcAutoSettings />}
 
       {adding && (
         <Modal title="Thêm máy đồng bộ Zalo PC" onClose={() => setAdding(false)}>

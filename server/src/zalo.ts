@@ -1,6 +1,6 @@
 import { Zalo, ThreadType, LoginQRCallbackEventType, GroupMessage, type API, type Credentials, type Message, type Reaction } from "zca-js";
 import { all, get, logEvent, run } from "./db.js";
-import { requestPcSync } from "./pc-sync.js";
+import { autoPcSyncAfterGap, requestPcSync } from "./pc-sync.js";
 import type { ForwardItem } from "./conversations.js";
 import { markReceipt } from "./store.js";
 import { bus } from "./bus.js";
@@ -102,6 +102,8 @@ export class ChannelSession implements ChannelAdapter {
   private oldMsgWaiter: ((msgs: Message[], type: ThreadType) => void) | null = null;
   private profileChain: Promise<void> = Promise.resolve();
   private pendingAutoSync = false;
+  /** Ghi "còn kết nối" mỗi phút (channels.last_online_at) để biết lần kết nối lại sau đã rớt bao lâu */
+  private aliveTimer: NodeJS.Timeout | null = null;
   history: HistorySync = { state: "idle" };
 
   constructor(readonly channelId: number) {
@@ -254,7 +256,15 @@ export class ChannelSession implements ChannelAdapter {
     this.setStatus({ state: "disconnected" }, true);
   }
 
+  private markAlive() {
+    run("UPDATE channels SET last_online_at = ? WHERE id = ?", Date.now(), this.channelId);
+  }
+
   async logout(clearCredentials = true) {
+    if (this.aliveTimer) clearInterval(this.aliveTimer);
+    this.aliveTimer = null;
+    // Ngắt chủ động (đăng xuất, kết nối lại, xóa kênh): không tính là rớt tin
+    if (this.api && this.connected) this.markAlive();
     try {
       this.api?.listener.stop();
     } catch {
@@ -308,15 +318,35 @@ export class ChannelSession implements ChannelAdapter {
     const { listener } = api;
     listener.on("connected", () => {
       this.log(`Đã kết nối nhận tin (${name})`);
+      // Đã rớt bao lâu (tính cả lúc NAS tắt / khởi động lại): lấy mốc trước khi ghi lại
+      const lastOnline = get<{ t: number | null }>("SELECT last_online_at AS t FROM channels WHERE id = ?", this.channelId)?.t ?? null;
+      this.markAlive();
+      if (this.aliveTimer) clearInterval(this.aliveTimer);
+      this.aliveTimer = setInterval(() => {
+        if (this.api === api && this.connected) this.markAlive();
+      }, 60_000);
+      this.aliveTimer.unref?.();
       this.setStatus({ state: "connected", account: { id: ownId, name, avatar }, error: undefined, qrImage: undefined });
       if (this.pendingAutoSync) {
         this.pendingAutoSync = false;
         void this.syncHistory(90, "tự động sau khi quét QR").catch((e) => console.warn(`[zalo#${this.channelId}] Đồng bộ tin cũ lỗi:`, e?.message ?? e));
         // Tin trước lúc gắn tài khoản chỉ còn trên Zalo PC: giao luôn cho máy đồng bộ (nếu đã cài)
         if (requestPcSync(this.channelId, 90, null, true)) this.log("Đồng bộ tin cũ: đã giao việc cho máy đồng bộ Zalo PC (90 ngày)");
-      } else if (this.history.state !== "running" && !this.catchingUp) {
-        // Bù tin khách nhắn trong lúc app / NAS tắt hoặc mất mạng
-        void this.catchUp(api).catch((e) => console.warn(`[zalo#${this.channelId}] Bù tin lỗi:`, e?.message ?? e));
+      } else {
+        if (this.history.state !== "running" && !this.catchingUp) {
+          // Bù tin khách nhắn trong lúc app / NAS tắt hoặc mất mạng
+          void this.catchUp(api).catch((e) => console.warn(`[zalo#${this.channelId}] Bù tin lỗi:`, e?.message ?? e));
+        }
+        // Rớt lâu: Zalo có thể không gửi bù đủ → nhờ máy Zalo PC đọc lại khoảng bị rớt (tin trùng tự bỏ qua)
+        if (lastOnline) {
+          const gap = Date.now() - lastOnline;
+          try {
+            const job = autoPcSyncAfterGap(this.channelId, gap);
+            if (job) this.log(`Mất kết nối ${Math.round(gap / 60_000)} phút: đã giao máy đồng bộ Zalo PC lấy lại tin bị rớt (việc #${job})`);
+          } catch (e: any) {
+            console.warn(`[zalo#${this.channelId}] Không giao được việc lấy lại tin bị rớt:`, e?.message ?? e);
+          }
+        }
       }
       // Hội thoại còn thiếu tên (nhập từ Zalo PC, khách lạ) → hỏi Zalo tên + ảnh
       this.fillMissingProfiles(60_000);
@@ -373,6 +403,7 @@ export class ChannelSession implements ChannelAdapter {
     listener.on("error", (e) => console.error(`[zalo#${this.channelId}] listener error:`, e));
     listener.on("closed", (code, reason) => {
       console.warn(`[zalo#${this.channelId}] listener closed:`, code, reason);
+      if (this.api === api) this.markAlive();
       const msg =
         code === 3000
           ? "Tài khoản đang mở Zalo Web/PC ở nơi khác nên bị ngắt. Đóng phiên đó rồi bấm Kết nối lại."

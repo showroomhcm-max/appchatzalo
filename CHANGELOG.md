@@ -7,6 +7,14 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.32.0 — 02/11/2026
+
+- **Máy đồng bộ Zalo PC tự lấy lại tin bị rớt.** Nếu kênh Zalo mất kết nối từ 10 phút trở lên (NAS tắt, mất mạng, bị Zalo ngắt phiên), lúc kết nối lại app vừa xin Zalo gửi bù như trước, vừa tự giao việc cho máy đang mở Zalo PC cùng tài khoản. Máy đó chỉ đọc lại đúng số ngày bị rớt (không đọc cả 90 ngày); tin đã có thì tự bỏ qua.
+  - Bật / tắt và đổi số phút ở Cài đặt › Kênh chat › Máy đồng bộ Zalo PC › **Tự lấy lại tin bị rớt** (mặc định bật, 10 phút).
+  - App khởi động lại khi cập nhật (1–2 phút) thì không tính là rớt. Đăng xuất hoặc bấm Kết nối lại cũng không tính.
+  - Trong lúc đọc, Zalo PC trên máy đó sẽ tắt rồi mở lại vài phút.
+- **Sửa: việc đồng bộ Zalo PC do app tự giao (sau khi quét QR) báo lỗi khi nhập tin.** Tin vẫn được lưu, nhưng máy PC nhận về báo lỗi.
+
 ## v3.31.1 — 02/11/2026
 
 - **Sửa: một số hội thoại không hiện tên khách.** Hội thoại nhập từ Zalo PC (khách chưa kết bạn, hoặc chỉ có tin shop gửi) không có tên, và app chỉ lấy tên khi khách nhắn tin mới. Nay app tự hỏi Zalo tên và ảnh của mọi hội thoại còn thiếu tên (theo lô, vài phút là xong) vào 2 lúc: sau khi đồng bộ Zalo PC xong và mỗi lần kênh kết nối lại.

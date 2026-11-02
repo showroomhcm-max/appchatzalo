@@ -16,7 +16,18 @@ import { bus } from "./bus.js";
 import { fetchTemplateFile, fetchTemplateImage } from "./template-media.js";
 import { publicBaseUrl } from "./platforms/common.js";
 import { importHistory } from "./history-import.js";
-import { agentScriptPath, buildInstaller, cancelPcSync, createAgent, deleteAgent, latestPcJob, listAgents, requestPcSync } from "./pc-sync.js";
+import {
+  agentScriptPath,
+  buildInstaller,
+  cancelPcSync,
+  createAgent,
+  deleteAgent,
+  latestPcJob,
+  listAgents,
+  pcAutoConfig,
+  requestPcSync,
+  savePcAutoConfig,
+} from "./pc-sync.js";
 import { WIPE_CONFIRM, purgeChannelData, wipeChatData, wipePreview } from "./wipe.js";
 
 export const settingsRouter = Router();
@@ -245,6 +256,13 @@ settingsRouter.post(
 );
 
 settingsRouter.get("/pc-agents", requireSuperAdmin, (_req, res) => res.json(listAgents()));
+// Tự lấy lại tin bị rớt: kênh mất kết nối lâu → máy Zalo PC tự đọc lại khoảng đó
+settingsRouter.get("/pc-agents/auto", requireSuperAdmin, (_req, res) => res.json(pcAutoConfig()));
+settingsRouter.put(
+  "/pc-agents/auto",
+  requireSuperAdmin,
+  h((req, res) => res.json(savePcAutoConfig(req.body, req.user!.id))),
+);
 settingsRouter.post(
   "/pc-agents",
   requireSuperAdmin,

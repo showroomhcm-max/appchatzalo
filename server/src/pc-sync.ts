@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { all, db, get, logEvent, run } from "./db.js";
+import { all, db, get, getSetting, logEvent, run, setSetting } from "./db.js";
 import { HttpError } from "./conversations.js";
 import { importHistory } from "./history-import.js";
 import { publicBaseUrl } from "./platforms/common.js";
@@ -123,6 +123,37 @@ export function requestPcSync(channelId: number, days: number, userId: number | 
   const id = Number(run("INSERT INTO pc_sync_jobs(channel_id, days, requested_by, created_at) VALUES(?, ?, ?, ?)", channelId, d, userId, Date.now()).lastInsertRowid);
   logEvent(null, userId, "channel.pc_sync_requested", { channel: channelId, days: d, job: id });
   return id;
+}
+
+// ───────────── Tự lấy lại tin bị rớt ─────────────
+
+/** Kênh mất kết nối từ `minMinutes` phút trở lên rồi kết nối lại → máy Zalo PC tự đọc lại khoảng bị rớt. */
+export type PcAutoConfig = { enabled: boolean; minMinutes: number };
+const AUTO_KEY = "pc_sync.auto";
+
+export function pcAutoConfig(): PcAutoConfig {
+  const c = getSetting<Partial<PcAutoConfig>>(AUTO_KEY) ?? {};
+  return { enabled: c.enabled ?? true, minMinutes: Math.max(2, Math.min(1440, Math.round(Number(c.minMinutes) || 10))) };
+}
+
+export function savePcAutoConfig(body: any, userId: number): PcAutoConfig {
+  const minutes = Number(body?.minMinutes);
+  if (!Number.isFinite(minutes) || minutes < 2 || minutes > 1440) throw new HttpError(400, "Ngưỡng mất kết nối phải từ 2 đến 1440 phút");
+  const next = { enabled: !!body?.enabled, minMinutes: Math.round(minutes) };
+  setSetting(AUTO_KEY, next);
+  logEvent(null, userId, "pc_sync.auto_saved", next);
+  return pcAutoConfig();
+}
+
+/**
+ * Kênh vừa kết nối lại sau `gapMs` mất kết nối (NAS tắt / khởi động lại, rớt mạng, Zalo ngắt phiên).
+ * Đủ ngưỡng + có máy đồng bộ → giao việc đọc lại số ngày phủ khoảng đó (thêm 1 giờ cho chắc). Trả mã việc hoặc null.
+ */
+export function autoPcSyncAfterGap(channelId: number, gapMs: number) {
+  const cfg = pcAutoConfig();
+  if (!cfg.enabled || gapMs < cfg.minMinutes * 60_000) return null;
+  const days = Math.max(1, Math.ceil((gapMs + 3_600_000) / 86_400_000));
+  return requestPcSync(channelId, days, null, true);
 }
 
 export function cancelPcSync(channelId: number, userId: number) {
@@ -360,7 +391,8 @@ pcAgentRouter.post(
   "/jobs/:id/import",
   wrap((req, res) => {
     const job = agentJob(req, ["running"]);
-    const r = importHistory(job.channel_id, req.body, job.requested_by ?? 0);
+    // Việc app tự giao (sau khi quét QR, sau khi rớt kết nối) không có người bấm: ghi nhật ký không kèm người
+    const r = importHistory(job.channel_id, req.body, job.requested_by ?? null);
     const prev = parse(job.progress) ?? {};
     const next = { ...prev, added: (prev.added ?? 0) + r.added, skipped: (prev.skipped ?? 0) + r.skipped, conversations: (prev.conversations ?? 0) + r.conversations };
     run("UPDATE pc_sync_jobs SET progress = ?, heartbeat_at = ? WHERE id = ?", JSON.stringify(next), Date.now(), job.id);

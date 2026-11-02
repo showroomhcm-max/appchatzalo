@@ -301,6 +301,8 @@ if (!columns("messages").has("mentions")) db.exec("ALTER TABLE messages ADD COLU
 const chanCols = columns("channels");
 if (!chanCols.has("platform")) db.exec("ALTER TABLE channels ADD COLUMN platform TEXT NOT NULL DEFAULT 'zalo'");
 if (!chanCols.has("external_id")) db.exec("ALTER TABLE channels ADD COLUMN external_id TEXT");
+// Lần cuối kênh Zalo còn kết nối (cập nhật mỗi phút): kết nối lại sau khoảng mất kết nối dài → máy Zalo PC tự lấy lại tin bị rớt
+if (!chanCols.has("last_online_at")) db.exec("ALTER TABLE channels ADD COLUMN last_online_at INTEGER");
 // Kênh đã xóa nhưng còn hội thoại: giữ dòng kênh (ẩn khỏi danh sách) để lịch sử chat vẫn còn tên kênh
 if (!chanCols.has("deleted_at")) db.exec("ALTER TABLE channels ADD COLUMN deleted_at INTEGER");
 // Nhân viên đã xóa: giữ dòng (tên vẫn hiện trong lịch sử chat, báo cáo cũ), ẩn khỏi danh sách, không đăng nhập được

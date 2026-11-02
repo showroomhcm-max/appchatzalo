@@ -51,7 +51,7 @@ const safeAvatar = (v: unknown) => {
   return s && /^https:\/\//i.test(s) ? s : null;
 };
 
-export function importHistory(channelId: number, body: any, userId: number) {
+export function importHistory(channelId: number, body: any, userId: number | null) {
   const channel = get<{ id: number; name: string; platform: string; zalo_uid: string | null; mode: string }>(
     "SELECT id, name, platform, zalo_uid, mode FROM channels WHERE id = ? AND deleted_at IS NULL",
     channelId,
