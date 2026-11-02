@@ -746,7 +746,36 @@ export class ChannelSession implements ChannelAdapter {
         this.channelId,
       ).filter((r) => /^\d+$/.test(r.thread_id) && !this.noProfile.has(r.id));
       if (!rows.length) return;
+      const total = rows.length;
       let filled = 0;
+      // Trước khi hỏi Zalo từng người (Zalo giới hạn số lượt): lấy tên có sẵn
+      // 1) tên khách hiện trong tin khách đã gửi; 2) danh sách bạn bè (1 lượt hỏi cho cả danh sách)
+      const named = new Set<string>();
+      for (const r of rows) {
+        if (r.type === 1) continue;
+        const n = get<{ sender_name: string }>(
+          `SELECT sender_name FROM messages WHERE conversation_id = ? AND direction = 'in' AND TRIM(COALESCE(sender_name, '')) != ''
+           ORDER BY ts DESC LIMIT 1`,
+          r.id,
+        )?.sender_name;
+        if (n && n !== r.thread_id) {
+          updateConversationProfile(r.id, { name: n });
+          named.add(r.id);
+        }
+      }
+      try {
+        const friends = new Map((await this.friends()).map((f) => [f.uid, f]));
+        for (const r of rows) {
+          const f = r.type !== 1 ? friends.get(r.thread_id) : undefined;
+          if (!f?.name) continue;
+          updateConversationProfile(r.id, { name: named.has(r.id) ? null : f.name, avatar: f.avatar || null });
+          named.add(r.id);
+        }
+      } catch (e: any) {
+        console.warn(`[zalo#${this.channelId}] Không lấy được danh sách bạn bè:`, e?.message ?? e);
+      }
+      filled += named.size;
+      rows.splice(0, rows.length, ...rows.filter((r) => !named.has(r.id)));
       let limited = false;
       // Zalo giới hạn số lần hỏi: hỏi chậm (1,5 giây / lô); bị chặn thì dừng, 15 phút sau hỏi tiếp phần còn lại
       const isLimit = (e: any) => /vượt quá|quá số|too many|rate limit/i.test(String(e?.message ?? e));
@@ -790,7 +819,7 @@ export class ChannelSession implements ChannelAdapter {
         await pause();
       }
       this.log(
-        `Lấy tên khách: ${filled}/${rows.length} hội thoại chưa có tên đã có tên` +
+        `Lấy tên khách: ${filled}/${total} hội thoại chưa có tên đã có tên` +
           (limited ? " — Zalo tạm chặn vì hỏi nhiều, 15 phút sau hỏi tiếp phần còn lại" : ""),
       );
       if (limited) this.fillMissingProfiles(15 * 60_000);

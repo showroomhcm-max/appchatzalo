@@ -7,6 +7,13 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.32.2 — 02/11/2026
+
+- **Lấy tên khách cho hội thoại thiếu tên: dùng tên có sẵn trước khi hỏi Zalo.** Zalo giới hạn số lần hỏi thông tin từng người (đã lấy được khoảng 950 tên mỗi kênh thì bị chặn nhiều giờ). Nay app lấy tên từ 2 nguồn trước, không tốn lượt hỏi:
+  - tên khách hiện trong tin khách đã gửi;
+  - danh sách bạn bè Zalo (1 lần hỏi lấy được cả danh sách).
+  Còn thiếu mới hỏi Zalo từng người như trước (bị chặn thì 15 phút sau hỏi tiếp).
+
 ## v3.32.1 — 02/11/2026
 
 - **Sửa: khách gửi danh thiếp Zalo thì hiện ra một chuỗi dữ liệu thô.** Nay danh thiếp hiện thành thẻ gồm ảnh, tên, số điện thoại và nút **Nhắn tin**: bấm vào là mở hội thoại với người trong danh thiếp (app tra số điện thoại trên Zalo). Sao chép / chuyển tiếp danh thiếp thì lấy tên + số điện thoại. Xem trước hội thoại và tìm kiếm ghi "[Danh thiếp] Tên - SĐT".
