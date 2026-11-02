@@ -14,6 +14,7 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
   - App khởi động lại khi cập nhật (1–2 phút) thì không tính là rớt. Đăng xuất hoặc bấm Kết nối lại cũng không tính.
   - Trong lúc đọc, Zalo PC trên máy đó sẽ tắt rồi mở lại vài phút.
 - **Sửa: việc đồng bộ Zalo PC do app tự giao (sau khi quét QR) báo lỗi khi nhập tin.** Tin vẫn được lưu, nhưng máy PC nhận về báo lỗi.
+- **Lấy tên khách cho hội thoại thiếu tên: không còn bị Zalo chặn giữa chừng.** Bản trước hỏi quá nhanh nên mỗi kênh chỉ lấy được khoảng 950 tên rồi bị Zalo chặn ("Vượt quá số request cho phép"). Nay app hỏi chậm hơn; nếu vẫn bị chặn thì dừng 15 phút rồi tự hỏi tiếp phần còn lại, cho tới khi hết.
 
 ## v3.31.1 — 02/11/2026
 

@@ -731,6 +731,9 @@ export class ChannelSession implements ChannelAdapter {
     }, delayMs);
   }
 
+  /** Hội thoại Zalo không trả hồ sơ (tài khoản đã xóa / chặn): không hỏi lại trong lần chạy này của app */
+  private noProfile = new Set<string>();
+
   private async runFillProfiles() {
     if (this.fillingProfiles || !this.api || !this.connected) return;
     this.fillingProfiles = true;
@@ -741,12 +744,16 @@ export class ChannelSession implements ChannelAdapter {
          WHERE channel_id = ? AND deleted_at IS NULL AND (name IS NULL OR TRIM(name) = '' OR name = thread_id)
          ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 5000`,
         this.channelId,
-      ).filter((r) => /^\d+$/.test(r.thread_id));
+      ).filter((r) => /^\d+$/.test(r.thread_id) && !this.noProfile.has(r.id));
       if (!rows.length) return;
       let filled = 0;
+      let limited = false;
+      // Zalo giới hạn số lần hỏi: hỏi chậm (1,5 giây / lô); bị chặn thì dừng, 15 phút sau hỏi tiếp phần còn lại
+      const isLimit = (e: any) => /vượt quá|quá số|too many|rate limit/i.test(String(e?.message ?? e));
+      const pause = () => new Promise((r) => setTimeout(r, 1500));
       const pick = (map: Record<string, any> | undefined, uid: string) => map?.[uid] ?? map?.[`${uid}_0`];
       const users = rows.filter((r) => r.type !== 1);
-      for (let i = 0; i < users.length; i += 50) {
+      for (let i = 0; i < users.length && !limited && this.api === api; i += 50) {
         const chunk = users.slice(i, i + 50);
         try {
           const r = await api.getUserInfo(chunk.map((c) => c.thread_id));
@@ -756,15 +763,16 @@ export class ChannelSession implements ChannelAdapter {
             if (name) {
               updateConversationProfile(c.id, { name, avatar: u.avatar || null });
               filled++;
-            }
+            } else this.noProfile.add(c.id);
           }
         } catch (e: any) {
-          console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} khách:`, e?.message ?? e);
+          if (isLimit(e)) limited = true;
+          else console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} khách:`, e?.message ?? e);
         }
-        await new Promise((r) => setTimeout(r, 400));
+        await pause();
       }
       const groups = rows.filter((r) => r.type === 1);
-      for (let i = 0; i < groups.length; i += 20) {
+      for (let i = 0; i < groups.length && !limited && this.api === api; i += 20) {
         const chunk = groups.slice(i, i + 20);
         try {
           const r = await api.getGroupInfo(chunk.map((c) => c.thread_id));
@@ -773,14 +781,19 @@ export class ChannelSession implements ChannelAdapter {
             if (g?.name) {
               updateConversationProfile(c.id, { name: g.name, avatar: g.fullAvt || g.avt || null });
               filled++;
-            }
+            } else this.noProfile.add(c.id);
           }
         } catch (e: any) {
-          console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} nhóm:`, e?.message ?? e);
+          if (isLimit(e)) limited = true;
+          else console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} nhóm:`, e?.message ?? e);
         }
-        await new Promise((r) => setTimeout(r, 400));
+        await pause();
       }
-      this.log(`Lấy tên khách: ${filled}/${rows.length} hội thoại chưa có tên đã có tên`);
+      this.log(
+        `Lấy tên khách: ${filled}/${rows.length} hội thoại chưa có tên đã có tên` +
+          (limited ? " — Zalo tạm chặn vì hỏi nhiều, 15 phút sau hỏi tiếp phần còn lại" : ""),
+      );
+      if (limited) this.fillMissingProfiles(15 * 60_000);
     } finally {
       this.fillingProfiles = false;
     }
