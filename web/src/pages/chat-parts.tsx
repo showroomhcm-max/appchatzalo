@@ -278,6 +278,16 @@ export function Bubble({
         <img src={raw.thumb || raw.href} alt={raw.title || 'Hình ảnh'} referrerPolicy="no-referrer" loading="lazy" />
       </a>
     )
+    // Ảnh gửi kèm chữ: Zalo để chữ trong "title" (ảnh shop gửi từ app thì title là tên tệp → không hiện)
+    const caption = photoCaption(raw)
+    if (caption) {
+      body = (
+        <>
+          {body}
+          <span className="msg-text msg-caption">{linkify(caption)}</span>
+        </>
+      )
+    }
   } else if (isSticker) {
     body = (
       <img
@@ -480,6 +490,15 @@ export function Bubble({
       {receipt && <div className="msg-receipt">{receipt}</div>}
     </div>
   )
+}
+
+/** Chữ gửi kèm ảnh (bỏ tên tệp ảnh và dữ liệu kỹ thuật) */
+export function photoCaption(raw: Record<string, any>) {
+  for (const v of [raw.title, raw.description]) {
+    const s = typeof v === 'string' ? v.trim() : ''
+    if (s && !/^[{[]/.test(s) && !/^[^\s/\\]+\.(jpe?g|png|gif|webp|heic|bmp)$/i.test(s)) return s
+  }
+  return ''
 }
 
 /** Biến đường link trong chữ thành link bấm được (chỉ http/https, như Zalo). */

@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.31.1 — 02/11/2026
+
+- **Sửa: một số hội thoại không hiện tên khách.** Hội thoại nhập từ Zalo PC (khách chưa kết bạn, hoặc chỉ có tin shop gửi) không có tên, và app chỉ lấy tên khi khách nhắn tin mới. Nay app tự hỏi Zalo tên và ảnh của mọi hội thoại còn thiếu tên (theo lô, vài phút là xong) vào 2 lúc: sau khi đồng bộ Zalo PC xong và mỗi lần kênh kết nối lại.
+- **Sửa: ảnh gửi kèm chữ chỉ hiện ảnh.** Nay chữ gửi kèm hiện ngay dưới ảnh, trong cùng bong bóng.
+
 ## v3.31.0 — 02/11/2026
 
 - **Chuyển tiếp được ảnh, tệp, video, tin nhắn thoại, sticker và link** (trước đây chỉ chuyển tiếp được tin chữ). App lấy lại tệp gốc rồi gửi sang hội thoại được chọn, tối đa 30 MB mỗi tệp. Tin đã thu hồi và tin vị trí vẫn không chuyển tiếp được.

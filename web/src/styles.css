@@ -3553,3 +3553,5 @@ button.msg-mention:focus-visible { outline: 3px solid rgba(15, 149, 87, 0.55); o
 /* Tin sát đầu khung chat: menu cảm xúc / thao tác mở xuống dưới */
 .msg-actions.pop-down .reaction-pop,
 .msg-actions.pop-down .more-pop { bottom: auto; top: calc(100% + 6px); }
+/* Chữ gửi kèm ảnh, nằm dưới ảnh trong cùng bong bóng */
+.bubble.media .msg-caption { display: block; max-width: 280px; padding: 4px 8px 0; }

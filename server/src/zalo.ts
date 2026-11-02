@@ -318,6 +318,8 @@ export class ChannelSession implements ChannelAdapter {
         // Bù tin khách nhắn trong lúc app / NAS tắt hoặc mất mạng
         void this.catchUp(api).catch((e) => console.warn(`[zalo#${this.channelId}] Bù tin lỗi:`, e?.message ?? e));
       }
+      // Hội thoại còn thiếu tên (nhập từ Zalo PC, khách lạ) → hỏi Zalo tên + ảnh
+      this.fillMissingProfiles(60_000);
     });
     listener.on("message", (m) => this.handleMessage(m, false));
     listener.on("old_messages", (msgs, type) => {
@@ -683,6 +685,76 @@ export class ChannelSession implements ChannelAdapter {
   }
 
   /** Lấy tên + ảnh đại diện khách/nhóm một lần cho hội thoại mới. */
+  private profileTimer: NodeJS.Timeout | null = null;
+  private fillingProfiles = false;
+
+  /**
+   * Lấy tên + ảnh cho các hội thoại chưa có tên (nhập từ Zalo PC, khách chưa kết bạn, hội thoại chỉ có tin shop gửi):
+   * hỏi Zalo theo lô 50 người / 20 nhóm. Gọi nhiều lần liền nhau (mỗi lô nhập tin) thì gộp lại chạy 1 lần.
+   */
+  fillMissingProfiles(delayMs = 15_000) {
+    if (this.profileTimer) clearTimeout(this.profileTimer);
+    this.profileTimer = setTimeout(() => {
+      this.profileTimer = null;
+      void this.runFillProfiles().catch((e) => console.warn(`[zalo#${this.channelId}] Lấy tên khách lỗi:`, e?.message ?? e));
+    }, delayMs);
+  }
+
+  private async runFillProfiles() {
+    if (this.fillingProfiles || !this.api || !this.connected) return;
+    this.fillingProfiles = true;
+    const api = this.api;
+    try {
+      const rows = all<{ id: string; thread_id: string; type: number }>(
+        `SELECT id, thread_id, type FROM conversations
+         WHERE channel_id = ? AND deleted_at IS NULL AND (name IS NULL OR TRIM(name) = '' OR name = thread_id)
+         ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 5000`,
+        this.channelId,
+      ).filter((r) => /^\d+$/.test(r.thread_id));
+      if (!rows.length) return;
+      let filled = 0;
+      const pick = (map: Record<string, any> | undefined, uid: string) => map?.[uid] ?? map?.[`${uid}_0`];
+      const users = rows.filter((r) => r.type !== 1);
+      for (let i = 0; i < users.length; i += 50) {
+        const chunk = users.slice(i, i + 50);
+        try {
+          const r = await api.getUserInfo(chunk.map((c) => c.thread_id));
+          for (const c of chunk) {
+            const u = pick(r.changed_profiles as any, c.thread_id);
+            const name = u?.displayName || u?.zaloName;
+            if (name) {
+              updateConversationProfile(c.id, { name, avatar: u.avatar || null });
+              filled++;
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} khách:`, e?.message ?? e);
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      const groups = rows.filter((r) => r.type === 1);
+      for (let i = 0; i < groups.length; i += 20) {
+        const chunk = groups.slice(i, i + 20);
+        try {
+          const r = await api.getGroupInfo(chunk.map((c) => c.thread_id));
+          for (const c of chunk) {
+            const g = r.gridInfoMap?.[c.thread_id];
+            if (g?.name) {
+              updateConversationProfile(c.id, { name: g.name, avatar: g.fullAvt || g.avt || null });
+              filled++;
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[zalo#${this.channelId}] Không lấy được tên ${chunk.length} nhóm:`, e?.message ?? e);
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      this.log(`Lấy tên khách: ${filled}/${rows.length} hội thoại chưa có tên đã có tên`);
+    } finally {
+      this.fillingProfiles = false;
+    }
+  }
+
   private ensureProfile(threadId: string, isGroup: boolean) {
     const id = conversationKey(this.channelId, threadId);
     const conv = getConversation(id);

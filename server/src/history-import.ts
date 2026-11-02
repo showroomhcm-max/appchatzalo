@@ -10,6 +10,7 @@ import { get, logEvent } from "./db.js";
 import { bus } from "./bus.js";
 import { getConversation, saveMessage } from "./store.js";
 import { HttpError } from "./conversations.js";
+import { zalo } from "./zalo.js";
 
 /** Loại tin nhận vào (giống Zalo web). Tin thu hồi (chat.undo), tin hệ thống… bỏ qua. */
 const TYPES = new Set([
@@ -114,6 +115,15 @@ export function importHistory(channelId: number, body: any, userId: number) {
   for (const id of touched) {
     const conv = getConversation(id);
     if (conv) bus.emit("conversation.updated", conv);
+  }
+  // Khách lạ / hội thoại chỉ có tin shop gửi: Zalo PC không có tên → hỏi Zalo sau khi nhập xong các lô
+  if (touched.size) {
+    try {
+      const s = zalo.session(channelId) as any;
+      if (s.connected && typeof s.fillMissingProfiles === "function") s.fillMissingProfiles();
+    } catch {
+      /* kênh chưa kết nối: lần kết nối sau sẽ lấy */
+    }
   }
   if (added) logEvent(null, userId, "channel.history_imported", { channel: channelId, added, conversations: touched.size, source: "zalo_pc" });
   return { added, skipped, conversations: touched.size };
