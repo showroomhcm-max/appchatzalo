@@ -295,6 +295,8 @@ function migrateToChannels() {
 migrateToChannels();
 db.exec("PRAGMA foreign_keys = ON");
 if (!columns("messages").has("quote")) db.exec("ALTER TABLE messages ADD COLUMN quote TEXT");
+// @nhắc tên trong tin nhóm Zalo: [{uid, pos, len}] (bấm vào tên để nhắn riêng)
+if (!columns("messages").has("mentions")) db.exec("ALTER TABLE messages ADD COLUMN mentions TEXT");
 // Đa kênh: nền tảng của kênh (zalo / facebook / tiktok / tiktok_shop) và id tài khoản bên nền tảng (page id, open_id, shop id)
 const chanCols = columns("channels");
 if (!chanCols.has("platform")) db.exec("ALTER TABLE channels ADD COLUMN platform TEXT NOT NULL DEFAULT 'zalo'");

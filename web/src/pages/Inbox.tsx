@@ -4,6 +4,8 @@ import {
   ArrowDown,
   Laugh,
   ClipboardList,
+  Copy,
+  Forward,
   ListChecks,
   MoreVertical,
   Pin,
@@ -43,7 +45,7 @@ import type { Alert, Conversation, ConvStatus, Message, Note, Order, Review, Sti
 import { Avatar, Badge, Empty } from '../components'
 import { TagChip } from './Settings'
 import TagPicker from './TagPicker'
-import { Bubble, ForwardModal, StickerPicker, messageSummary, type MessageAction } from './chat-parts'
+import { Bubble, ForwardModal, MessageDetails, StickerPicker, canForward, copyText, messageSummary, type MentionMember, type MessageAction } from './chat-parts'
 import PosOrderModal from './PosOrderModal'
 import DvktPanel from './dvkt-panel'
 import { AiPanel } from './monitor-ai'
@@ -1021,7 +1023,37 @@ function ChatView({
   const prevHeight = useRef<number | null>(null)
   const [flashId, setFlashId] = useState<number | null>(null)
   const [replyTo, setReplyTo] = useState<Message | null>(null)
-  const [forwardMsg, setForwardMsg] = useState<Message | null>(null)
+  const [forwardMsgs, setForwardMsgs] = useState<Message[] | null>(null)
+  const [detailMsg, setDetailMsg] = useState<Message | null>(null)
+  // Chọn nhiều tin nhắn (null = không ở chế độ chọn): sao chép / chuyển tiếp / ghi chú cùng lúc
+  const [selected, setSelected] = useState<number[] | null>(null)
+  useEffect(() => setSelected(null), [convId])
+  useEffect(() => {
+    if (!selected) return
+    const esc = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setSelected(null)
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [selected])
+  // Thành viên nhóm Zalo: tô "@Tên" ở tin cũ và nhận ra tài khoản của shop
+  const [members, setMembers] = useState<MentionMember[]>([])
+  const [selfUid, setSelfUid] = useState<string | null>(null)
+  const isZaloGroup = conv?.type === 1 && platformOf(conv?.platform) === 'zalo'
+  useEffect(() => {
+    setMembers([])
+    setSelfUid(null)
+    if (!isZaloGroup) return
+    let alive = true
+    loadMembers(convId)
+      .then((d) => {
+        if (!alive) return
+        setMembers(d.members.map((x) => ({ uid: x.uid, name: x.name })))
+        setSelfUid(d.selfId)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [convId, isZaloGroup])
   const [notesVersion, setNotesVersion] = useState(0)
   const [toast, setToast] = useState('')
   // Như Zalo: xem ảnh toàn màn hình, tìm trong hội thoại, khách đang soạn tin, nút xuống tin mới nhất
@@ -1049,10 +1081,14 @@ function ChatView({
         setReplyTo(m)
         document.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
       } else if (action === 'copy') {
-        await navigator.clipboard.writeText(m.text ?? '')
+        await navigator.clipboard.writeText(copyText(m))
         setToast('Đã sao chép')
       } else if (action === 'forward') {
-        setForwardMsg(m)
+        setForwardMsgs([m])
+      } else if (action === 'select') {
+        setSelected([m.id])
+      } else if (action === 'details') {
+        setDetailMsg(m)
       } else if (action === 'undo') {
         if (!confirm('Thu hồi tin nhắn này? Khách sẽ thấy "Tin nhắn đã thu hồi".')) return
         await api(`${base}/undo`, { method: 'POST' })
@@ -1066,6 +1102,53 @@ function ChatView({
         setNotesVersion((v) => v + 1)
         setToast('Đã thêm vào ghi chú nội bộ')
       }
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  /** Bấm "@Tên" trong tin nhóm: mở (hoặc tạo) hội thoại riêng với người đó trên cùng kênh Zalo */
+  async function openMention(uid: string, name: string) {
+    if (!conv) return
+    if (selfUid && uid === selfUid) return setToast('Đây là tài khoản Zalo của shop')
+    try {
+      const avatar = (await loadMembers(convId).catch(() => null))?.members.find((x) => x.uid === uid)?.avatar
+      const c = await api<Conversation>('/zalo/people/open', { body: { uid, channel_id: conv.channel_id, name, avatar } })
+      window.location.hash = `#/inbox/${encodeURIComponent(c.id)}`
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
+  const pickedMsgs = selected ? messages.filter((m) => selected.includes(m.id)) : []
+  function toggleSelect(m: Message) {
+    setSelected((cur) => (cur ? (cur.includes(m.id) ? cur.filter((x) => x !== m.id) : [...cur, m.id]) : [m.id]))
+  }
+  async function copySelected() {
+    const lines = pickedMsgs.map((m) => {
+      const who = m.direction === 'in' ? m.sender_name ?? conv?.name ?? 'Khách' : m.agent_name ?? m.holder_name ?? 'Shop'
+      const time = new Date(m.ts).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+      const body = !m.msg_type || m.msg_type === 'webchat' ? m.text ?? '' : [messageSummary(m), copyText(m) !== m.text ? copyText(m) : ''].filter(Boolean).join(' ')
+      return `[${time}] ${who}: ${body}`
+    })
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setToast(`Đã sao chép ${pickedMsgs.length} tin`)
+      setSelected(null)
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+  async function noteSelected() {
+    const lines = pickedMsgs.map((m) => {
+      const who = m.direction === 'in' ? m.sender_name ?? 'Khách' : m.agent_name ?? 'Shop'
+      return `- ${who} (${new Date(m.ts).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}): "${messageSummary(m)}"`
+    })
+    try {
+      await api(`/conversations/${encodeURIComponent(convId)}/notes`, { body: { content: `Trích ${pickedMsgs.length} tin nhắn:\n${lines.join('\n')}` } })
+      setNotesVersion((v) => v + 1)
+      setToast('Đã thêm vào ghi chú nội bộ')
+      setSelected(null)
     } catch (e: any) {
       alert(e.message)
     }
@@ -1428,6 +1511,11 @@ function ChatView({
                   onExtra={(key) => void commentAction(m, key)}
                   onAction={onMessageAction}
                   onReact={onReact}
+                  selecting={!!selected}
+                  selected={!!selected?.includes(m.id)}
+                  onToggleSelect={toggleSelect}
+                  members={members}
+                  onMention={isZaloGroup ? openMention : undefined}
                 />
               </Fragment>
             )
@@ -1470,7 +1558,32 @@ function ChatView({
         )}
         {toast && <div className="toast">{toast}</div>}
         {lightbox !== null && lightbox >= 0 && <Lightbox images={images} index={lightbox} onClose={() => setLightbox(null)} />}
-        {watchOnly ? (
+        {selected ? (
+          <div className="select-bar">
+            <span className="grow">
+              Đã chọn <b>{pickedMsgs.length}</b> tin nhắn
+            </span>
+            <button className="btn ghost sm" disabled={!pickedMsgs.length} onClick={() => void copySelected()}>
+              <Copy size={15} /> Sao chép
+            </button>
+            {!watchOnly && caps.forward && (
+              <button
+                className="btn ghost sm"
+                disabled={!pickedMsgs.length || !pickedMsgs.every(canForward)}
+                title={pickedMsgs.every(canForward) ? 'Chuyển tiếp các tin đã chọn' : 'Có tin không chuyển tiếp được (đã thu hồi hoặc loại tin chưa hỗ trợ)'}
+                onClick={() => setForwardMsgs(pickedMsgs)}
+              >
+                <Forward size={15} /> Chuyển tiếp
+              </button>
+            )}
+            <button className="btn ghost sm" disabled={!pickedMsgs.length} onClick={() => void noteSelected()}>
+              <StickyNote size={15} /> Tạo ghi chú
+            </button>
+            <button className="btn outline sm" onClick={() => setSelected(null)}>
+              <X size={15} /> Hủy
+            </button>
+          </div>
+        ) : watchOnly ? (
           <div className="watch-only-bar">
             <Eye size={16} />
             <span className="grow">
@@ -1493,7 +1606,17 @@ function ChatView({
         )}
       </section>
       {showInfo && conv && <InfoPanel key={notesVersion} conv={conv} onPatch={patch} onClose={toggleInfo} />}
-      {forwardMsg && conv && <ForwardModal message={forwardMsg} from={conv} onClose={() => setForwardMsg(null)} />}
+      {forwardMsgs && conv && (
+        <ForwardModal
+          messages={forwardMsgs}
+          from={conv}
+          onClose={() => {
+            setForwardMsgs(null)
+            setSelected(null)
+          }}
+        />
+      )}
+      {detailMsg && <MessageDetails m={detailMsg} conv={conv} onClose={() => setDetailMsg(null)} />}
     </>
   )
 }

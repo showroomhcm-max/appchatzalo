@@ -7,6 +7,17 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.31.0 — 02/11/2026
+
+- **Chuyển tiếp được ảnh, tệp, video, tin nhắn thoại, sticker và link** (trước đây chỉ chuyển tiếp được tin chữ). App lấy lại tệp gốc rồi gửi sang hội thoại được chọn, tối đa 30 MB mỗi tệp. Tin đã thu hồi và tin vị trí vẫn không chuyển tiếp được.
+- **Menu tin nhắn giống Zalo PC**: chuột phải vào tin (hoặc bấm nút …) mở menu thao tác. Menu có thêm:
+  - **Chọn nhiều tin nhắn**: bấm từng tin để chọn. Thanh dưới cùng có **Sao chép** (kèm giờ và người gửi), **Chuyển tiếp** nhiều tin một lần (tối đa 30 tin sang 20 hội thoại), **Tạo ghi chú**, **Hủy** (hoặc phím Esc).
+  - **Xem chi tiết**: người gửi, giờ gửi đầy đủ, loại tin, nguồn (gửi từ app / điện thoại / khách), tên tệp, cảm xúc, mã tin Zalo.
+  - Tin ảnh, tệp, link có thêm **Sao chép link**.
+  - Đang bôi đen chữ trong tin thì chuột phải vẫn ra menu của trình duyệt, để sao chép đúng đoạn đó.
+  - Tin nằm sát đầu khung chat thì menu mở xuống dưới, không bị che.
+- **@nhắc tên trong nhóm Zalo có màu riêng (xanh dương). Bấm vào tên để mở hội thoại nhắn riêng với người đó**, chưa có hội thoại thì app tự tạo. Từ bản này app lưu lại vị trí các tên được @ trong tin mới; tin cũ thì app dò theo tên thành viên nhóm.
+
 ## v3.30.3 — 28/10/2026
 
 - **Sửa: mỗi lần tải lại trang (F5) hiện thoáng dòng "Mất kết nối realtime với máy chủ"** dù kết nối vẫn bình thường (app báo trước khi kịp nối, mất khoảng nửa giây). Nay chỉ báo khi mất kết nối quá 5 giây.

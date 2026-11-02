@@ -1,6 +1,7 @@
 import { Zalo, ThreadType, LoginQRCallbackEventType, GroupMessage, type API, type Credentials, type Message, type Reaction } from "zca-js";
 import { all, get, logEvent, run } from "./db.js";
 import { requestPcSync } from "./pc-sync.js";
+import type { ForwardItem } from "./conversations.js";
 import { markReceipt } from "./store.js";
 import { bus } from "./bus.js";
 import {
@@ -400,6 +401,7 @@ export class ChannelSession implements ChannelAdapter {
         content: d.content,
         ts: Number(d.ts) || Date.now(),
         isHistory,
+        mentions: (d as any).mentions,
         quote: d.quote
           ? {
               msg: d.quote.msg ?? "",
@@ -930,34 +932,48 @@ export class ChannelSession implements ChannelAdapter {
     markUndone(this.channelId, opts.threadId, opts.message.zalo_msg_id);
   }
 
-  /** Chuyển tiếp nội dung chữ sang hội thoại khác trong cùng kênh. */
-  async forward(opts: { text: string; targets: { threadId: string; isGroup: boolean }[]; agentId: number | null; source: Source }) {
+  /**
+   * Chuyển tiếp sang hội thoại khác trong cùng kênh: chữ dùng chuyển tiếp của Zalo; sticker gửi lại sticker;
+   * ảnh / tệp / video / tin thoại gửi lại tệp gốc. Mỗi hội thoại gửi lần lượt các tin, lỗi tin nào báo tin đó.
+   */
+  async forward(opts: { items: ForwardItem[]; targets: { threadId: string; isGroup: boolean }[]; agentId: number | null; source: Source }) {
     const api = this.requireApi();
-    const results: { threadId: string; ok: boolean; error?: string }[] = [];
+    const results: { threadId: string; ok: boolean; sent: number; error?: string }[] = [];
     for (const t of opts.targets) {
       const type = t.isGroup ? ThreadType.Group : ThreadType.User;
-      try {
-        const r = await api.forwardMessage({ message: opts.text }, [t.threadId], type);
-        const ok = r.success?.[0];
-        if (!ok) throw new Error(r.fail?.[0]?.error_code ?? "Zalo từ chối");
-        saveMessage({
-          channelId: this.channelId,
-          threadId: t.threadId,
-          conversationType: type,
-          zaloMsgId: String(ok.msgId),
-          direction: "out",
-          senderUid: this.ownId,
-          senderName: this.status.account?.name,
-          agentId: opts.agentId,
-          source: opts.source,
-          msgType: "webchat",
-          content: opts.text,
-          ts: Date.now(),
-        });
-        results.push({ threadId: t.threadId, ok: true });
-      } catch (e: any) {
-        results.push({ threadId: t.threadId, ok: false, error: e?.message ?? String(e) });
+      let sent = 0;
+      const errors: string[] = [];
+      for (const item of opts.items) {
+        try {
+          if (item.kind === "text") {
+            const r = await api.forwardMessage({ message: item.text }, [t.threadId], type);
+            const ok = r.success?.[0];
+            if (!ok) throw new Error(r.fail?.[0]?.error_code ?? "Zalo từ chối");
+            saveMessage({
+              channelId: this.channelId,
+              threadId: t.threadId,
+              conversationType: type,
+              zaloMsgId: String(ok.msgId),
+              direction: "out",
+              senderUid: this.ownId,
+              senderName: this.status.account?.name,
+              agentId: opts.agentId,
+              source: opts.source,
+              msgType: "webchat",
+              content: item.text,
+              ts: Date.now(),
+            });
+          } else if (item.kind === "sticker") {
+            await this.sendSticker({ threadId: t.threadId, isGroup: t.isGroup, sticker: item.sticker, agentId: opts.agentId, source: opts.source });
+          } else {
+            await this.send({ threadId: t.threadId, isGroup: t.isGroup, attachments: [item.attachment], agentId: opts.agentId, source: opts.source });
+          }
+          sent++;
+        } catch (e: any) {
+          errors.push(e?.message ?? String(e));
+        }
       }
+      results.push({ threadId: t.threadId, ok: !errors.length, sent, error: errors.length ? [...new Set(errors)].join("; ") : undefined });
     }
     return results;
   }
@@ -1037,7 +1053,8 @@ export class ChannelSession implements ChannelAdapter {
     const saved = [];
     if (res.message) {
       saved.push(
-        saveMessage({ ...common, zaloMsgId: String(res.message.msgId), msgType: "webchat", content: opts.text ?? "", quote }).message,
+        saveMessage({ ...common, zaloMsgId: String(res.message.msgId), msgType: "webchat", content: opts.text ?? "", quote, mentions: opts.isGroup ? opts.mentions : null })
+          .message,
       );
     }
     for (const [i, a] of (res.attachment ?? []).entries()) {

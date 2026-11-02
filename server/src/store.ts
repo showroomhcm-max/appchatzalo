@@ -30,6 +30,8 @@ export type SaveMessageInput = {
   quiet?: boolean;
   /** Tin này trả lời (trích dẫn) tin nào */
   quote?: MessageQuote | null;
+  /** @nhắc tên trong tin nhóm Zalo */
+  mentions?: MessageMention[] | null;
   /** Hội thoại bình luận (Facebook) và thông tin bài viết */
   kind?: "chat" | "comment";
   meta?: Record<string, any> | null;
@@ -39,6 +41,18 @@ export type SaveMessageInput = {
 };
 
 export type MessageQuote = { msg: string; fromD: string; globalMsgId: string; ownerId: string };
+/** @nhắc tên: vị trí, độ dài trong chữ và id Zalo người được nhắc ("-1" = @Tất cả) */
+export type MessageMention = { uid: string; pos: number; len: number };
+
+/** Chuẩn hóa danh sách @nhắc tên từ Zalo (bỏ mục lỗi, tối đa 50). */
+export function cleanMentions(list: unknown, textLength: number): MessageMention[] | null {
+  if (!Array.isArray(list)) return null;
+  const out = list
+    .map((x: any) => ({ uid: String(x?.uid ?? ""), pos: Number(x?.pos), len: Number(x?.len) }))
+    .filter((x) => /^(-1|d{1,25})$/.test(x.uid) && Number.isInteger(x.pos) && Number.isInteger(x.len) && x.pos >= 0 && x.len > 0 && x.pos + x.len <= textLength)
+    .slice(0, 50);
+  return out.length ? out : null;
+}
 
 export type ReactionSummary = { icon: string; count: number; names: string[]; mine: boolean };
 
@@ -234,7 +248,12 @@ const MSG_SELECT = `
 
 function parseMsg(row: Row | undefined) {
   if (!row) return undefined;
-  return { ...row, raw: row.raw ? JSON.parse(row.raw) : null, quote: row.quote ? JSON.parse(row.quote) : null } as Row;
+  return {
+    ...row,
+    raw: row.raw ? JSON.parse(row.raw) : null,
+    quote: row.quote ? JSON.parse(row.quote) : null,
+    mentions: row.mentions ? JSON.parse(row.mentions) : null,
+  } as Row;
 }
 
 /** Gắn danh sách cảm xúc (gom theo biểu tượng) vào tin nhắn. */
@@ -364,6 +383,7 @@ export function updateConversationProfile(id: string, info: { name?: string | nu
 export function saveMessage(input: SaveMessageInput) {
   const text = extractText(input.msgType, input.content);
   const raw = typeof input.content === "string" ? null : JSON.stringify(input.content);
+  const mentions = typeof input.content === "string" ? cleanMentions(input.mentions, input.content.length) : null;
 
   const conversationId = conversationKey(input.channelId, input.threadId);
   const result = tx(() => {
@@ -375,8 +395,8 @@ export function saveMessage(input: SaveMessageInput) {
     });
 
     const existing = input.zaloMsgId
-      ? get<{ id: number; agent_id: number | null; cli_msg_id: string | null; quote: string | null }>(
-          "SELECT id, agent_id, cli_msg_id, quote FROM messages WHERE conversation_id = ? AND zalo_msg_id = ?",
+      ? get<{ id: number; agent_id: number | null; cli_msg_id: string | null; quote: string | null; mentions: string | null }>(
+          "SELECT id, agent_id, cli_msg_id, quote, mentions FROM messages WHERE conversation_id = ? AND zalo_msg_id = ?",
           conversationId,
           input.zaloMsgId,
         )
@@ -386,6 +406,7 @@ export function saveMessage(input: SaveMessageInput) {
       // Bản tin do listener nhận về có cliMsgId (cần để thả cảm xúc / thu hồi) mà kết quả gửi không có.
       if (input.cliMsgId && !existing.cli_msg_id) run("UPDATE messages SET cli_msg_id = ? WHERE id = ?", input.cliMsgId, existing.id);
       if (input.quote && !existing.quote) run("UPDATE messages SET quote = ? WHERE id = ?", JSON.stringify(input.quote), existing.id);
+      if (mentions && !existing.mentions) run("UPDATE messages SET mentions = ? WHERE id = ?", JSON.stringify(mentions), existing.id);
       if (input.agentId && !existing.agent_id) {
         run("UPDATE messages SET agent_id = ?, source = ?, holder_id = NULL WHERE id = ?", input.agentId, input.source, existing.id);
         return { id: existing.id, isNew: false, changed: true };
@@ -400,8 +421,8 @@ export function saveMessage(input: SaveMessageInput) {
         : null;
     const r = run(
       `INSERT INTO messages(conversation_id, zalo_msg_id, cli_msg_id, direction, sender_uid, sender_name,
-         agent_id, source, msg_type, text, raw, ts, quote, holder_id)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         agent_id, source, msg_type, text, raw, ts, quote, holder_id, mentions)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       conversationId,
       input.zaloMsgId,
       input.cliMsgId ?? null,
@@ -416,6 +437,7 @@ export function saveMessage(input: SaveMessageInput) {
       input.ts,
       input.quote ? JSON.stringify(input.quote) : null,
       holderId,
+      mentions ? JSON.stringify(mentions) : null,
     );
     const id = Number(r.lastInsertRowid);
     indexMessage(id, text);

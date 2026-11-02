@@ -2,8 +2,8 @@
  * Các phần của khung chat giống Zalo PC: bong bóng tin nhắn có menu thao tác khi rê chuột
  * (trả lời, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú), hộp chọn sticker, chuyển tiếp.
  */
-import { useEffect, useRef, useState } from 'react'
-import { Copy, FileText, Forward, MoreHorizontal, Quote, Search, SmilePlus, StickyNote, Undo2, X } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { CheckSquare, Copy, FileText, Forward, Info, MoreHorizontal, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import { useApp } from '../store'
 import type { Conversation, Message, Sticker, Capabilities } from '../types'
@@ -49,7 +49,101 @@ export function messageSummary(m: Pick<Message, 'msg_type' | 'text'>) {
   return m.text || '[Tin nhắn]'
 }
 
-export type MessageAction = 'reply' | 'copy' | 'forward' | 'undo' | 'note'
+const MEDIA_TYPES = ['chat.photo', 'share.file', 'chat.video.msg', 'chat.voice', 'chat.gif']
+/** Tin chuyển tiếp được: chữ, link, sticker, ảnh, tệp, video, tin thoại (cùng điều kiện với máy chủ) */
+export function canForward(m: Message) {
+  if (m.undone) return false
+  const t = m.msg_type
+  if (!t || t === 'webchat') return !!m.text?.trim()
+  if (t === 'chat.sticker') return !!m.raw?.id
+  if (t === 'chat.recommended' || t === 'chat.link') return !!(m.raw?.href || m.text)
+  return MEDIA_TYPES.includes(t) && !!(m.raw?.href || m.raw?.thumb || m.raw?.hdUrl || m.raw?.oriUrl)
+}
+
+/** Chữ để sao chép: tin chữ lấy nội dung; ảnh / tệp / video / link lấy đường link */
+export function copyText(m: Message) {
+  if (!m.msg_type || m.msg_type === 'webchat') return m.text ?? ''
+  const href = String(m.raw?.href || m.raw?.thumb || '')
+  if (href) return href.startsWith('/') ? window.location.origin + href : href
+  return m.text ?? ''
+}
+
+const KIND_LABEL: Record<string, string> = {
+  'chat.photo': 'Hình ảnh',
+  'chat.sticker': 'Sticker',
+  'share.file': 'Tệp',
+  'chat.video.msg': 'Video',
+  'chat.voice': 'Tin nhắn thoại',
+  'chat.gif': 'Ảnh GIF',
+  'chat.recommended': 'Liên kết',
+  'chat.link': 'Liên kết',
+  'chat.location.new': 'Vị trí',
+}
+/** Loại tin cho mục "Xem chi tiết" */
+export const messageKind = (m: Message) => (!m.msg_type || m.msg_type === 'webchat' ? 'Tin nhắn chữ' : KIND_LABEL[m.msg_type] ?? m.msg_type)
+
+export type MessageAction = 'reply' | 'copy' | 'forward' | 'undo' | 'note' | 'select' | 'details'
+
+/** Thành viên nhóm (để tô và bấm "@Tên" ở tin cũ chưa lưu vị trí nhắc tên) */
+export type MentionMember = { uid: string; name: string }
+
+/** Các đoạn "@Tên" trong chữ: dùng vị trí Zalo gửi kèm, không có thì dò theo tên thành viên nhóm. */
+function mentionRanges(m: Message, members?: MentionMember[]): { pos: number; len: number; uid: string }[] {
+  const text = m.text ?? ''
+  if (m.mentions?.length) return m.mentions.filter((x) => x.pos >= 0 && x.pos + x.len <= text.length).sort((a, b) => a.pos - b.pos)
+  if (!members?.length || !text.includes('@')) return []
+  const out: { pos: number; len: number; uid: string }[] = []
+  for (const mb of [...members].sort((a, b) => b.name.length - a.name.length)) {
+    if (!mb.name) continue
+    const tag = `@${mb.name}`
+    let from = 0
+    let i: number
+    while ((i = text.indexOf(tag, from)) >= 0) {
+      const at = i
+      if (!out.some((o) => at < o.pos + o.len && o.pos < at + tag.length)) out.push({ pos: at, len: tag.length, uid: mb.uid })
+      from = at + tag.length
+    }
+  }
+  return out.sort((a, b) => a.pos - b.pos)
+}
+
+/** Chữ của tin: "@Tên" tô màu riêng, bấm vào để nhắn riêng người đó; link bấm được. */
+function MessageText({ m, members, onMention }: { m: Message; members?: MentionMember[]; onMention?: (uid: string, name: string) => void }) {
+  const text = m.text ?? ''
+  const ranges = mentionRanges(m, members)
+  if (!ranges.length) return <span className="msg-text">{linkify(text)}</span>
+  const parts: React.ReactNode[] = []
+  let at = 0
+  ranges.forEach((r, i) => {
+    if (r.pos < at) return
+    if (r.pos > at) parts.push(<Fragment key={`t${i}`}>{linkify(text.slice(at, r.pos))}</Fragment>)
+    const label = text.slice(r.pos, r.pos + r.len)
+    const name = label.replace(/^@/, '')
+    parts.push(
+      r.uid === '-1' || !onMention ? (
+        <span key={`m${i}`} className="msg-mention">
+          {label}
+        </span>
+      ) : (
+        <button
+          key={`m${i}`}
+          type="button"
+          className="msg-mention"
+          title={`Nhắn riêng cho ${name}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onMention(r.uid, name)
+          }}
+        >
+          {label}
+        </button>
+      ),
+    )
+    at = r.pos + r.len
+  })
+  if (at < text.length) parts.push(<Fragment key="end">{linkify(text.slice(at))}</Fragment>)
+  return <span className="msg-text">{parts}</span>
+}
 
 export function Bubble({
   m,
@@ -66,6 +160,11 @@ export function Bubble({
   receipt,
   onAction,
   onReact,
+  selecting = false,
+  selected = false,
+  onToggleSelect,
+  members,
+  onMention,
 }: {
   m: Message
   grouped: boolean
@@ -86,6 +185,13 @@ export function Bubble({
   receipt?: string | null
   onAction: (action: MessageAction, m: Message) => void
   onReact: (m: Message, code: string) => void
+  /** Đang chọn nhiều tin: hiện ô chọn, bấm vào tin để chọn / bỏ chọn */
+  selecting?: boolean
+  selected?: boolean
+  onToggleSelect?: (m: Message) => void
+  /** Thành viên nhóm (tô "@Tên" ở tin cũ) và bấm "@Tên" để nhắn riêng */
+  members?: MentionMember[]
+  onMention?: (uid: string, name: string) => void
 }) {
   const out = m.direction === 'out'
   const raw = m.raw ?? {}
@@ -94,8 +200,18 @@ export function Bubble({
   const isSticker = m.msg_type === 'chat.sticker' && raw.id
   const isFile = m.msg_type === 'share.file'
   const isLink = (m.msg_type === 'chat.recommended' || m.msg_type === 'chat.link') && raw.href
-  const actionable = !readOnly && !m.undone && !!m.zalo_msg_id
-  const [menu, setMenu] = useState<'react' | 'more' | null>(null)
+  const actionable = !readOnly && !selecting && !m.undone && !!m.zalo_msg_id
+  const [menu, setMenuState] = useState<'react' | 'more' | null>(null)
+  // Menu mở lên trên tin; tin nằm sát đầu khung chat thì mở xuống dưới cho khỏi bị che
+  const [menuDown, setMenuDown] = useState(false)
+  const setMenu = (v: 'react' | 'more' | null) => {
+    if (v) {
+      const row = rowRef.current?.getBoundingClientRect()
+      const box = rowRef.current?.closest('.messages')?.getBoundingClientRect()
+      setMenuDown(!!row && !!box && row.top - box.top < (v === 'more' ? 300 : 70))
+    }
+    setMenuState(v)
+  }
   // Điện thoại / máy tính bảng: nhấn giữ tin nhắn để hiện thao tác (như Zalo)
   const [touchOpen, setTouchOpen] = useState(false)
   const pressTimer = useRef<number | undefined>(undefined)
@@ -131,15 +247,21 @@ export function Bubble({
     onPointerMove: () => window.clearTimeout(pressTimer.current),
     onPointerCancel: () => window.clearTimeout(pressTimer.current),
     onContextMenu: (e: React.MouseEvent) => {
+      if (!actionable) return
       // Android: nhấn giữ sinh contextmenu → mở thao tác thay cho menu của trình duyệt
-      if (actionable && window.matchMedia('(hover: none)').matches) {
+      if (window.matchMedia('(hover: none)').matches) {
         e.preventDefault()
         setTouchOpen(true)
+        return
       }
+      // Máy tính: chuột phải vào tin mở menu thao tác như Zalo PC (đang bôi đen chữ thì để menu trình duyệt sao chép đoạn đó)
+      if (window.getSelection()?.toString()) return
+      e.preventDefault()
+      setMenu('more')
     },
   }
 
-  let body: React.ReactNode = <span className="msg-text">{linkify(m.text ?? '')}</span>
+  let body: React.ReactNode = <MessageText m={m} members={isGroup ? members : undefined} onMention={readOnly || selecting ? undefined : onMention} />
   if (isImage) {
     body = (
       <a
@@ -200,10 +322,25 @@ export function Bubble({
   return (
     <div
       ref={rowRef}
-      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu || touchOpen ? 'menu-open' : ''}`}
+      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu || touchOpen ? 'menu-open' : ''} ${selecting ? 'selecting' : ''} ${selected ? 'selected' : ''}`}
       data-mid={m.id}
       {...longPress}
+      onClickCapture={
+        selecting
+          ? (e) => {
+              // Đang chọn nhiều tin: bấm vào tin = chọn / bỏ chọn (không mở ảnh, link)
+              e.preventDefault()
+              e.stopPropagation()
+              if (!m.undone) onToggleSelect?.(m)
+            }
+          : undefined
+      }
     >
+      {selecting && (
+        <span className={`msg-check ${m.undone ? 'off' : ''}`} aria-hidden>
+          {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+        </span>
+      )}
       {!grouped && (out ? label : isGroup ? m.sender_name : null) && (
         <div className={`msg-sender ${out && !m.agent_id ? 'muted' : ''}`}>{out ? label : m.sender_name}</div>
       )}
@@ -240,7 +377,7 @@ export function Bubble({
         </div>
 
         {actionable && (
-          <div className="msg-actions">
+          <div className={`msg-actions ${menuDown ? 'pop-down' : ''}`}>
             {canReply && (
               <button className="icon-btn sm" onClick={() => act('reply')} title="Trả lời" aria-label="Trả lời">
                 <Quote size={15} />
@@ -298,16 +435,22 @@ export function Bubble({
               </button>
               {menu === 'more' && (
                 <div className="more-pop" role="menu">
-                  {m.text && (
+                  {!!copyText(m) && (
                     <button onClick={() => act('copy')}>
-                      <Copy size={14} /> Sao chép
+                      <Copy size={14} /> {!m.msg_type || m.msg_type === 'webchat' ? 'Sao chép' : 'Sao chép link'}
                     </button>
                   )}
-                  {(caps?.forward ?? true) && (!m.msg_type || m.msg_type === 'webchat') && m.text && (
+                  {(caps?.forward ?? true) && canForward(m) && (
                     <button onClick={() => act('forward')}>
                       <Forward size={14} /> Chuyển tiếp
                     </button>
                   )}
+                  <button onClick={() => act('select')}>
+                    <CheckSquare size={14} /> Chọn nhiều tin nhắn
+                  </button>
+                  <button onClick={() => act('details')}>
+                    <Info size={14} /> Xem chi tiết
+                  </button>
                   {extraActions?.map((x) => (
                     <button
                       key={x.key}
@@ -481,12 +624,13 @@ export function StickerPicker({
 
 // ───────────── Chuyển tiếp ─────────────
 
-export function ForwardModal({ message, from, onClose }: { message: Message; from: Conversation; onClose: () => void }) {
+export function ForwardModal({ messages, from, onClose }: { messages: Message[]; from: Conversation; onClose: () => void }) {
   const [list, setList] = useState<Conversation[]>([])
   const [q, setQ] = useState('')
   const [picked, setPicked] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<{ conversation_id?: string; ok: boolean; error?: string }[] | null>(null)
+  const [result, setResult] = useState<{ conversation_id?: string; ok: boolean; sent?: number; error?: string }[] | null>(null)
+  const hasMedia = messages.some((m) => m.msg_type && m.msg_type !== 'webchat' && m.msg_type !== 'chat.sticker' && m.msg_type !== 'chat.recommended' && m.msg_type !== 'chat.link')
   const [error, setError] = useState('')
   const { channels } = useApp()
 
@@ -503,8 +647,8 @@ export function ForwardModal({ message, from, onClose }: { message: Message; fro
     setError('')
     try {
       setResult(
-        await api(`/conversations/${encodeURIComponent(from.id)}/messages/${message.id}/forward`, {
-          body: { conversation_ids: picked },
+        await api(`/conversations/${encodeURIComponent(from.id)}/forward`, {
+          body: { message_ids: messages.map((m) => m.id), conversation_ids: picked },
         }),
       )
     } catch (e: any) {
@@ -517,9 +661,15 @@ export function ForwardModal({ message, from, onClose }: { message: Message; fro
   const channelName = channels.find((c) => c.id === from.channel_id)?.name
 
   return (
-    <Modal title="Chuyển tiếp tin nhắn" onClose={onClose}>
+    <Modal title={messages.length > 1 ? `Chuyển tiếp ${messages.length} tin nhắn` : 'Chuyển tiếp tin nhắn'} onClose={onClose}>
       <div className="stack">
-        <div className="forward-preview">{messageSummary(message)}</div>
+        <div className="forward-preview">
+          {messages.slice(0, 5).map((m) => (
+            <div key={m.id}>{messageSummary(m)}</div>
+          ))}
+          {messages.length > 5 && <div className="muted small">… và {messages.length - 5} tin khác</div>}
+        </div>
+        {busy && hasMedia && <div className="muted small">Đang tải ảnh / tệp gốc và gửi lại, có thể mất vài giây…</div>}
         {result ? (
           <>
             <div>
@@ -570,6 +720,50 @@ export function ForwardModal({ message, from, onClose }: { message: Message; fro
             </div>
           </>
         )}
+      </div>
+    </Modal>
+  )
+}
+
+// ───────────── Xem chi tiết tin nhắn ─────────────
+
+const SOURCE_LABEL: Record<Message['source'], string> = {
+  web: 'Gửi từ app Chat Siêu Tốc',
+  api: 'Gửi qua API',
+  phone: 'Gửi từ điện thoại / Zalo PC',
+  history: 'Đồng bộ tin cũ',
+  customer: 'Khách gửi',
+}
+
+export function MessageDetails({ m, conv, onClose }: { m: Message; conv: Conversation | null; onClose: () => void }) {
+  const rows: [string, string][] = [
+    ['Người gửi', m.direction === 'out' ? senderLabel(m) ?? 'Shop' : m.sender_name ?? conv?.name ?? 'Khách'],
+    ['Thời gian', fullTime(m.ts)],
+    ['Loại tin', messageKind(m)],
+    ['Nguồn', SOURCE_LABEL[m.source] ?? m.source],
+  ]
+  if (m.raw?.title && m.msg_type === 'share.file') rows.push(['Tên tệp', String(m.raw.title)])
+  if (m.quote) rows.push(['Trả lời tin', `${m.quote.fromD || 'Tin nhắn'}: ${m.quote.msg || '[Tin nhắn]'}`])
+  if (m.reactions?.length) rows.push(['Cảm xúc', m.reactions.map((r) => `${reactionEmoji(r.icon)} ${r.names.join(', ')}`).join(' · ')])
+  if (m.undone) rows.push(['Trạng thái', m.undone_at ? `Đã thu hồi lúc ${fullTime(m.undone_at)}` : 'Đã thu hồi'])
+  if (m.zalo_msg_id) rows.push(['Mã tin Zalo', m.zalo_msg_id])
+  return (
+    <Modal title="Chi tiết tin nhắn" onClose={onClose}>
+      <div className="stack">
+        {!!m.text && <div className="forward-preview pre-wrap">{m.text}</div>}
+        <dl className="msg-details">
+          {rows.map(([k, v]) => (
+            <Fragment key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </Fragment>
+          ))}
+        </dl>
+        <div className="row end">
+          <button className="btn primary" onClick={onClose}>
+            Đóng
+          </button>
+        </div>
       </div>
     </Modal>
   )

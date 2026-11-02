@@ -30,6 +30,7 @@ import { publicBaseUrl } from "./platforms/common.js";
 import {
   HttpError,
   connectedSession,
+  forwardItems,
   markRead,
   messageInConversation,
   sendToConversation,
@@ -1567,28 +1568,38 @@ appRouter.post(
     res.json({ ok: true });
   }),
 );
+/** Chuyển tiếp 1 hoặc nhiều tin (chữ, ảnh, tệp, video, tin thoại, sticker, link) sang tối đa 20 hội thoại cùng kênh. */
+async function forwardFrom(req: Request, messageIds: number[]) {
+  const conv = visibleConversation(req, req.params.id);
+  const ids = [...new Set(messageIds.filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) throw new HttpError(400, "Chọn tin nhắn để chuyển tiếp");
+  if (ids.length > 30) throw new HttpError(400, "Mỗi lần chuyển tiếp tối đa 30 tin");
+  const msgs = ids.map((mid) => messageInConversation(conv.id, mid)).sort((x, y) => x.ts - y.ts || x.id - y.id);
+  const convIds: string[] = Array.isArray(req.body?.conversation_ids) ? req.body.conversation_ids.map(String) : [];
+  if (!convIds.length) throw new HttpError(400, "Chọn hội thoại để chuyển tiếp");
+  if (convIds.length > 20) throw new HttpError(400, "Mỗi lần chuyển tiếp tối đa 20 hội thoại");
+  const targets = convIds.map((id) => visibleConversation(req, id));
+  if (targets.some((t) => t.channel_id !== conv.channel_id)) {
+    throw new HttpError(400, "Chỉ chuyển tiếp được trong cùng một kênh Zalo");
+  }
+  const session = connectedSession(conv, req.user!.id);
+  const items = await forwardItems(msgs);
+  const results = await session.forward({
+    items,
+    targets: targets.map((t) => ({ threadId: t.thread_id, isGroup: t.type === 1 })),
+    agentId: req.user!.id,
+    source: "web",
+  });
+  logEvent(conv.id, req.user!.id, "message.forward", { messages: ids, to: targets.map((t) => t.id) });
+  return results.map((r) => ({ ...r, conversation_id: targets.find((t) => t.thread_id === r.threadId)?.id }));
+}
 appRouter.post(
   "/conversations/:id/messages/:mid/forward",
-  h(async (req, res) => {
-    const conv = visibleConversation(req, req.params.id);
-    const msg = messageInConversation(conv.id, Number(req.params.mid));
-    const text = (msg.text ?? "").trim();
-    if (!text || (msg.msg_type && msg.msg_type !== "webchat")) throw new HttpError(400, "Hiện chỉ chuyển tiếp được tin nhắn chữ");
-    const ids: string[] = Array.isArray(req.body?.conversation_ids) ? req.body.conversation_ids.map(String) : [];
-    if (!ids.length) throw new HttpError(400, "Chọn hội thoại để chuyển tiếp");
-    if (ids.length > 20) throw new HttpError(400, "Mỗi lần chuyển tiếp tối đa 20 hội thoại");
-    const targets = ids.map((id) => visibleConversation(req, id));
-    if (targets.some((t) => t.channel_id !== conv.channel_id)) {
-      throw new HttpError(400, "Chỉ chuyển tiếp được trong cùng một kênh Zalo");
-    }
-    const results = await connectedSession(conv, req.user!.id).forward({
-      text,
-      targets: targets.map((t) => ({ threadId: t.thread_id, isGroup: t.type === 1 })),
-      agentId: req.user!.id,
-      source: "web",
-    });
-    res.json(results.map((r: { threadId: string; ok: boolean; error?: string }) => ({ ...r, conversation_id: targets.find((t) => t.thread_id === r.threadId)?.id })));
-  }),
+  h(async (req, res) => res.json(await forwardFrom(req, [Number(req.params.mid)]))),
+);
+appRouter.post(
+  "/conversations/:id/forward",
+  h(async (req, res) => res.json(await forwardFrom(req, Array.isArray(req.body?.message_ids) ? req.body.message_ids.map(Number) : []))),
 );
 appRouter.get(
   "/conversations/:id/notes",

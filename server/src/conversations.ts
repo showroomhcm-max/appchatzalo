@@ -7,6 +7,7 @@ import { get, logEvent, run } from "./db.js";
 import { bus } from "./bus.js";
 import { config } from "./config.js";
 import { getConversation, type Source } from "./store.js";
+import { safeRequest } from "./net-guard.js";
 import { zalo, type OutgoingAttachment, type StoredMessage } from "./zalo.js";
 
 export class HttpError extends Error {
@@ -91,7 +92,7 @@ export function markRead(id: string) {
 
 export type UploadedFile = { buffer: Buffer; originalname: string; size: number };
 
-function storeUpload(file: UploadedFile): OutgoingAttachment {
+export function storeUpload(file: UploadedFile): OutgoingAttachment {
   // multer giải mã tên file theo latin1 → chuyển lại UTF-8 cho tên tiếng Việt.
   const original = Buffer.from(file.originalname, "latin1").toString("utf8");
   const ext = path.extname(original).toLowerCase() || ".bin";
@@ -195,4 +196,96 @@ export function connectedSession(conv: { channel_id: number; channel_name: strin
   const session = zalo.zaloSession(conv.channel_id);
   if (!session.connected) throw new HttpError(503, `Kênh "${conv.channel_name ?? conv.channel_id}" chưa kết nối Zalo`);
   return session;
+}
+
+// ───────────── Chuyển tiếp (chữ, ảnh, tệp, video, tin thoại, sticker, link; nhiều tin một lần) ─────────────
+
+const FORWARD_MAX_BYTES = 30 * 1024 * 1024;
+const MEDIA_TYPES = new Set(["chat.photo", "share.file", "chat.video.msg", "chat.voice", "chat.gif"]);
+
+export type ForwardItem =
+  | { kind: "text"; text: string }
+  | { kind: "sticker"; sticker: { id: number; cateId: number; type: number } }
+  | { kind: "file"; attachment: OutgoingAttachment };
+
+/** Tin có chuyển tiếp được không (giao diện dùng cùng điều kiện). */
+export function forwardable(m: { msg_type: string | null; text: string | null; raw: any; undone?: number }) {
+  if (m.undone) return false;
+  const t = m.msg_type;
+  if (!t || t === "webchat") return !!(m.text ?? "").trim();
+  if (t === "chat.sticker") return !!m.raw?.id;
+  if (t === "chat.recommended" || t === "chat.link") return !!(m.raw?.href || m.text);
+  return MEDIA_TYPES.has(t) && !!mediaUrl(m.raw);
+}
+
+function parseParams(raw: any): Record<string, any> {
+  try {
+    return typeof raw?.params === "string" ? JSON.parse(raw.params) : raw?.params && typeof raw.params === "object" ? raw.params : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Link tệp gốc của tin ảnh / tệp / video / thoại (ảnh: ưu tiên bản HD). */
+function mediaUrl(raw: any): string {
+  const p = parseParams(raw);
+  return String(p.hd || raw?.hdUrl || raw?.oriUrl || raw?.href || raw?.normalUrl || raw?.thumb || "");
+}
+
+const EXT_BY_TYPE: Record<string, string> = { "chat.photo": ".jpg", "chat.video.msg": ".mp4", "chat.voice": ".m4a", "chat.gif": ".gif" };
+const sniffImageExt = (b: Buffer) =>
+  b[0] === 0xff && b[1] === 0xd8 ? ".jpg" : b[0] === 0x89 && b[1] === 0x50 ? ".png" : b.slice(0, 4).toString() === "GIF8" ? ".gif" : b.slice(8, 12).toString() === "WEBP" ? ".webp" : "";
+
+/** Đọc lại tệp của tin (bản lưu trên máy chủ hoặc tải từ Zalo) để gửi sang hội thoại khác. */
+async function loadMedia(m: { id: number; msg_type: string | null; raw: any }): Promise<OutgoingAttachment> {
+  const url = mediaUrl(m.raw);
+  let data: Buffer;
+  let urlName = "";
+  if (url.startsWith("/uploads/")) {
+    const file = path.resolve(config.uploadDir, decodeURIComponent(url.slice("/uploads/".length)));
+    if (!file.startsWith(path.resolve(config.uploadDir) + path.sep) || !fs.existsSync(file)) throw new Error("Tệp gốc không còn trên máy chủ");
+    data = fs.readFileSync(file);
+    urlName = path.basename(file);
+  } else {
+    let res;
+    try {
+      res = await safeRequest(url, { maxBytes: FORWARD_MAX_BYTES, timeoutMs: 60_000, maxRedirects: 3 });
+    } catch (e: any) {
+      throw new Error(/MB/.test(e?.message ?? "") ? "Tệp quá 30 MB, không chuyển tiếp được" : `Không tải được tệp gốc từ Zalo (${e?.message ?? e})`);
+    }
+    if (res.status < 200 || res.status >= 300) throw new Error(`Không tải được tệp gốc từ Zalo (mã ${res.status}), có thể link đã hết hạn`);
+    data = res.body;
+    urlName = decodeURIComponent(path.basename(res.url.pathname));
+  }
+  const type = m.msg_type ?? "";
+  // Tên tệp: tệp giữ tên gốc; ảnh lấy đuôi theo nội dung thật; còn lại theo đuôi link hoặc loại tin
+  let ext = type === "chat.photo" ? sniffImageExt(data) || ".jpg" : path.extname(urlName).toLowerCase();
+  if (!/^\.[a-z0-9]{1,6}$/.test(ext)) ext = EXT_BY_TYPE[type] ?? ".bin";
+  const title = String(m.raw?.title ?? "").trim();
+  const base =
+    type === "share.file" && title
+      ? title.replace(/[\/:*?"<>|]+/g, "_").slice(0, 120)
+      : `${type === "chat.photo" ? "anh" : type === "chat.video.msg" ? "video" : type === "chat.voice" ? "ghi-am" : "tep"}-${m.id}${ext}`;
+  const filename = path.extname(base) ? base : base + ext;
+  return storeUpload({ buffer: data, originalname: Buffer.from(filename, "utf8").toString("latin1"), size: data.length });
+}
+
+/** Chuẩn bị nội dung gửi lại cho từng tin (tải tệp 1 lần, gửi cho nhiều hội thoại). */
+export async function forwardItems(msgs: { id: number; msg_type: string | null; text: string | null; raw: any; undone?: number }[]) {
+  const items: ForwardItem[] = [];
+  for (const m of msgs) {
+    if (!forwardable(m)) throw new HttpError(400, `Tin "${(m.text ?? "").slice(0, 40) || m.msg_type}" không chuyển tiếp được (tin đã thu hồi hoặc loại tin chưa hỗ trợ)`);
+    const t = m.msg_type;
+    if (!t || t === "webchat") items.push({ kind: "text", text: (m.text ?? "").trim() });
+    else if (t === "chat.sticker") items.push({ kind: "sticker", sticker: { id: Number(m.raw.id), cateId: Number(m.raw.catId ?? m.raw.cateId), type: Number(m.raw.type ?? 0) } });
+    else if (t === "chat.recommended" || t === "chat.link") items.push({ kind: "text", text: String(m.raw?.href || m.text) });
+    else {
+      try {
+        items.push({ kind: "file", attachment: await loadMedia(m) });
+      } catch (e: any) {
+        throw new HttpError(400, e?.message ?? String(e));
+      }
+    }
+  }
+  return items;
 }
