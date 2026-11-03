@@ -32,7 +32,7 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn
 }
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   const headers: Record<string, string> = {}
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
@@ -42,7 +42,19 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(opts.body)
   }
-  const res = await fetch(`/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body })
+  // Có giới hạn thời gian (gửi tin): mạng chập chờn thì báo lỗi để bấm Gửi lại, không treo mãi
+  const ctrl = opts.timeoutMs ? new AbortController() : null
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeoutMs) : undefined
+  let res: Response
+  try {
+    res = await fetch(`/api${path}`, { method: opts.method ?? (body ? 'POST' : 'GET'), headers, body, signal: ctrl?.signal })
+  } catch (e: any) {
+    if (ctrl?.signal.aborted)
+      throw new ApiError(0, `Quá ${Math.round(opts.timeoutMs! / 1000)} giây chưa xong: mạng chậm hoặc mất kết nối. Tin có thể đã tới khách, xem lại trước khi bấm Gửi lại.`)
+    throw new ApiError(0, 'Không kết nối được máy chủ (mạng yếu hoặc mất mạng). Kiểm tra mạng rồi thử lại.')
+  } finally {
+    clearTimeout(timer)
+  }
   if (res.status === 401 && !path.startsWith('/auth/login')) onUnauthorized()
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text()
   // 502–504 / 520–530: máy chủ đang khởi động lại (cập nhật bản mới) hoặc NAS mất mạng — Cloudflare trả trang lỗi, không phải JSON

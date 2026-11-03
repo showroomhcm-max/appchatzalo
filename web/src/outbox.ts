@@ -36,6 +36,35 @@ function update(tmpId: string, patch: Partial<OutboxItem> | null) {
   emit()
 }
 
+const MAX_SIDE = 2560
+/**
+ * Ảnh lớn (ảnh chụp điện thoại 3–5 MB) → thu về cạnh dài 2560px, JPEG chất lượng 0,85 (thường còn vài trăm KB):
+ * gửi nhanh hơn nhiều trên mạng di động; Zalo cũng tự nén ảnh như vậy. Lỗi / không nhỏ hơn thì gửi ảnh gốc.
+ */
+async function shrinkImage(f: File): Promise<File> {
+  if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(f.type) || f.size < 800 * 1024) return f
+  try {
+    const bmp = await createImageBitmap(f)
+    const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height))
+    const w = Math.round(bmp.width * k)
+    const h = Math.round(bmp.height * k)
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return f
+    ctx.fillStyle = '#fff' // ảnh PNG nền trong suốt → nền trắng khi chuyển JPEG
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(bmp, 0, 0, w, h)
+    bmp.close?.()
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.85))
+    if (!blob || blob.size >= f.size) return f
+    return new File([blob], f.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: f.lastModified })
+  } catch {
+    return f
+  }
+}
+
 function run(item: OutboxItem) {
   const prev = chains.get(item.convId) ?? Promise.resolve()
   const next = prev.then(async () => {
@@ -44,9 +73,14 @@ function run(item: OutboxItem) {
     if (item.quote) fd.append('quote_message_id', String(item.quote.id))
     if (item.mode) fd.append('mode', item.mode)
     if (item.mentions?.length) fd.append('mentions', JSON.stringify(item.mentions))
-    item.files.forEach((f) => fd.append('files', f))
+    const files = await Promise.all(item.files.map(shrinkImage))
+    files.forEach((f) => fd.append('files', f))
     try {
-      const saved = await api<Message[]>(`/conversations/${encodeURIComponent(item.convId)}/messages`, { body: fd })
+      // Có tệp: tối đa 3 phút (tải lên + gửi Zalo), chỉ chữ: 1 phút
+      const saved = await api<Message[]>(`/conversations/${encodeURIComponent(item.convId)}/messages`, {
+        body: fd,
+        timeoutMs: files.length ? 180_000 : 60_000,
+      })
       // Đưa tin thật vào khung chat ngay (không chờ tín hiệu realtime) rồi mới bỏ bản "đang gửi"
       for (const l of sentListeners) l(item.convId, Array.isArray(saved) ? saved : [])
       update(item.tmpId, null)

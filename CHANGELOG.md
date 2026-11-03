@@ -10,6 +10,10 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 ## v3.33.2 — 03/11/2026
 
 - **Sửa: gửi 1 ảnh kèm chữ từ app thì trong app chỉ thấy ảnh, mất phần chữ.** Khách vẫn nhận đủ, vì Zalo gửi chữ làm chú thích của ảnh. Nhưng app chỉ lưu tên tệp ảnh ("image.png"). Nay app lưu chữ đó vào ảnh và hiện ngay dưới ảnh. Các tin gửi trước bản này không lấy lại được phần chữ.
+- **Gửi ảnh từ điện thoại nhanh hơn, không còn kẹt "Đang gửi…".**
+  - Ảnh lớn (ảnh chụp iPhone 3–5 MB) được tự thu về cạnh dài 2560px trước khi gửi, thường còn vài trăm KB. Zalo cũng tự nén ảnh như vậy nên chất lượng khách nhận gần như không đổi.
+  - Gửi tin có giới hạn thời gian: tin có ảnh / tệp 3 phút, tin chữ 1 phút. Quá giờ (mạng chập chờn, mất kết nối) thì tin hiện lỗi kèm nút **Gửi lại**, thay vì treo "Đang gửi…" mãi.
+  - Mất mạng hẳn thì báo rõ "Không kết nối được máy chủ".
 - **Điện thoại: khung chat chỉ cuộn lên xuống, không bị kéo qua lại.**
   - Ô chọn bộ phận / trạng thái trên điện thoại nay chữ 16px. Trước đó chữ nhỏ hơn nên iPhone tự phóng to trang khi chạm vào, làm trang bị kéo ngang.
   - Khung tin nhắn khóa cuộn ngang.
