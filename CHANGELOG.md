@@ -7,6 +7,14 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.33.2 — 03/11/2026
+
+- **Sửa: gửi 1 ảnh kèm chữ từ app thì trong app chỉ thấy ảnh, mất phần chữ.** Khách vẫn nhận đủ, vì Zalo gửi chữ làm chú thích của ảnh. Nhưng app chỉ lưu tên tệp ảnh ("image.png"). Nay app lưu chữ đó vào ảnh và hiện ngay dưới ảnh. Các tin gửi trước bản này không lấy lại được phần chữ.
+- **Điện thoại: khung chat chỉ cuộn lên xuống, không bị kéo qua lại.**
+  - Ô chọn bộ phận / trạng thái trên điện thoại nay chữ 16px. Trước đó chữ nhỏ hơn nên iPhone tự phóng to trang khi chạm vào, làm trang bị kéo ngang.
+  - Khung tin nhắn khóa cuộn ngang.
+  - Thanh xử lý (phụ trách, bộ phận, trạng thái, Xong) xuống dòng thay vì phải vuốt ngang.
+
 ## v3.33.1 — 03/11/2026
 
 - **Danh sách hội thoại: nhãn và tag hiện đủ.** Ở v3.33.0, nhãn chỉ nằm trên 1 hàng và bị mờ cắt ở cuối, nên không thấy hết tag. Nay nhãn tự xuống dòng khi dài.

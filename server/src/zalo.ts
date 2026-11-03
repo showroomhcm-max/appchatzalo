@@ -1202,6 +1202,8 @@ export class ChannelSession implements ChannelAdapter {
           .message,
       );
     }
+    // 1 ảnh + chữ: Zalo gửi chữ làm chú thích của ảnh (không có tin chữ riêng) → lưu chữ vào ảnh để app hiện đủ như khách thấy
+    const caption = !res.message && opts.attachments?.length === 1 ? (opts.text ?? "").trim() : "";
     for (const [i, a] of (res.attachment ?? []).entries()) {
       const file = opts.attachments?.[i];
       const isImage = /\.(png|jpe?g|gif|webp)$/i.test(file?.filename ?? "");
@@ -1210,7 +1212,11 @@ export class ChannelSession implements ChannelAdapter {
           ...common,
           zaloMsgId: String(a.msgId),
           msgType: isImage ? "chat.photo" : "share.file",
-          content: { title: file?.filename ?? "", href: file?.localUrl ?? "", thumb: isImage ? file?.localUrl ?? "" : "" },
+          content: {
+            title: isImage && caption ? caption : file?.filename ?? "",
+            href: file?.localUrl ?? "",
+            thumb: isImage ? file?.localUrl ?? "" : "",
+          },
         }).message,
       );
     }

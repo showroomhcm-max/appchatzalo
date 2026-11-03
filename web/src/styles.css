@@ -3604,3 +3604,20 @@ html.narrow .chat-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width
 html.narrow .chat-toolbar::-webkit-scrollbar { display: none; }
 html.narrow .chat-toolbar > * { flex: none; }
 html.narrow .chat-toolbar .select.sm { max-width: 200px; }
+
+/* ───────────── Điện thoại: khung chat chỉ cuộn lên xuống (v3.33.2) ───────────── */
+/* Ô nhập / ô chọn dưới 16px làm iPhone tự phóng to trang khi chạm vào → trang bị kéo qua lại */
+html.narrow input:not([type='checkbox']):not([type='radio']),
+html.narrow textarea,
+html.narrow select,
+html.narrow .select,
+html.narrow .select.sm,
+html.narrow .input.sm { font-size: 16px; }
+html.narrow body, html.narrow .chat-pane, html.narrow .messages { overflow-x: hidden; }
+html.narrow .messages { touch-action: pan-y; overscroll-behavior-x: none; }
+/* Thanh xử lý: xuống dòng thay vì vuốt ngang */
+html.narrow .chat-toolbar { flex-wrap: wrap; overflow-x: visible; padding-bottom: 0; }
+html.narrow .chat-toolbar > * { flex: 1 1 140px; }
+html.narrow .chat-toolbar .select.sm, html.narrow .tb-field { max-width: none; }
+html.narrow .chat-toolbar > .btn { flex: 0 0 auto; }
+html.narrow .chat-sub { flex-wrap: wrap; }
