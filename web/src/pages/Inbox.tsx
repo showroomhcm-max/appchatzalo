@@ -1413,102 +1413,100 @@ function ChatView({
     <>
       <section className="chat-pane">
         <header className="chat-head">
-          <a href="#/inbox" className="icon-btn back-btn" aria-label="Quay lại danh sách">
-            <ArrowLeft size={18} />
-          </a>
-          <Avatar name={conv?.name ?? convId} src={conv?.avatar} size={40} />
-          <div className="chat-title">
-            <div className="chat-name">{conv?.name ?? convId}</div>
-            <div className="chat-sub">
-              {conv?.channel_name && <span className="channel-label">{conv.channel_name}</span>}
-              {others.length ? (
-                <span className="presence-line">
-                  <Eye size={13} /> {others.map((o) => o.name).join(', ')} đang xem
-                </span>
-              ) : conv?.type === 1 ? (
-                'Nhóm Zalo'
-              ) : (
-                <PlatformBadge platform={conv?.platform} comment={conv?.kind === 'comment'} />
+          {/* Hàng 1: khách + nút tìm / thông tin. Hàng 2: thanh xử lý (phụ trách, bộ phận, trạng thái, Xong) */}
+          <div className="chat-head-top">
+            <a href="#/inbox" className="icon-btn back-btn" aria-label="Quay lại danh sách">
+              <ArrowLeft size={18} />
+            </a>
+            <Avatar name={conv?.name ?? convId} src={conv?.avatar} size={40} />
+            <div className="chat-title">
+              <div className="chat-name">{conv?.name ?? convId}</div>
+              <div className="chat-sub">
+                {conv?.channel_name && <span className="channel-label">{conv.channel_name}</span>}
+                {conv?.type === 1 ? <span>Nhóm Zalo</span> : <PlatformBadge platform={conv?.platform} comment={conv?.kind === 'comment'} />}
+                {others.length > 0 && (
+                  <span className="presence-line">
+                    <Eye size={13} /> {others.map((o) => o.name).join(', ')} đang xem
+                  </span>
+                )}
+                {conv && conv.type === 0 && platformOf(conv.platform) === 'zalo' && caps.contacts && <FriendButton conv={conv} />}
+              </div>
+              {conv?.kind === 'comment' && conv.meta?.post_url && (
+                <a className="post-link" href={conv.meta.post_url} target="_blank" rel="noreferrer" title={conv.meta.post_message ?? undefined}>
+                  <ExternalLink size={12} /> {conv.meta.post_message ? `Bài viết: ${conv.meta.post_message.slice(0, 80)}` : 'Xem bài viết'}
+                </a>
               )}
             </div>
-            {conv && conv.type === 0 && platformOf(conv.platform) === 'zalo' && caps.contacts && (
-              <div className="chat-sub">
-                <FriendButton conv={conv} />
-              </div>
-            )}
-            {conv?.kind === 'comment' && conv.meta?.post_url && (
-              <a className="post-link" href={conv.meta.post_url} target="_blank" rel="noreferrer" title={conv.meta.post_message ?? undefined}>
-                <ExternalLink size={12} /> {conv.meta.post_message ? `Bài viết: ${conv.meta.post_message.slice(0, 80)}` : 'Xem bài viết'}
-              </a>
-            )}
-          </div>
-          <div className="chat-actions">
-            {/* Zalo nhân viên (chỉ xem): không nhận việc / chuyển bộ phận / đổi trạng thái */}
-            {!watchOnly && (
-              <>
-            {!conv?.assigned_to ? (
-              <button className="btn primary sm" onClick={() => patch({ assigned_to: user.id })}>
-                <Hand size={16} /> Nhận hội thoại
+            <div className="chat-tools">
+              <button className={`icon-btn ${searchOpen ? 'on' : ''}`} onClick={() => setSearchOpen((v) => !v)} aria-label="Tìm trong hội thoại" title="Tìm trong hội thoại">
+                <Search size={18} />
               </button>
-            ) : (
-              <select
-                className="select sm"
-                value={conv.assigned_to ?? ''}
-                disabled={!canReassign}
-                onChange={(e) => patch({ assigned_to: e.target.value ? Number(e.target.value) : null })}
-                aria-label="Người phụ trách"
-                title={canReassign ? 'Chuyển người phụ trách' : 'Chỉ người phụ trách hoặc quản trị viên mới chuyển được'}
-              >
-                <option value="">— Bỏ nhận —</option>
-                {assignable.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.id === user.id ? `${u.display_name} (bạn)` : u.display_name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {departments.length > 0 && (
-              <select
-                className="select sm dept-select"
-                value={conv?.department_id ?? ''}
-                disabled={!canTransfer}
-                onChange={(e) => void transfer(e.target.value)}
-                aria-label="Bộ phận"
-                title={canTransfer ? 'Chuyển hội thoại sang bộ phận khác' : 'Chỉ người phụ trách mới chuyển được bộ phận'}
-                style={{ '--chip': conv?.department_color ?? '#9aa6a0' } as React.CSSProperties}
-              >
-                <option value="">Chưa thuộc bộ phận</option>
-                {transferTargets.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <select
-              className="select sm"
-              value={conv?.status ?? 'open'}
-              onChange={(e) => patch({ status: e.target.value as ConvStatus })}
-              aria-label="Trạng thái"
-            >
-              <option value="open">Đang xử lý</option>
-              <option value="pending">Chờ phản hồi</option>
-              <option value="closed">Đã xong</option>
-            </select>
-            {conv?.status !== 'closed' && (
-              <button className="btn outline sm" onClick={() => patch({ status: 'closed' })} title="Đánh dấu đã xong">
-                <Check size={16} /> Xong
+              <button className={`icon-btn ${showInfo ? 'on' : ''}`} onClick={toggleInfo} aria-label="Thông tin khách hàng" title="Thông tin khách hàng">
+                <PanelRight size={18} />
               </button>
-            )}
-              </>
-            )}
-            <button className={`icon-btn ${searchOpen ? 'on' : ''}`} onClick={() => setSearchOpen((v) => !v)} aria-label="Tìm trong hội thoại" title="Tìm trong hội thoại">
-              <Search size={18} />
-            </button>
-            <button className={`icon-btn ${showInfo ? 'on' : ''}`} onClick={toggleInfo} aria-label="Thông tin khách hàng">
-              <PanelRight size={18} />
-            </button>
+            </div>
           </div>
+          {/* Zalo nhân viên (chỉ xem): không nhận việc / chuyển bộ phận / đổi trạng thái */}
+          {!watchOnly && (
+            <div className="chat-toolbar">
+              {!conv?.assigned_to ? (
+                <button className="btn primary sm" onClick={() => patch({ assigned_to: user.id })}>
+                  <Hand size={16} /> Nhận hội thoại
+                </button>
+              ) : (
+                <label className="tb-field" title={canReassign ? 'Người phụ trách: bấm để chuyển' : 'Chỉ người phụ trách hoặc quản trị viên mới chuyển được'}>
+                  <UserRound size={14} />
+                  <select
+                    className="select sm"
+                    value={conv.assigned_to ?? ''}
+                    disabled={!canReassign}
+                    onChange={(e) => patch({ assigned_to: e.target.value ? Number(e.target.value) : null })}
+                    aria-label="Người phụ trách"
+                  >
+                    <option value="">— Bỏ nhận —</option>
+                    {assignable.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.id === user.id ? `${u.display_name} (bạn)` : u.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {departments.length > 0 && (
+                <select
+                  className="select sm dept-select"
+                  value={conv?.department_id ?? ''}
+                  disabled={!canTransfer}
+                  onChange={(e) => void transfer(e.target.value)}
+                  aria-label="Bộ phận"
+                  title={canTransfer ? 'Chuyển hội thoại sang bộ phận khác' : 'Chỉ người phụ trách mới chuyển được bộ phận'}
+                  style={{ '--chip': conv?.department_color ?? '#9aa6a0' } as React.CSSProperties}
+                >
+                  <option value="">Chưa thuộc bộ phận</option>
+                  {transferTargets.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                className="select sm status-select"
+                value={conv?.status ?? 'open'}
+                onChange={(e) => patch({ status: e.target.value as ConvStatus })}
+                aria-label="Trạng thái"
+              >
+                <option value="open">Đang xử lý</option>
+                <option value="pending">Chờ phản hồi</option>
+                <option value="closed">Đã xong</option>
+              </select>
+              {conv?.status !== 'closed' && (
+                <button className="btn outline sm" onClick={() => patch({ status: 'closed' })} title="Đánh dấu đã xong">
+                  <Check size={16} /> Xong
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         {searchOpen && (

@@ -11,6 +11,9 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 
 - **Danh sách hội thoại: nhãn và tag hiện đủ.** Ở v3.33.0, nhãn chỉ nằm trên 1 hàng và bị mờ cắt ở cuối, nên không thấy hết tag. Nay nhãn tự xuống dòng khi dài.
 - Nhãn kênh chỉ hiện khi danh sách đang có từ 2 kênh trở lên (đang lọc 1 kênh hoặc chỉ có 1 kênh thì ẩn), cho đỡ rối.
+- **Đầu khung chat gọn thành 2 hàng.** Trước đây các ô bị xuống dòng lộn xộn, ô người phụ trách bị đẩy ra giữa khi mở khung Thông tin.
+  - Hàng 1: ảnh, tên khách; dòng nhỏ ghi kênh, loại, ai đang xem, nút kết bạn. Góc phải là nút Tìm và Thông tin.
+  - Hàng 2 (thanh xử lý): người phụ trách → bộ phận → trạng thái → **Xong**, xếp thẳng từ trái sang. Khung hẹp thì các ô tự co lại; trên điện thoại vuốt ngang để xem hết.
 
 ## v3.33.0 — 03/11/2026
 

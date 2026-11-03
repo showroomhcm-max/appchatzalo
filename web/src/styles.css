@@ -3585,3 +3585,22 @@ button.msg-mention:focus-visible { outline: 3px solid rgba(15, 149, 87, 0.55); o
 .conv-meta .badge { font-size: 11px; padding: 0 7px; line-height: 18px; }
 .conv-meta .badge svg { width: 11px; height: 11px; }
 .conv-meta .conv-channel { max-width: 120px; }
+
+/* ───────────── Đầu khung chat gọn (v3.33.1): hàng khách + hàng xử lý ───────────── */
+.chat-head { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 8px; padding: 10px 16px 8px; }
+.chat-head-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.chat-head-top .chat-title { flex: 1 1 auto; }
+.chat-tools { display: flex; align-items: center; gap: 4px; flex: none; margin-left: auto; }
+.chat-sub { gap: 6px; margin-top: 2px; }
+.chat-sub .channel-label { margin-right: 0; }
+.chat-sub .btn.sm { min-height: 24px; padding: 0 10px; font-size: 12px; }
+.chat-sub .badge { font-size: 11px; }
+.chat-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--mz-ink-100); }
+.chat-toolbar .select.sm { width: auto; flex: 1 1 150px; max-width: 240px; min-width: 0; }
+.chat-toolbar .status-select { flex: 0 1 140px; }
+.tb-field { display: flex; align-items: center; gap: 6px; flex: 1 1 180px; max-width: 260px; min-width: 0; color: var(--mz-ink-500); }
+.tb-field .select.sm { flex: 1; max-width: none; }
+html.narrow .chat-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+html.narrow .chat-toolbar::-webkit-scrollbar { display: none; }
+html.narrow .chat-toolbar > * { flex: none; }
+html.narrow .chat-toolbar .select.sm { max-width: 200px; }
