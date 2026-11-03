@@ -1153,6 +1153,7 @@ export class ChannelSession implements ChannelAdapter {
     const api = this.requireApi();
     const type = opts.isGroup ? ThreadType.Group : ThreadType.User;
     const q = opts.quote;
+    const started = Date.now();
     const res = await api.sendMessage(
       {
         quote:
@@ -1181,6 +1182,11 @@ export class ChannelSession implements ChannelAdapter {
       opts.threadId,
       type,
     );
+    // Gửi ảnh / tệp chậm: ghi lại thời gian đoạn máy chủ → Zalo (tách với đoạn điện thoại → máy chủ khi tìm chỗ chậm)
+    if (opts.attachments?.length && Date.now() - started > 3000) {
+      const kb = Math.round(opts.attachments.reduce((n, a) => n + a.size, 0) / 1024);
+      this.log(`Gửi ${opts.attachments.length} tệp (${kb} KB) sang Zalo mất ${((Date.now() - started) / 1000).toFixed(1)} giây`);
+    }
     const quote: MessageQuote | null = q
       ? { msg: q.text ?? "", fromD: q.sender_name ?? "", globalMsgId: q.zalo_msg_id ?? "", ownerId: q.sender_uid ?? "" }
       : null;

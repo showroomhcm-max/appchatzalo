@@ -1711,13 +1711,32 @@ function PendingBubble({ item }: { item: OutboxItem }) {
               <span>{item.quote.text || '[Tin nhắn]'}</span>
             </div>
           )}
-          {item.text && <span className="msg-text pre-wrap">{item.text}</span>}
-          {item.files.length > 0 && (
-            <span className="msg-text muted small">
-              <Paperclip size={12} className="inline-icon" /> {item.files.map((f) => f.name).join(', ')}
+          {/* Ảnh hiện ngay như Zalo (mờ cho tới khi gửi xong) */}
+          {item.previews.some(Boolean) && (
+            <span className="pending-images">
+              {item.previews.map((u, i) => u && <img key={i} src={u} alt={item.files[i]?.name ?? 'Ảnh'} />)}
             </span>
           )}
-          {!failed && <span className="msg-time">Đang gửi…</span>}
+          {item.text && <span className="msg-text pre-wrap">{item.text}</span>}
+          {item.files.some((_, i) => !item.previews[i]) && (
+            <span className="msg-text muted small">
+              <Paperclip size={12} className="inline-icon" />{' '}
+              {item.files
+                .filter((_, i) => !item.previews[i])
+                .map((f) => f.name)
+                .join(', ')}
+            </span>
+          )}
+          {!failed && (
+            <span className="msg-time">
+              {item.progress === undefined ? 'Đang gửi…' : item.progress < 100 ? `Đang tải lên ${item.progress}%` : 'Đang gửi qua Zalo…'}
+            </span>
+          )}
+          {!failed && item.progress !== undefined && item.progress < 100 && (
+            <span className="pending-progress" aria-hidden>
+              <i style={{ width: `${item.progress}%` }} />
+            </span>
+          )}
         </div>
       </div>
       {failed && (

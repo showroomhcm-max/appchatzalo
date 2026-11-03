@@ -64,6 +64,49 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return data as T
 }
 
+/**
+ * Gửi form có tệp (tin nhắn kèm ảnh): như api() nhưng báo % đã tải lên (fetch không báo được) và có giới hạn thời gian.
+ * onProgress nhận 0–100; 100 = đã tải lên xong, máy chủ đang gửi sang Zalo.
+ */
+export function uploadForm<T = any>(path: string, body: FormData, opts: { timeoutMs: number; onProgress?: (pct: number) => void }): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api${path}`)
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    xhr.timeout = opts.timeoutMs
+    let last = -1
+    if (opts.onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return
+        const pct = Math.min(100, Math.round((e.loaded / e.total) * 100))
+        if (pct !== last) opts.onProgress?.((last = pct))
+      }
+      xhr.upload.onload = () => last !== 100 && opts.onProgress?.((last = 100))
+    }
+    xhr.ontimeout = () =>
+      reject(new ApiError(0, `Quá ${Math.round(opts.timeoutMs / 1000)} giây chưa xong: mạng chậm hoặc mất kết nối. Tin có thể đã tới khách, xem lại trước khi bấm Gửi lại.`))
+    xhr.onerror = () => reject(new ApiError(0, 'Không kết nối được máy chủ (mạng yếu hoặc mất mạng). Kiểm tra mạng rồi thử lại.'))
+    xhr.onload = () => {
+      const s = xhr.status
+      if (s === 401 && !path.startsWith('/auth/login')) onUnauthorized()
+      let data: any = xhr.responseText
+      if (xhr.getResponseHeader('content-type')?.includes('json')) {
+        try {
+          data = JSON.parse(xhr.responseText)
+        } catch {
+          /* giữ chữ */
+        }
+      }
+      if (s >= 200 && s < 300) return resolve(data as T)
+      if (data?.error === undefined && (s === 502 || s === 503 || s === 504 || (s >= 520 && s <= 530)))
+        return reject(new ApiError(s, `Máy chủ đang khởi động lại hoặc mất kết nối (lỗi ${s}). Đợi khoảng 30 giây rồi thử lại.`))
+      reject(new ApiError(s, data?.error ?? `Lỗi ${s}`))
+    }
+    xhr.send(body)
+  })
+}
+
 export function exportUrl(params: Record<string, string | number | undefined>) {
   const q = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v))

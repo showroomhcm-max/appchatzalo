@@ -3621,3 +3621,11 @@ html.narrow .chat-toolbar > * { flex: 1 1 140px; }
 html.narrow .chat-toolbar .select.sm, html.narrow .tb-field { max-width: none; }
 html.narrow .chat-toolbar > .btn { flex: 0 0 auto; }
 html.narrow .chat-sub { flex-wrap: wrap; }
+
+/* Tin ảnh đang gửi: hiện ảnh ngay + thanh tiến độ tải lên (v3.33.3) */
+.pending-images { display: flex; flex-wrap: wrap; gap: 4px; max-width: 280px; }
+.pending-images img { max-width: 100%; max-height: 240px; border-radius: 8px; opacity: 0.6; object-fit: cover; }
+.pending-images img:only-child { max-width: 280px; }
+.pending-images img:not(:only-child) { width: calc(50% - 2px); height: 110px; }
+.pending-progress { display: block; height: 3px; border-radius: 2px; background: var(--mz-ink-200); overflow: hidden; margin-top: 2px; }
+.pending-progress i { display: block; height: 100%; background: var(--mz-green-600); transition: width 0.2s; }

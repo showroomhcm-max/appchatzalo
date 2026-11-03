@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.33.3 — 03/11/2026
+
+- **Tin chữ không còn phải chờ ảnh đang gửi chậm (giống Zalo).** Trước đây mỗi hội thoại gửi lần lượt từng tin, nên 1 ảnh tải lên chậm làm các tin chữ sau đứng chờ. Nay mỗi hội thoại có 2 luồng gửi riêng: tin chữ và tin có ảnh / tệp. Trong mỗi luồng vẫn giữ đúng thứ tự.
+- **Ảnh hiện ngay trong khung chat lúc đang gửi** (mờ cho tới khi gửi xong), kèm thanh tiến độ:
+  - "Đang tải lên x%": ảnh đang gửi từ máy lên máy chủ;
+  - "Đang gửi qua Zalo…": máy chủ đang gửi sang Zalo.
+- **Ảnh gửi nhẹ hơn nữa:** ảnh lớn thu về cạnh dài 2048px (trước 2560px), thường còn 300–600 KB.
+- Nhật ký ghi lại các lần gửi ảnh / tệp sang Zalo mất hơn 3 giây, để biết chậm ở đoạn nào.
+
 ## v3.33.2 — 03/11/2026
 
 - **Sửa: gửi 1 ảnh kèm chữ từ app thì trong app chỉ thấy ảnh, mất phần chữ.** Khách vẫn nhận đủ, vì Zalo gửi chữ làm chú thích của ảnh. Nhưng app chỉ lưu tên tệp ảnh ("image.png"). Nay app lưu chữ đó vào ảnh và hiện ngay dưới ảnh. Các tin gửi trước bản này không lấy lại được phần chữ.
