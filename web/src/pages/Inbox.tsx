@@ -12,6 +12,7 @@ import {
   UserPlus,
   ArrowLeft,
   ShoppingBag,
+  SlidersHorizontal,
   ExternalLink,
   Globe,
   Lock,
@@ -101,8 +102,12 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
     [allChannels, user.id],
   )
   const myAlerts = alerts.filter((a) => !workingChannelIds || (a.channel_id !== null && workingChannelIds.includes(a.channel_id)))
-  // Hàng tag lọc nhanh: mặc định mở để thấy sẵn các tag
-  const [showTagFilter, setShowTagFilter] = useState(() => !document.documentElement.classList.contains('narrow'))
+  // Bộ lọc (trạng thái / loại / kênh / bộ phận) và hàng tag: mặc định gọn (đóng) để danh sách hiện được nhiều hội thoại;
+  // nhớ lựa chọn mở / đóng trên máy này
+  const [showFilters, setShowFilters] = useState(() => readFlag('zcskh.inbox.filters'))
+  const [showTagFilter, setShowTagFilter] = useState(() => readFlag('zcskh.inbox.tags'))
+  useEffect(() => writeFlag('zcskh.inbox.filters', showFilters), [showFilters])
+  useEffect(() => writeFlag('zcskh.inbox.tags', showTagFilter), [showTagFilter])
   const [q, setQ] = useState('')
   // Zalo nhân viên mà người này được xem (không giữ máy)
   const canWatch = can(user, 'monitor.view')
@@ -127,6 +132,8 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
   // Bộ phận người này thấy (quản trị: tất cả; nhân viên: bộ phận mình thuộc về)
   const myDepartments = can(user, 'conversations.all') ? departments : departments.filter((d) => d.user_ids.includes(user.id))
   const filtersActive = status !== 'all' || !!channelFilter || !!deptFilter || tagFilters.length > 0 || alertOnly || !!typeFilter
+  // Số bộ lọc trong nút "Lọc" đang dùng (hiện trên nút khi khung lọc đóng)
+  const selectFilters = [status !== 'all', !!typeFilter, !!channelFilter, !!deptFilter].filter(Boolean).length
   const deletedView = status === 'deleted'
 
   const matches = useCallback(
@@ -338,6 +345,49 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
                   </button>
                 ))}
               </div>
+              <div className="filter-bar">
+                <button
+                  className={`btn ghost sm ${showFilters || selectFilters ? 'on' : ''}`}
+                  onClick={() => setShowFilters((v) => !v)}
+                  aria-expanded={showFilters}
+                  title="Lọc theo trạng thái, loại, kênh, bộ phận"
+                >
+                  <SlidersHorizontal size={14} /> Lọc{selectFilters ? ` (${selectFilters})` : ''}
+                </button>
+                <button
+                  className={`btn ghost sm alert-filter ${alertOnly ? 'on' : ''} ${myAlerts.length ? 'has' : ''}`}
+                  onClick={() => setAlertOnly((v) => !v)}
+                  aria-pressed={alertOnly}
+                  title='Hội thoại có cảnh báo đơn "rơi": chưa phản hồi, chưa tạo đơn, chưa đẩy vận chuyển'
+                >
+                  <AlertTriangle size={14} /> Cảnh báo{myAlerts.length ? ` (${myAlerts.length})` : ''}
+                </button>
+                {tags.length > 0 && (
+                  <button
+                    className={`btn ghost sm ${showTagFilter || tagFilters.length ? 'on' : ''}`}
+                    onClick={() => setShowTagFilter((v) => !v)}
+                    aria-expanded={showTagFilter}
+                  >
+                    <Tag size={14} /> Tag{tagFilters.length ? ` (${tagFilters.length})` : ''}
+                  </button>
+                )}
+                {filtersActive && (
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      setStatus('all')
+                      setChannelFilter('')
+                      setDeptFilter('')
+                      setTagFilters([])
+                      setAlertOnly(false)
+                      setTypeFilter('')
+                    }}
+                  >
+                    Bỏ lọc
+                  </button>
+                )}
+              </div>
+              {showFilters && (
               <div className="filter-row">
                 <select className="select sm" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Lọc trạng thái">
                   <option value="all">Mọi trạng thái</option>
@@ -373,40 +423,8 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
                     <option value="none">Chưa thuộc bộ phận</option>
                   </select>
                 ) : null}
-
-                <button
-                  className={`btn ghost sm alert-filter ${alertOnly ? 'on' : ''} ${myAlerts.length ? 'has' : ''}`}
-                  onClick={() => setAlertOnly((v) => !v)}
-                  aria-pressed={alertOnly}
-                  title='Hội thoại có cảnh báo đơn "rơi": chưa phản hồi, chưa tạo đơn, chưa đẩy vận chuyển'
-                >
-                  <AlertTriangle size={14} /> Cảnh báo{myAlerts.length ? ` (${myAlerts.length})` : ''}
-                </button>
-                {tags.length > 0 && (
-                  <button
-                    className={`btn ghost sm ${showTagFilter || tagFilters.length ? 'on' : ''}`}
-                    onClick={() => setShowTagFilter((v) => !v)}
-                    aria-expanded={showTagFilter}
-                  >
-                    Tag{tagFilters.length ? ` (${tagFilters.length})` : ''}
-                  </button>
-                )}
-                {filtersActive && (
-                  <button
-                    className="link-btn"
-                    onClick={() => {
-                      setStatus('all')
-                      setChannelFilter('')
-                      setDeptFilter('')
-                      setTagFilters([])
-                      setAlertOnly(false)
-                      setTypeFilter('')
-                    }}
-                  >
-                    Bỏ lọc
-                  </button>
-                )}
               </div>
+              )}
               {showTagFilter && tags.length > 0 && (
                 <div className="tag-filter">
                   {tagFilters.length > 1 && (
@@ -859,6 +877,21 @@ function Highlight({ text: raw, q }: { text: string; q: string }) {
 }
 
 /** Dữ liệu chung cho mọi dòng hội thoại (tính một lần ở danh sách, không tính lại cho từng dòng). */
+const readFlag = (key: string) => {
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+const writeFlag = (key: string, on: boolean) => {
+  try {
+    localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    /* trình duyệt chặn lưu: lần sau mở lại về mặc định */
+  }
+}
+
 type RowCtx = { userId: number; mixedPlatforms: boolean; tagColor: Map<string, string> }
 const NO_ALERTS: Alert[] = []
 const NO_VIEWERS: { userId: number; name: string; typing: boolean }[] = []
@@ -896,6 +929,17 @@ const ConvItem = memo(function ConvItem({
   const mixed = ctx.mixedPlatforms || platformOf(c.platform) !== 'zalo'
   const typing = viewers.find((v) => v.typing)
   const waiting = c.last_direction === 'in' && c.status !== 'closed'
+  const metaTitle = [
+    ...convAlerts.map((a) => a.label),
+    c.channel_mode === 'monitor' ? null : c.assigned_name ? `Phụ trách: ${c.assigned_name}` : 'Chưa nhận',
+    waiting ? 'Chờ trả lời' : null,
+    c.status !== 'open' ? STATUS_LABEL[c.status] : null,
+    c.department_name ? `Bộ phận: ${c.department_name}` : null,
+    c.tags.length ? `Tag: ${c.tags.join(', ')}` : null,
+    c.channel_name ? `Kênh: ${c.channel_name}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <a
       href={`#/inbox/${encodeURIComponent(c.id)}`}
@@ -915,7 +959,7 @@ const ConvItem = memo(function ConvItem({
     >
       {selecting && <input type="checkbox" className="conv-check" checked={checked} onChange={(e) => onCheck?.(c.id, e.target.checked)} onClick={(e) => e.stopPropagation()} aria-label={`Chọn ${c.name ?? c.id}`} />}
       <span className="avatar-wrap">
-        <Avatar name={c.name ?? c.id} src={c.avatar} size={44} />
+        <Avatar name={c.name ?? c.id} src={c.avatar} size={40} />
         {mixed && <PlatformDot platform={c.platform} />}
       </span>
       <div className="conv-main">
@@ -957,13 +1001,13 @@ const ConvItem = memo(function ConvItem({
           </span>
           {c.unread_count > 0 && <span className="unread-count">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
         </div>
-        <div className="conv-meta">
-          {c.channel_name && (
-            <span className="conv-channel" title={`Kênh: ${c.channel_name}`}>
-              <Radio size={11} />
-              <span>{c.channel_name}</span>
-            </span>
-          )}
+        {/* Một hàng nhãn (không xuống dòng) để mỗi hội thoại thấp, danh sách hiện được nhiều hơn; rê chuột xem đủ */}
+        <div className="conv-meta" title={metaTitle}>
+          {convAlerts.map((a) => (
+            <Badge key={a.id} tone="danger">
+              <AlertTriangle size={12} /> {a.label}
+            </Badge>
+          ))}
           {c.channel_mode === 'monitor' ? null : c.assigned_name ? (
             <Badge tone={c.assigned_to === user.id ? 'green' : 'neutral'}>
               <UserRound size={12} /> {c.assigned_to === user.id ? 'Bạn' : c.assigned_name}
@@ -972,36 +1016,33 @@ const ConvItem = memo(function ConvItem({
             <Badge tone="warning">Chưa nhận</Badge>
           )}
           {waiting && <Badge tone="info">Chờ trả lời</Badge>}
+          {c.status !== 'open' && <Badge tone={c.status === 'closed' ? 'neutral' : 'lime'}>{STATUS_LABEL[c.status]}</Badge>}
           {c.kind === 'comment' && <Badge tone="lime">Bình luận</Badge>}
           {c.channel_mode === 'monitor' && (
             <Badge tone="warning">
               <Eye size={12} /> Zalo NV{c.holder_name ? ` · ${c.holder_name}` : ''}
             </Badge>
           )}
-          {convAlerts.map((a) => (
-            <Badge key={a.id} tone="danger">
-              <AlertTriangle size={12} /> {a.label}
-            </Badge>
-          ))}
-          {c.status !== 'open' && <Badge tone={c.status === 'closed' ? 'neutral' : 'lime'}>{STATUS_LABEL[c.status]}</Badge>}
           {viewers.length > 0 && !typing && (
             <span className="viewers" title={`Đang xem: ${viewers.map((v) => v.name).join(', ')}`}>
               <Eye size={12} /> {viewers.length}
             </span>
           )}
+          {c.department_name && (
+            <span className="dept-chip sm" style={{ '--chip': c.department_color ?? '#55655c' } as React.CSSProperties}>
+              {c.department_name}
+            </span>
+          )}
+          {c.tags.map((t) => (
+            <TagChip key={t} tag={{ name: t, color: ctx.tagColor.get(t) ?? '#9aa6a0' }} />
+          ))}
+          {c.channel_name && (
+            <span className="conv-channel">
+              <Radio size={11} />
+              <span>{c.channel_name}</span>
+            </span>
+          )}
         </div>
-        {(c.department_name || c.tags.length > 0) && (
-          <div className="conv-meta">
-            {c.department_name && (
-              <span className="dept-chip sm" style={{ '--chip': c.department_color ?? '#55655c' } as React.CSSProperties}>
-                {c.department_name}
-              </span>
-            )}
-            {c.tags.map((t) => (
-              <TagChip key={t} tag={{ name: t, color: ctx.tagColor.get(t) ?? '#9aa6a0' }} />
-            ))}
-          </div>
-        )}
       </div>
     </a>
   )

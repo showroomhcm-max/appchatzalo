@@ -7,8 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
-## v3.32.2 — 02/11/2026
+## v3.33.0 — 03/11/2026
 
+- **Danh sách hội thoại gọn, màn hình Full HD hiện được khoảng gấp 3 số hội thoại.**
+  - Bộ lọc trạng thái / loại / kênh / bộ phận thu vào nút **Lọc** (có số bộ lọc đang dùng). Hàng chọn tag thu vào nút **Tag**. Cả 2 mặc định đóng; mở rồi thì app nhớ trên máy đó. **Cảnh báo** và **Bỏ lọc** vẫn hiện sẵn.
+  - Mỗi hội thoại còn 3 dòng: tên + giờ, tin cuối, một hàng nhãn. Thứ tự nhãn: cảnh báo, người phụ trách / Chưa nhận, Chờ trả lời, trạng thái, bộ phận, tag, kênh. Nhãn dài quá thì mờ dần ở cuối; rê chuột vào hàng nhãn để xem đủ.
 - **Lấy tên khách cho hội thoại thiếu tên: dùng tên có sẵn trước khi hỏi Zalo.** Zalo giới hạn số lần hỏi thông tin từng người (đã lấy được khoảng 950 tên mỗi kênh thì bị chặn nhiều giờ). Nay app lấy tên từ 2 nguồn trước, không tốn lượt hỏi:
   - tên khách hiện trong tin khách đã gửi;
   - danh sách bạn bè Zalo (1 lần hỏi lấy được cả danh sách).
