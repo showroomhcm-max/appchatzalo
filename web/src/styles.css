@@ -3580,8 +3580,8 @@ button.msg-mention:focus-visible { outline: 3px solid rgba(15, 149, 87, 0.55); o
 .filter-bar .btn.sm { padding-inline: 8px; }
 .conv-item { gap: 10px; padding: 8px 12px; }
 .conv-item .conv-main { gap: 1px; }
-.conv-meta { flex-wrap: nowrap; overflow: hidden; margin-top: 3px; gap: 4px; mask-image: linear-gradient(to right, #000 85%, transparent); }
-.conv-meta > * { flex: none; }
+.conv-meta { flex-wrap: wrap; margin-top: 3px; gap: 3px 4px; }
+.conv-meta > * { flex: none; max-width: 100%; }
 .conv-meta .badge { font-size: 11px; padding: 0 7px; line-height: 18px; }
 .conv-meta .badge svg { width: 11px; height: 11px; }
 .conv-meta .conv-channel { max-width: 120px; }

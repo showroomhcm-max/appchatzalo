@@ -7,6 +7,11 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.33.1 — 03/11/2026
+
+- **Danh sách hội thoại: nhãn và tag hiện đủ.** Ở v3.33.0, nhãn chỉ nằm trên 1 hàng và bị mờ cắt ở cuối, nên không thấy hết tag. Nay nhãn tự xuống dòng khi dài.
+- Nhãn kênh chỉ hiện khi danh sách đang có từ 2 kênh trở lên (đang lọc 1 kênh hoặc chỉ có 1 kênh thì ẩn), cho đỡ rối.
+
 ## v3.33.0 — 03/11/2026
 
 - **Danh sách hội thoại gọn, màn hình Full HD hiện được khoảng gấp 3 số hội thoại.**

@@ -250,9 +250,11 @@ export default function Inbox({ convId, focusMsgId, findPhone }: { convId: strin
     () => ({
       userId: user.id,
       mixedPlatforms: new Set(rowChannels.map((ch) => ch.platform ?? 'zalo')).size > 1,
+      // Nhãn kênh chỉ cần khi danh sách đang có từ 2 kênh trở lên
+      showChannel: rowChannels.length > 1 && !channelFilter,
       tagColor: new Map(tags.map((t) => [t.name, t.color])),
     }),
-    [user.id, rowChannels, tags],
+    [user.id, rowChannels, tags, channelFilter],
   )
   const alertsByConv = useMemo(() => {
     const m = new Map<string, Alert[]>()
@@ -892,7 +894,7 @@ const writeFlag = (key: string, on: boolean) => {
   }
 }
 
-type RowCtx = { userId: number; mixedPlatforms: boolean; tagColor: Map<string, string> }
+type RowCtx = { userId: number; mixedPlatforms: boolean; showChannel: boolean; tagColor: Map<string, string> }
 const NO_ALERTS: Alert[] = []
 const NO_VIEWERS: { userId: number; name: string; typing: boolean }[] = []
 
@@ -1001,7 +1003,6 @@ const ConvItem = memo(function ConvItem({
           </span>
           {c.unread_count > 0 && <span className="unread-count">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
         </div>
-        {/* Một hàng nhãn (không xuống dòng) để mỗi hội thoại thấp, danh sách hiện được nhiều hơn; rê chuột xem đủ */}
         <div className="conv-meta" title={metaTitle}>
           {convAlerts.map((a) => (
             <Badge key={a.id} tone="danger">
@@ -1036,7 +1037,7 @@ const ConvItem = memo(function ConvItem({
           {c.tags.map((t) => (
             <TagChip key={t} tag={{ name: t, color: ctx.tagColor.get(t) ?? '#9aa6a0' }} />
           ))}
-          {c.channel_name && (
+          {c.channel_name && ctx.showChannel && (
             <span className="conv-channel">
               <Radio size={11} />
               <span>{c.channel_name}</span>
