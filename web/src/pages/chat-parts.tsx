@@ -3,12 +3,13 @@
  * (trả lời, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú), hộp chọn sticker, chuyển tiếp.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CheckSquare, Copy, FileText, Forward, Info, MessageCircle, MoreHorizontal, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
+import { CheckSquare, Copy, FileText, Forward, Info, MessageCircle, MoreHorizontal, Play, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import { useApp } from '../store'
 import type { Conversation, Message, Sticker, Capabilities } from '../types'
 import { Avatar, Modal } from '../components'
 import { fullTime } from '../util'
+import { FallbackImg, isVideoMessage, mediaUrls, videoInfo } from './chat-extras'
 
 /** 6 cảm xúc nhanh như Zalo PC (mã icon theo Zalo → hình hiển thị). */
 export const REACTIONS: { code: string; emoji: string; label: string }[] = [
@@ -202,7 +203,8 @@ export function Bubble({
   const out = m.direction === 'out'
   const raw = m.raw ?? {}
   const label = senderLabel(m)
-  const isImage = m.msg_type === 'chat.photo' && (raw.href || raw.thumb)
+  const isImage = m.msg_type === 'chat.photo' && mediaUrls(raw, 'small').length > 0
+  const isVideo = isVideoMessage(m)
   const isSticker = m.msg_type === 'chat.sticker' && raw.id
   const isFile = m.msg_type === 'share.file'
   const card = contactCard(m)
@@ -272,7 +274,7 @@ export function Bubble({
   if (isImage) {
     body = (
       <a
-        href={safeUrl(raw.href || raw.thumb)}
+        href={safeUrl(mediaUrls(raw, 'full')[0])}
         target="_blank"
         rel="noreferrer"
         className="msg-image"
@@ -282,7 +284,7 @@ export function Bubble({
           onOpenImage(m)
         }}
       >
-        <img src={raw.thumb || raw.href} alt={raw.title || 'Hình ảnh'} referrerPolicy="no-referrer" loading="lazy" />
+        <FallbackImg urls={mediaUrls(raw, 'small')} alt={raw.title || 'Hình ảnh'} />
       </a>
     )
     // Ảnh gửi kèm chữ: Zalo để chữ trong "title" (ảnh shop gửi từ app thì title là tên tệp → không hiện)
@@ -295,6 +297,30 @@ export function Bubble({
         </>
       )
     }
+  } else if (isVideo) {
+    // Như Zalo: ảnh bìa + nút phát + thời lượng; bấm mở trình xem toàn màn hình (phát luôn)
+    const info = videoInfo(raw)
+    const poster = mediaUrls(raw, 'small').filter((u) => u !== info.src)
+    body = (
+      <a
+        href={safeUrl(info.src)}
+        target="_blank"
+        rel="noreferrer"
+        className="msg-video"
+        onClick={(e) => {
+          if (!onOpenImage) return
+          e.preventDefault()
+          onOpenImage(m)
+        }}
+        aria-label={`Xem video${info.duration ? ` (${info.duration})` : ''}`}
+      >
+        {poster.length ? <FallbackImg urls={poster} alt="Video" /> : <span className="msg-video-blank" />}
+        <span className="msg-video-play" aria-hidden>
+          <Play size={22} fill="currentColor" />
+        </span>
+        {info.duration && <span className="msg-video-time">{info.duration}</span>}
+      </a>
+    )
   } else if (isSticker) {
     body = (
       <img
@@ -386,7 +412,7 @@ export function Bubble({
       )}
       <div className="msg-line">
         <div
-          className={`bubble ${m.undone ? 'undone' : ''} ${isImage ? 'media' : ''} ${isSticker && !m.undone ? 'sticker' : ''}`}
+          className={`bubble ${m.undone ? 'undone' : ''} ${isImage || isVideo ? 'media' : ''} ${isSticker && !m.undone ? 'sticker' : ''}`}
           title={fullTime(m.ts)}
         >
           {m.quote && !m.undone && (

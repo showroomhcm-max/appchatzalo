@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Download, Maximize, RotateCw, Search, UserPlus, UsersRound, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ImageOff, Maximize, RotateCw, Search, UserPlus, UsersRound, VideoOff, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import type { Conversation, Message } from '../types'
 import { Avatar, Modal } from '../components'
@@ -7,7 +7,75 @@ import { fold, fullTime } from '../util'
 
 // ───────────── Xem ảnh toàn màn hình (như Zalo): trượt / phím mũi tên để xem ảnh trước, sau ─────────────
 
-export const isImageMessage = (m: Message) => m.msg_type === 'chat.photo' && !m.undone && !!(m.raw?.href || m.raw?.thumb)
+const parseParams = (raw: Record<string, any> | null | undefined): Record<string, any> => {
+  try {
+    const p = raw?.params
+    return typeof p === 'string' && p.trim().startsWith('{') ? JSON.parse(p) : p && typeof p === 'object' ? p : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Các link ảnh / ảnh bìa Zalo có thể dùng, theo thứ tự thử. Tin nhận qua Zalo web có href / thumb; tin nhập từ Zalo PC
+ * còn có hdUrl / oriUrl / normalUrl / thumbUrl; ảnh có bản HD trong params.hd. Link hỏng thì thử link tiếp theo.
+ */
+export function mediaUrls(raw: Record<string, any> | null | undefined, prefer: 'small' | 'full'): string[] {
+  if (!raw) return []
+  const p = parseParams(raw)
+  const small = [raw.thumb, raw.thumbUrl, raw.href, raw.normalUrl, raw.hdUrl, raw.oriUrl, p.hd]
+  const full = [p.hd, raw.hdUrl, raw.href, raw.oriUrl, raw.normalUrl, raw.thumb, raw.thumbUrl]
+  const list = (prefer === 'small' ? small : full).map((u) => (typeof u === 'string' ? u.trim() : ''))
+  return [...new Set(list.filter((u) => /^https?:\/\//i.test(u) || u.startsWith('/uploads/')))]
+}
+
+export const isVideoMessage = (m: Message) => m.msg_type === 'chat.video.msg' && !m.undone && !!(m.raw?.href || m.raw?.thumb || m.raw?.hdUrl)
+/** Tin xem được trong khung xem toàn màn hình: ảnh và video */
+export const isImageMessage = (m: Message) => (m.msg_type === 'chat.photo' && !m.undone && mediaUrls(m.raw, 'small').length > 0) || isVideoMessage(m)
+
+/** Link video và thời lượng (Zalo để trong params.duration, tính bằng mili giây) */
+export function videoInfo(raw: Record<string, any> | null | undefined) {
+  const p = parseParams(raw)
+  const src = [raw?.href, raw?.hdUrl, raw?.oriUrl, raw?.normalUrl, p.videoUrl, p.video_url].find((u) => typeof u === 'string' && /^https?:\/\/|^\/uploads\//i.test(u)) ?? ''
+  const d = Number(p.duration ?? raw?.duration ?? 0)
+  const sec = d > 1000 ? Math.round(d / 1000) : Math.round(d)
+  return { src: String(src), duration: sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '' }
+}
+
+/** Ảnh Zalo: link đầu hỏng thì thử link sau; hỏng hết thì báo rõ thay cho ảnh vỡ */
+export function FallbackImg({ urls, alt, className, style, draggable, onFail }: {
+  urls: string[]
+  alt: string
+  className?: string
+  style?: React.CSSProperties
+  draggable?: boolean
+  onFail?: () => void
+}) {
+  const [i, setI] = useState(0)
+  const key = urls.join('|')
+  useEffect(() => setI(0), [key])
+  if (i >= urls.length)
+    return (
+      <span className="media-missing">
+        <ImageOff size={18} /> Ảnh không còn trên Zalo
+      </span>
+    )
+  return (
+    <img
+      src={urls[i]}
+      alt={alt}
+      className={className}
+      style={style}
+      draggable={draggable}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      onError={() => {
+        if (i + 1 >= urls.length) onFail?.()
+        setI(i + 1)
+      }}
+    />
+  )
+}
 
 export function Lightbox({ images, index, onClose }: { images: Message[]; index: number; onClose: () => void }) {
   const [i, setI] = useState(index)
@@ -17,7 +85,12 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
   const gesture = useRef<{ startX: number; startY: number; moved: boolean; pinch: number | null; base: typeof view; onImg: boolean } | null>(null)
   const m = images[i]
   const go = (d: number) => setI((v) => Math.min(images.length - 1, Math.max(0, v + d)))
-  useEffect(() => setView({ scale: 1, x: 0, y: 0, rotate: 0 }), [i])
+  // Video không phát được (Zalo đã xóa bản gốc / link hết hạn)
+  const [videoFailed, setVideoFailed] = useState(false)
+  useEffect(() => {
+    setView({ scale: 1, x: 0, y: 0, rotate: 0 })
+    setVideoFailed(false)
+  }, [i])
 
   /** Phóng to quanh điểm (px, py) tính từ tâm màn hình, giữ điểm đó đứng yên dưới con trỏ */
   const zoomAt = (next: number, px = 0, py = 0) =>
@@ -43,11 +116,14 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [images.length, onClose, view.scale])
   if (!m) return null
-  const src = safeUrl(m.raw?.href || m.raw?.thumb)
+  const video = isVideoMessage(m) ? videoInfo(m.raw) : null
+  const fullUrls = mediaUrls(m.raw, 'full')
+  const src = safeUrl(video ? video.src : fullUrls[0])
   const zoomed = view.scale > 1
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button, a')) return
+    // Nút, link, khung video (tua / âm lượng) giữ thao tác riêng
+    if ((e.target as HTMLElement).closest('button, a, video, .media-missing')) return
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     const pts = [...pointers.current.values()]
     gesture.current = {
@@ -112,6 +188,7 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
         gesture.current = null
       }}
       onWheel={(e) => {
+        if (video) return
         const [px, py] = fromCenter(e)
         zoomAt(view.scale * (e.deltaY < 0 ? 1.2 : 1 / 1.2), px, py)
       }}
@@ -121,29 +198,41 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
           {m.direction === 'in' ? m.sender_name ?? 'Khách' : m.agent_name ?? m.holder_name ?? 'Shop'} · {fullTime(m.ts)}
           {images.length > 1 && ` · ${i + 1}/${images.length}`}
         </span>
-        <button className="icon-btn" onClick={() => zoomAt(view.scale / 1.5)} disabled={!zoomed} aria-label="Thu nhỏ" title="Thu nhỏ (phím -)">
-          <ZoomOut size={20} />
-        </button>
-        <span className="lightbox-zoom">{Math.round(view.scale * 100)}%</span>
-        <button
-          className="icon-btn"
-          onClick={() => zoomAt(view.scale * 1.5)}
-          disabled={view.scale >= 6}
-          aria-label="Phóng to"
-          title="Phóng to (phím +, lăn chuột hoặc bấm vào ảnh)"
-        >
-          <ZoomIn size={20} />
-        </button>
-        <button className="icon-btn" onClick={() => setView((v) => ({ ...v, rotate: (v.rotate + 90) % 360 }))} aria-label="Xoay ảnh" title="Xoay ảnh">
-          <RotateCw size={20} />
-        </button>
-        {(zoomed || view.rotate !== 0) && (
+        {!video && (
+          <>
+            <button className="icon-btn" onClick={() => zoomAt(view.scale / 1.5)} disabled={!zoomed} aria-label="Thu nhỏ" title="Thu nhỏ (phím -)">
+              <ZoomOut size={20} />
+            </button>
+            <span className="lightbox-zoom">{Math.round(view.scale * 100)}%</span>
+            <button
+              className="icon-btn"
+              onClick={() => zoomAt(view.scale * 1.5)}
+              disabled={view.scale >= 6}
+              aria-label="Phóng to"
+              title="Phóng to (phím +, lăn chuột hoặc bấm vào ảnh)"
+            >
+              <ZoomIn size={20} />
+            </button>
+            <button className="icon-btn" onClick={() => setView((v) => ({ ...v, rotate: (v.rotate + 90) % 360 }))} aria-label="Xoay ảnh" title="Xoay ảnh">
+              <RotateCw size={20} />
+            </button>
+          </>
+        )}
+        {!video && (zoomed || view.rotate !== 0) && (
           <button className="icon-btn" onClick={() => setView({ scale: 1, x: 0, y: 0, rotate: 0 })} aria-label="Về cỡ vừa màn hình" title="Về cỡ vừa màn hình (phím 0)">
             <Maximize size={20} />
           </button>
         )}
         {src && (
-          <a className="icon-btn" href={src} target="_blank" rel="noreferrer" download aria-label="Tải ảnh" title="Mở ảnh gốc / tải về">
+          <a
+            className="icon-btn"
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            download
+            aria-label={video ? 'Tải video' : 'Tải ảnh'}
+            title={video ? 'Mở video gốc / tải về' : 'Mở ảnh gốc / tải về'}
+          >
             <Download size={20} />
           </a>
         )}
@@ -156,11 +245,31 @@ export function Lightbox({ images, index, onClose }: { images: Message[]; index:
           <ChevronLeft size={28} />
         </button>
       )}
-      {src && (
-        <img
-          src={src}
+      {video ? (
+        videoFailed || !video.src ? (
+          <div className="media-missing big">
+            <VideoOff size={28} />
+            <b>Video không còn trên Zalo</b>
+            <span>Zalo chỉ giữ video một thời gian. Xem trên điện thoại hoặc Zalo PC (nếu máy đã tải về trước đó).</span>
+          </div>
+        ) : (
+          <video
+            key={m.id}
+            className="lightbox-video"
+            src={video.src}
+            poster={safeUrl(mediaUrls(m.raw, 'small')[0]) || undefined}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            onError={() => setVideoFailed(true)}
+          />
+        )
+      ) : (
+        <FallbackImg
+          key={m.id}
+          urls={fullUrls}
           alt=""
-          referrerPolicy="no-referrer"
           draggable={false}
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale}) rotate(${view.rotate}deg)` }}
         />

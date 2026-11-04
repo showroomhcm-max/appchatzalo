@@ -7,6 +7,15 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.34.0 — 04/11/2026
+
+- **Xem video như Zalo.** Trước đây tin video chỉ hiện chữ "[Video]", bấm không được.
+  - Tin video hiện ảnh bìa, nút ▶ và thời lượng.
+  - Bấm vào thì mở khung xem toàn màn hình và phát ngay, có tua, âm lượng và nút tải về. Phím ← → để chuyển qua ảnh / video khác trong hội thoại.
+  - Zalo đã xóa video (Zalo chỉ giữ video một thời gian) thì hiện rõ "Video không còn trên Zalo", không để khung trắng.
+- **Ảnh hiện bền hơn.** Link ảnh đầu tiên hỏng thì app tự thử các link khác Zalo cung cấp (ảnh nhỏ, ảnh HD, ảnh gốc, kể cả các trường riêng của ảnh nhập từ Zalo PC). Hỏng hết thì hiện "Ảnh không còn trên Zalo" thay cho ảnh vỡ.
+- **Tự kiểm tra ảnh / video đã nhập từ Zalo PC.** Một lần, 2 phút sau khi app khởi động, app thử mở link của 30 ảnh / video ngẫu nhiên rồi ghi kết quả vào nhật ký: bao nhiêu link mở được, bao nhiêu hỏng, mã lỗi, các trường có dữ liệu. Chỉ đọc, không sửa dữ liệu. Dùng để tìm nguyên nhân ảnh cũ không hiện.
+
 ## v3.33.3 — 03/11/2026
 
 - **Tin chữ không còn phải chờ ảnh đang gửi chậm (giống Zalo).** Trước đây mỗi hội thoại gửi lần lượt từng tin, nên 1 ảnh tải lên chậm làm các tin chữ sau đứng chờ. Nay mỗi hội thoại có 2 luồng gửi riêng: tin chữ và tin có ảnh / tệp. Trong mỗi luồng vẫn giữ đúng thứ tự.
