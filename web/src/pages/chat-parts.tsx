@@ -3,7 +3,7 @@
  * (trả lời, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú), hộp chọn sticker, chuyển tiếp.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { CheckSquare, Copy, FileText, Forward, Info, MessageCircle, MoreHorizontal, Play, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
+import { CheckSquare, Copy, FileText, Forward, Image as ImageIcon, Info, MessageCircle, MoreHorizontal, Play, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import { useApp } from '../store'
 import type { Conversation, Message, Sticker, Capabilities } from '../types'
@@ -59,6 +59,39 @@ export function canForward(m: Message) {
   if (t === 'chat.sticker') return !!m.raw?.id
   if (t === 'chat.recommended' || t === 'chat.link') return !!(m.raw?.href || m.text)
   return MEDIA_TYPES.includes(t) && !!(m.raw?._local || m.raw?.href || m.raw?.thumb || m.raw?.hdUrl || m.raw?.oriUrl)
+}
+
+/** Khung trích dẫn trong tin trả lời: tên người gửi + nội dung tin gốc (ảnh / video hiện ảnh nhỏ), bấm để nhảy tới tin gốc. */
+function QuoteBox({ m, onQuote }: { m: Message; onQuote?: (m: Message) => void }) {
+  const q = m.quote!
+  const ref = m.quote_ref
+  const kind = ref?.msg_type && ref.msg_type !== 'webchat' ? KIND_LABEL[ref.msg_type] : undefined
+  const isMedia = ref?.msg_type === 'chat.photo' || ref?.msg_type === 'chat.gif' || ref?.msg_type === 'chat.video.msg'
+  const text = ref?.undone ? 'Tin nhắn đã thu hồi' : (ref?.text || q.msg || '').trim() || (kind ? `[${kind}]` : '[Tin nhắn]')
+  const label = isMedia && /^\[.*\]$/.test(text) ? kind ?? text : text
+  const clickable = !!ref && !!onQuote
+  return (
+    <button
+      type="button"
+      className={`msg-quote ${clickable ? 'clickable' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (clickable) onQuote!(m)
+      }}
+      title={clickable ? 'Bấm để xem tin gốc' : 'Tin gốc không có trong app (cũ hơn lịch sử đã đồng bộ)'}
+    >
+      {isMedia && !ref?.undone && (
+        <span className="msg-quote-thumb">
+          {ref!.thumbs.length > 0 ? <FallbackImg urls={ref!.thumbs} alt="" /> : <ImageIcon size={18} />}
+          {ref!.msg_type === 'chat.video.msg' && <Play size={14} className="msg-quote-play" />}
+        </span>
+      )}
+      <span className="msg-quote-body">
+        <b>{q.fromD || 'Tin nhắn'}</b>
+        <span>{label}</span>
+      </span>
+    </button>
+  )
 }
 
 /** Chữ để sao chép: tin chữ lấy nội dung; ảnh / tệp / video / link lấy đường link */
@@ -170,6 +203,7 @@ export function Bubble({
   members,
   onMention,
   onContact,
+  onQuote,
 }: {
   m: Message
   grouped: boolean
@@ -199,6 +233,8 @@ export function Bubble({
   onMention?: (uid: string, name: string) => void
   /** Bấm "Nhắn tin" trên danh thiếp Zalo */
   onContact?: (card: ContactCardInfo) => void
+  /** Bấm khung trích dẫn: nhảy tới tin gốc */
+  onQuote?: (m: Message) => void
 }) {
   const out = m.direction === 'out'
   const raw = m.raw ?? {}
@@ -415,12 +451,7 @@ export function Bubble({
           className={`bubble ${m.undone ? 'undone' : ''} ${isImage || isVideo ? 'media' : ''} ${isSticker && !m.undone ? 'sticker' : ''}`}
           title={fullTime(m.ts)}
         >
-          {m.quote && !m.undone && (
-            <div className="msg-quote">
-              <b>{m.quote.fromD || 'Tin nhắn'}</b>
-              <span>{m.quote.msg || '[Tin nhắn]'}</span>
-            </div>
-          )}
+          {m.quote && !m.undone && <QuoteBox m={m} onQuote={onQuote} />}
           {m.undone ? (
             <span className="msg-text muted">
               <Undo2 size={14} className="inline-icon" /> Tin nhắn đã thu hồi

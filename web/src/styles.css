@@ -1763,24 +1763,73 @@ mark {
   display: block;
 }
 .msg-quote {
+  border: 0;
   border-left: 3px solid var(--mz-green-600);
   background: rgba(10, 128, 74, 0.06);
   border-radius: 4px;
   padding: 4px 8px;
-  margin-bottom: 4px;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+  text-align: left;
+  max-width: 420px;
+  width: 100%;
+  min-width: 0;
+  cursor: default;
+}
+.msg-quote.clickable {
+  cursor: pointer;
+}
+.msg-quote.clickable:hover {
+  background: rgba(10, 128, 74, 0.12);
+}
+.msg-quote-body {
   display: flex;
   flex-direction: column;
-  font-size: 12.5px;
-  max-width: 420px;
+  min-width: 0;
 }
 .msg-quote b {
   color: var(--mz-green-800);
 }
-.msg-quote span {
+.msg-quote-body > span {
   color: var(--mz-ink-600);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.msg-quote-thumb {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--mz-ink-100);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mz-ink-500);
+}
+.msg-quote-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.msg-quote-thumb .media-missing {
+  font-size: 0;
+  padding: 0;
+  gap: 0;
+  background: none;
+}
+.msg-quote-play {
+  position: absolute;
+  color: #fff;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.7));
 }
 .msg-reactions {
   position: absolute;

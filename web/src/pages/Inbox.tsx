@@ -1297,6 +1297,16 @@ function ChatView({
     return () => clearTimeout(t)
   }, [flashId])
 
+  // Bấm khung trích dẫn trong tin trả lời: tin gốc đang hiện thì cuộn tới + nháy sáng; chưa tải thì mở quanh tin đó
+  const jumpToQuote = (m: Message) => {
+    const id = m.quote_ref?.id
+    if (!id) return
+    if (messages.some((x) => x.id === id)) {
+      setFlashId(null)
+      requestAnimationFrame(() => setFlashId(id))
+    } else window.location.hash = `#/inbox/${encodeURIComponent(convId)}/${id}`
+  }
+
   // Tin đang gửi / gửi lỗi (hàng chờ outbox.ts) và tin thật vừa gửi xong
   const outbox = useOutbox(convId)
   useEffect(
@@ -1593,6 +1603,7 @@ function ChatView({
                   members={members}
                   onMention={isZaloGroup ? openMention : undefined}
                   onContact={platformOf(conv?.platform) === 'zalo' && !watchOnly ? openCard : undefined}
+                  onQuote={jumpToQuote}
                 />
               </Fragment>
             )

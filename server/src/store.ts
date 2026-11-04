@@ -271,9 +271,53 @@ function parseMsg(row: Row | undefined) {
   } as Row;
 }
 
-/** Gắn danh sách cảm xúc (gom theo biểu tượng) vào tin nhắn. */
-function withReactions<T extends Row>(msgs: T[]): T[] {
-  if (!msgs.length) return msgs;
+/** Ảnh nhỏ của tin để hiện trong khung trích dẫn: bản trên NAS trước, rồi các link Zalo (bỏ .jxl trình duyệt không hiện). */
+function quoteThumbs(msgType: string | null, rawText: string | null): string[] {
+  if (!rawText || !["chat.photo", "chat.gif", "chat.video.msg"].includes(msgType ?? "")) return [];
+  let raw: Record<string, any> = {};
+  try {
+    raw = JSON.parse(rawText);
+  } catch {
+    return [];
+  }
+  const local = typeof raw._local === "string" && /\.(jpe?g|png|webp|gif)$/i.test(raw._local) ? raw._local : null;
+  const list = [local, raw.thumb, raw.thumbUrl, raw.normalUrl, raw.href, raw.hdUrl]
+    .filter((u): u is string => typeof u === "string" && (/^https?:\/\//i.test(u) || u.startsWith("/uploads/")))
+    .filter((u) => !/\.jxl(\?|$)/i.test(u) && !(msgType === "chat.video.msg" && /\.(mp4|mov|webm)(\?|$)/i.test(u)));
+  return [...new Set(list)].slice(0, 4);
+}
+
+/** Tin được trả lời (trích dẫn): gắn id + loại + nội dung + ảnh nhỏ để bấm nhảy tới và hiện đúng ảnh / video. */
+function withQuoteRefs<T extends Row>(msgs: T[]): T[] {
+  const need = msgs.filter((m: any) => m.quote?.globalMsgId);
+  if (!need.length) return msgs;
+  const byConv = new Map<string, Set<string>>();
+  for (const m of need as any[]) {
+    const set = byConv.get(m.conversation_id) ?? new Set<string>();
+    set.add(String(m.quote.globalMsgId));
+    byConv.set(m.conversation_id, set);
+  }
+  const found = new Map<string, { id: number; msg_type: string | null; text: string; thumbs: string[]; undone: boolean }>();
+  for (const [conv, ids] of byConv) {
+    const list = [...ids].slice(0, 400);
+    const rows = all<{ id: number; zalo_msg_id: string; msg_type: string | null; text: string | null; raw: string | null; undone: number }>(
+      `SELECT id, zalo_msg_id, msg_type, text, raw, undone FROM messages WHERE conversation_id = ? AND zalo_msg_id IN (${list.map(() => "?").join(",")})`,
+      conv,
+      ...list,
+    );
+    for (const r of rows)
+      found.set(`${conv}|${r.zalo_msg_id}`, { id: r.id, msg_type: r.msg_type, text: (r.text ?? "").slice(0, 300), thumbs: quoteThumbs(r.msg_type, r.raw), undone: !!r.undone });
+  }
+  return msgs.map((m: any) => {
+    const ref = m.quote?.globalMsgId ? found.get(`${m.conversation_id}|${m.quote.globalMsgId}`) : undefined;
+    return ref ? { ...m, quote_ref: ref } : m;
+  });
+}
+
+/** Gắn danh sách cảm xúc (gom theo biểu tượng) và tin được trích dẫn vào tin nhắn. */
+function withReactions<T extends Row>(input: T[]): T[] {
+  if (!input.length) return input;
+  const msgs = withQuoteRefs(input);
   const ids = msgs.map((m) => m.id);
   const rows = all<{ message_id: number; icon: string; reactor_name: string | null; reactor_uid: string; agent_id: number | null }>(
     `SELECT message_id, icon, reactor_name, reactor_uid, agent_id FROM message_reactions

@@ -9,6 +9,10 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 
 ## v3.35.0 — 04/11/2026
 
+- **Tin trả lời (trích dẫn) như Zalo.**
+  - Khung trích dẫn hiện đúng nội dung tin gốc. Tin gốc là ảnh / video thì hiện ảnh nhỏ (video có nút ▶), không còn ghi chữ "[Tin nhắn]".
+  - Bấm vào khung trích dẫn thì cuộn tới tin gốc và tin đó sáng lên. Tin gốc cũ chưa tải thì app tự mở đoạn hội thoại quanh tin đó.
+
 - **Lưu ảnh / video / tệp khách gửi lên NAS ngay khi nhận.** Link ảnh Zalo hết hạn rất nhanh: kiểm ngày 04/11 thấy 8/10 ảnh dưới 30 ngày đã mất. Trước đây app chỉ lưu link nên ảnh cũ không xem được nữa.
   - Có tin ảnh / video / tệp / ghi âm mới là app tải ngay một bản về NAS. Khung chat, khung xem ảnh, tải tệp và chuyển tiếp đều dùng bản trên NAS trước, link Zalo chỉ để dự phòng.
   - Tin cũ có link còn sống thì app tải dần (mới trước, cũ sau). Link đã hết hạn thì bỏ qua, không thử lại.

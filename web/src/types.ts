@@ -101,6 +101,8 @@ export type Message = {
   ts: number
   undone: number
   quote: { msg: string; fromD: string; globalMsgId: string; ownerId: string } | null
+  /** Tin được trả lời (máy chủ tìm theo globalMsgId): bấm để nhảy tới, hiện ảnh / video */
+  quote_ref?: { id: number; msg_type: string | null; text: string; thumbs: string[]; undone: boolean }
   /** @nhắc tên trong tin nhóm Zalo: vị trí, độ dài và id người được nhắc ("-1" = @Tất cả) */
   mentions?: { uid: string; pos: number; len: number }[] | null
   reactions?: { icon: string; count: number; names: string[]; mine: boolean }[]
