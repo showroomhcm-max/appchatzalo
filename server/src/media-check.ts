@@ -6,7 +6,7 @@
 import { all } from "./db.js";
 import { safeRequest } from "./net-guard.js";
 
-const FIELDS = ["href", "thumb", "hdUrl", "oriUrl", "normalUrl", "thumbUrl"] as const;
+const FIELDS = ["thumb", "href", "hdUrl", "oriUrl", "normalUrl", "thumbUrl"] as const;
 
 async function probe(url: string) {
   try {
@@ -25,9 +25,12 @@ export async function checkImportedMedia() {
      ORDER BY RANDOM() LIMIT 30`,
   );
   if (!rows.length) return;
-  const fieldCount = new Map<string, number>();
-  const result = new Map<string, number>();
-  const hosts = new Map<string, number>();
+  const inc = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+  // Từng trường link: số link mở được / số link có (kèm đuôi tệp: .jxl trình duyệt máy tính không hiện được)
+  const fieldOk = new Map<string, number>();
+  const fieldAll = new Map<string, number>();
+  // Từng tin: còn ít nhất 1 link ảnh .jpg/.png/... mở được (app hiện được) hay hỏng hết; tách theo độ cũ
+  const byAge = new Map<string, number>();
   let oldest = Infinity;
   for (const r of rows) {
     let raw: Record<string, any> = {};
@@ -37,29 +40,29 @@ export async function checkImportedMedia() {
       continue;
     }
     oldest = Math.min(oldest, r.ts);
-    for (const f of FIELDS) if (typeof raw[f] === "string" && raw[f]) fieldCount.set(f, (fieldCount.get(f) ?? 0) + 1);
-    // Thử link app hiển thị trước (ảnh nhỏ rồi tới ảnh gốc)
-    const url = [raw.thumb, raw.href, raw.thumbUrl, raw.hdUrl, raw.oriUrl, raw.normalUrl].find((u) => typeof u === "string" && /^https?:\/\//.test(u));
-    if (!url) {
-      result.set("không có link", (result.get("không có link") ?? 0) + 1);
-      continue;
+    const seen = new Map<string, number>();
+    let viewable = false;
+    for (const f of FIELDS) {
+      const url = raw[f];
+      if (typeof url !== "string" || !/^https?:\/\//.test(url)) continue;
+      const ext = url.match(/\.([a-z0-9]{2,5})(?:\?|$)/i)?.[1]?.toLowerCase() ?? "?";
+      const key = `${f}.${ext}`;
+      inc(fieldAll, key);
+      const status = seen.get(url) ?? (await probe(url));
+      seen.set(url, status);
+      if (status >= 200 && status < 300) {
+        inc(fieldOk, key);
+        if (ext !== "jxl") viewable = true;
+      }
     }
-    try {
-      const u = new URL(url);
-      const ext = u.pathname.match(/\.[a-z0-9]{2,5}$/i)?.[0] ?? "";
-      const key = `${u.hostname.replace(/^[^.]*\d[^.]*\./, "*.")}${ext ? ` [${ext}]` : ""}`;
-      hosts.set(key, (hosts.get(key) ?? 0) + 1);
-    } catch {
-      /* link lạ */
-    }
-    const status = await probe(url);
-    const label = status >= 200 && status < 300 ? "mở được" : status ? `lỗi ${status}` : "không kết nối được";
-    result.set(label, (result.get(label) ?? 0) + 1);
+    const age = Date.now() - r.ts < 30 * 86_400_000 ? "dưới 30 ngày" : "trên 30 ngày";
+    inc(byAge, `${age} ${viewable ? "hiện được" : "hỏng hết"}`);
   }
   const fmt = (m: Map<string, number>) => [...m].map(([k, v]) => `${k}: ${v}`).join(", ");
+  const fields = [...fieldAll].map(([k, n]) => `${k} ${fieldOk.get(k) ?? 0}/${n}`).join(", ");
   console.log(
-    `[media-check] Ảnh / video nhập từ Zalo PC, thử ${rows.length} tin ngẫu nhiên (cũ nhất ${new Date(oldest).toLocaleDateString("vi-VN")}): ${fmt(result)}` +
-      ` | trường có dữ liệu: ${fmt(fieldCount)} | máy chủ ảnh: ${fmt(hosts)}`,
+    `[media-check] Ảnh / video nhập từ Zalo PC, thử ${rows.length} tin ngẫu nhiên (cũ nhất ${new Date(oldest).toLocaleDateString("vi-VN")}): ` +
+      `${fmt(byAge)} | link mở được theo trường: ${fields}`,
   );
 }
 

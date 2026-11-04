@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.34.1 — 04/11/2026
+
+- **Tự kiểm tra ảnh nhập từ Zalo PC chi tiết hơn.** Bản trước chỉ thử link đầu tiên của mỗi ảnh (27/30 là ảnh nhỏ dạng .jxl, 22/30 báo lỗi 404). Nay thử mọi link của từng ảnh (ảnh nhỏ, ảnh HD, ảnh gốc…) và ghi vào nhật ký:
+  - bao nhiêu ảnh còn ít nhất 1 link app hiện được, bao nhiêu ảnh hỏng hết, tách ảnh dưới / trên 30 ngày;
+  - từng loại link mở được bao nhiêu.
+
 ## v3.34.0 — 04/11/2026
 
 - **Xem video như Zalo.** Trước đây tin video chỉ hiện chữ "[Video]", bấm không được.
