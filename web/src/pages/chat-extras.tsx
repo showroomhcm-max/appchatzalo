@@ -23,20 +23,22 @@ const parseParams = (raw: Record<string, any> | null | undefined): Record<string
 export function mediaUrls(raw: Record<string, any> | null | undefined, prefer: 'small' | 'full'): string[] {
   if (!raw) return []
   const p = parseParams(raw)
-  const small = [raw.thumb, raw.thumbUrl, raw.href, raw.normalUrl, raw.hdUrl, raw.oriUrl, p.hd]
-  const full = [p.hd, raw.hdUrl, raw.href, raw.oriUrl, raw.normalUrl, raw.thumb, raw.thumbUrl]
+  // Bản ảnh đã lưu trên NAS (raw._local) đứng đầu: link Zalo hết hạn nhanh (video lưu trên NAS không dùng làm ảnh)
+  const local = typeof raw._local === 'string' && /\.(jpe?g|png|webp|gif)$/i.test(raw._local) ? raw._local : undefined
+  const small = [local, raw.thumb, raw.thumbUrl, raw.href, raw.normalUrl, raw.hdUrl, raw.oriUrl, p.hd]
+  const full = [local, p.hd, raw.hdUrl, raw.href, raw.oriUrl, raw.normalUrl, raw.thumb, raw.thumbUrl]
   const list = (prefer === 'small' ? small : full).map((u) => (typeof u === 'string' ? u.trim() : ''))
   return [...new Set(list.filter((u) => /^https?:\/\//i.test(u) || u.startsWith('/uploads/')))]
 }
 
-export const isVideoMessage = (m: Message) => m.msg_type === 'chat.video.msg' && !m.undone && !!(m.raw?.href || m.raw?.thumb || m.raw?.hdUrl)
+export const isVideoMessage = (m: Message) => m.msg_type === 'chat.video.msg' && !m.undone && !!(m.raw?._local || m.raw?.href || m.raw?.thumb || m.raw?.hdUrl)
 /** Tin xem được trong khung xem toàn màn hình: ảnh và video */
 export const isImageMessage = (m: Message) => (m.msg_type === 'chat.photo' && !m.undone && mediaUrls(m.raw, 'small').length > 0) || isVideoMessage(m)
 
 /** Link video và thời lượng (Zalo để trong params.duration, tính bằng mili giây) */
 export function videoInfo(raw: Record<string, any> | null | undefined) {
   const p = parseParams(raw)
-  const src = [raw?.href, raw?.hdUrl, raw?.oriUrl, raw?.normalUrl, p.videoUrl, p.video_url].find((u) => typeof u === 'string' && /^https?:\/\/|^\/uploads\//i.test(u)) ?? ''
+  const src = [raw?._local, raw?.href, raw?.hdUrl, raw?.oriUrl, raw?.normalUrl, p.videoUrl, p.video_url].find((u) => typeof u === 'string' && /^https?:\/\/|^\/uploads\//i.test(u)) ?? ''
   const d = Number(p.duration ?? raw?.duration ?? 0)
   const sec = d > 1000 ? Math.round(d / 1000) : Math.round(d)
   return { src: String(src), duration: sec > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '' }

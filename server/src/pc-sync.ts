@@ -18,6 +18,7 @@ import { HttpError } from "./conversations.js";
 import { importHistory } from "./history-import.js";
 import { publicBaseUrl } from "./platforms/common.js";
 import { makeZip } from "./zip.js";
+import { agentMediaSummaries, receiveManifest } from "./pc-media.js";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS pc_sync_agents (
@@ -164,6 +165,7 @@ export function cancelPcSync(channelId: number, userId: number) {
 // ───────────── Quản lý máy đồng bộ (Super Admin, gắn vào settingsRouter) ─────────────
 
 export function listAgents() {
+  const media = agentMediaSummaries();
   const channels = all<{ id: number; name: string; zalo_uid: string | null }>("SELECT id, name, zalo_uid FROM channels WHERE platform = 'zalo' AND deleted_at IS NULL");
   return all<{ id: number; name: string; created_at: number; last_seen_at: number | null; last_uid: string | null; host: string | null; version: string | null }>(
     "SELECT id, name, created_at, last_seen_at, last_uid, host, version FROM pc_sync_agents ORDER BY id",
@@ -171,6 +173,8 @@ export function listAgents() {
     ...a,
     online: !!a.last_seen_at && Date.now() - a.last_seen_at < ONLINE_MS,
     channel: a.last_uid ? channels.find((c) => c.zalo_uid === a.last_uid)?.name ?? null : null,
+    media: media.get(a.id) ?? null,
+    latest: agentScriptVersion(),
   }));
 }
 
@@ -272,6 +276,17 @@ export function buildInstaller(agentId: number | null, name: string, userId: num
   return { zip, filename: `Cai dat dong bo Zalo PC - ${ascii}.zip` };
 }
 
+let versionCache: { at: number; v: string | null } | null = null;
+/** Phiên bản chương trình đồng bộ kèm theo bản app này (máy chạy bản cũ hơn sẽ tự cập nhật). */
+export function agentScriptVersion() {
+  if (!versionCache || Date.now() - versionCache.at > 300_000) {
+    const p = agentScriptPath();
+    const v = p ? /export const VERSION = "([\d.]+)"/.exec(fs.readFileSync(p, "utf8"))?.[1] ?? null : null;
+    versionCache = { at: Date.now(), v };
+  }
+  return versionCache.v;
+}
+
 /** File chương trình đồng bộ để tải về máy có Zalo PC (bản build: /app/agent, khi chạy dev: scripts/). */
 export function agentScriptPath() {
   for (const p of [path.resolve(process.cwd(), "../agent/dong-bo-zalo-pc.mjs"), path.resolve(process.cwd(), "../scripts/dong-bo-zalo-pc.mjs")]) {
@@ -338,7 +353,26 @@ pcAgentRouter.post(
       days: j.days,
       declined: (parse(j.declines) ?? []).some((d: any) => d.agent_id === req.agent!.id && d.uid === uid),
     }));
-    res.json({ agent: req.agent!.name, jobs });
+    res.json({ agent: req.agent!.name, jobs, latest: agentScriptVersion() });
+  }),
+);
+
+/** Tự cập nhật: máy chạy bản cũ tải chương trình mới (chỉ máy có mã hợp lệ). */
+pcAgentRouter.get(
+  "/script",
+  wrap((_req, res) => {
+    const p = agentScriptPath();
+    if (!p) throw new HttpError(404, "Bản này chưa kèm chương trình đồng bộ");
+    res.setHeader("Cache-Control", "no-store");
+    res.type("text/javascript").send(fs.readFileSync(p, "utf8"));
+  }),
+);
+
+/** Danh sách ảnh / video Zalo PC còn giữ trên máy (chỉ tên + dung lượng tệp, theo lô). */
+pcAgentRouter.post(
+  "/media/manifest",
+  wrap((req, res) => {
+    res.json(receiveManifest(req.agent!.id, req.agent!.name, req.body));
   }),
 );
 

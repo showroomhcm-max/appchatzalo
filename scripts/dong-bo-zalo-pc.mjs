@@ -14,6 +14,11 @@
  *   node dong-bo-zalo-pc.mjs --go                    gỡ tự chạy khi mở máy
  * Cấu hình + nhật ký: %APPDATA%\ChatSieuToc\
  *
+ * Từ bản 1.2.0:
+ * - Tự cập nhật: app có bản chương trình mới hơn thì tự tải về, thay file rồi chạy lại (không phải cài lại).
+ * - Đếm ảnh / video Zalo PC còn giữ trên máy (mỗi 6 giờ): chỉ gửi TÊN + dung lượng tệp lên app để ghép với tin
+ *   có ảnh đã hết hạn trên Zalo; không gửi nội dung ảnh, không mở / tắt Zalo PC.
+ *
  * File này cũng là thư viện đọc Zalo PC cho scripts/nhap-tu-zalo-pc.mjs (openZaloPc, readAllConversations).
  */
 import fs from "node:fs";
@@ -23,7 +28,7 @@ import net from "node:net";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.1.0";
+export const VERSION = "1.2.0";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ═════════════════════════ Đọc Zalo PC ═════════════════════════
@@ -351,6 +356,91 @@ function takeLock() {
   return true;
 }
 
+// ───────────── Tự cập nhật ─────────────
+
+const newer = (a, b) => {
+  const x = String(a).split(".").map(Number);
+  const y = String(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+
+/** App có bản mới hơn → tải, kiểm, thay file đã cài rồi chạy lại (tiến trình này thoát). */
+async function selfUpdate(cfg, latest) {
+  if (!latest || !newer(latest, VERSION)) return;
+  if (path.resolve(fileURLToPath(import.meta.url)) !== path.resolve(INSTALLED)) return; // chạy tay từ thư mục khác: bỏ qua
+  try {
+    const r = await fetch(`${cfg.base}/api/pc-agent/script`, { headers: { Authorization: `Agent ${cfg.key}` }, signal: AbortSignal.timeout(60_000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const code = await r.text();
+    if (!code.includes(`export const VERSION = "${latest}"`) || !code.includes("async function agentLoop")) throw new Error("tệp tải về không đúng");
+    fs.writeFileSync(INSTALLED + ".new", code);
+    fs.renameSync(INSTALLED + ".new", INSTALLED);
+    log(`Đã cập nhật chương trình ${VERSION} → ${latest}, chạy lại…`);
+    fs.rmSync(LOCK, { force: true });
+    spawn(process.execPath, [INSTALLED], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+    process.exit(0);
+  } catch (e) {
+    log(`Không tự cập nhật được lên ${latest}: ${e.message}`);
+  }
+}
+
+// ───────────── Ảnh / video Zalo PC còn giữ trên máy ─────────────
+
+const MEDIA_ROOT = path.join(process.env.APPDATA ?? "", "ZaloData", "media");
+const KINDS = ["picture", "video", "Cache"];
+
+/** Tên + dung lượng tệp ảnh / video Zalo PC đã tải về, theo từng tài khoản Zalo trên máy. */
+export function scanZaloMedia() {
+  const out = [];
+  let uids = [];
+  try {
+    uids = fs.readdirSync(MEDIA_ROOT).filter((d) => /^\d{6,25}$/.test(d));
+  } catch {
+    return out;
+  }
+  for (const uid of uids) {
+    const base = path.join(MEDIA_ROOT, uid, "ZaloDownloads", "resource");
+    const files = [];
+    let threads = [];
+    try {
+      threads = fs.readdirSync(base).filter((d) => /^g?\d{3,25}$/.test(d));
+    } catch {}
+    for (const t of threads) {
+      for (const k of KINDS) {
+        let names = [];
+        try {
+          names = fs.readdirSync(path.join(base, t, k));
+        } catch {
+          continue;
+        }
+        for (const n of names) {
+          if (!/^\d{12,14}_\d+_g?\d+/.test(n)) continue;
+          try {
+            files.push({ p: `${t}/${k}/${n}`, s: fs.statSync(path.join(base, t, k, n)).size });
+          } catch {}
+        }
+      }
+    }
+    out.push({ uid, files });
+  }
+  return out;
+}
+
+/** Gửi danh sách lên app theo lô (app bỏ qua tài khoản Zalo không phải kênh của mình). */
+async function reportZaloMedia(api) {
+  for (const { uid, files } of scanZaloMedia()) {
+    let matched = 0;
+    for (let i = 0; i < Math.max(files.length, 1); i += 2000) {
+      const last = i + 2000 >= files.length;
+      const r = await api("/media/manifest", { uid, files: files.slice(i, i + 2000), first: i === 0, last }, 3);
+      if (r?.ignored) break;
+      matched += r?.matched ?? 0;
+      if (last) log(`Zalo PC tài khoản ${uid}: còn giữ ${files.length} tệp ảnh / video, ghép được ${matched} tin trên app`);
+    }
+  }
+}
+
 async function runJob(api, cfg, job, zp) {
   const claimed = await api(`/jobs/${job.id}/claim`, { uid: zp.uid });
   const cutoff = Date.now() - claimed.days * 86_400_000;
@@ -395,12 +485,18 @@ async function agentLoop() {
   const api = makeApi(cfg);
   const checked = new Set(); // việc đã kiểm mà Zalo PC không cùng tài khoản (khỏi mở lại Zalo PC liên tục)
   let lastErr = "";
+  let nextScan = Date.now() + 30_000;
   log(`Chương trình đồng bộ Zalo PC v${VERSION} đang chạy, nối tới ${cfg.base}`);
   for (;;) {
     try {
       const hello = await api("/hello", { uid: cfg.uid ?? null, host: os.hostname(), version: VERSION }, 1);
       if (lastErr) log("Đã nối lại được app.");
       lastErr = "";
+      await selfUpdate(cfg, hello.latest);
+      if (Date.now() >= nextScan) {
+        nextScan = Date.now() + 6 * 3_600_000;
+        await reportZaloMedia(api).catch((e) => log(`Không gửi được danh sách ảnh Zalo PC: ${e.message}`));
+      }
       const jobs = (hello.jobs ?? []).filter((j) => !j.declined && !checked.has(`${j.id}:${cfg.uid ?? ""}`));
       // Ưu tiên việc khớp tài khoản đã biết; tài khoản lạ / chưa biết thì mở Zalo PC kiểm một lần cho mỗi việc
       const job = jobs.find((j) => j.zalo_uid === cfg.uid) ?? jobs[0];

@@ -1178,7 +1178,19 @@ function FacebookPagePicker({ pendingKey, onClose, onDone }: { pendingKey: strin
   )
 }
 
-type PcAgent = { id: number; name: string; created_at: number; last_seen_at: number | null; online: boolean; channel: string | null; host: string | null; version: string | null }
+type PcAgent = {
+  id: number
+  name: string
+  created_at: number
+  last_seen_at: number | null
+  online: boolean
+  channel: string | null
+  host: string | null
+  version: string | null
+  latest: string | null
+  /** Ảnh / video Zalo PC còn giữ trên máy (bộ cài 1.2.0+ tự đếm mỗi 6 giờ) */
+  media: { files: number; matched: number; rescue: number; scanned_at: number } | null
+}
 
 /** Tải bộ cài .zip (POST trả về file): tạo máy mới hoặc tạo lại bộ cài cho máy có sẵn. */
 async function downloadInstaller(path: string, body?: unknown) {
@@ -1263,6 +1275,85 @@ function PcAutoSettings() {
   )
 }
 
+type MediaStore = {
+  enabled: boolean
+  keepDays: number
+  files: number
+  bytes: number
+  pending: number
+  failed: number
+  freeBytes: number | null
+  paused: string | null
+}
+
+const gb = (b: number) =>
+  b < 1024 ** 3
+    ? `${Math.round(b / 1024 ** 2).toLocaleString('vi-VN')} MB`
+    : `${(b / 1024 ** 3).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} GB`
+
+/** Lưu bản ảnh / video / tệp khách gửi lên NAS lúc nhận (link Zalo hết hạn sau vài tuần). */
+function MediaStoreSettings() {
+  const [cfg, setCfg] = useState<MediaStore | null>(null)
+  const [days, setDays] = useState('')
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    api<MediaStore>('/media-store')
+      .then((c) => {
+        setCfg(c)
+        setDays(String(c.keepDays))
+      })
+      .catch(() => setCfg(null))
+  }, [])
+  if (!cfg) return null
+  async function save(next: { enabled: boolean; keepDays: number }) {
+    setMsg('')
+    try {
+      const c = await api<MediaStore>('/media-store', { method: 'PUT', body: next })
+      setCfg(c)
+      setDays(String(c.keepDays))
+      setMsg('Đã lưu')
+    } catch (e: any) {
+      setMsg(e.message)
+    }
+  }
+  const dirty = Number(days) !== cfg.keepDays
+  return (
+    <div className="stack sm pc-auto">
+      <div className="row wrap">
+        <label className="row">
+          <input type="checkbox" checked={cfg.enabled} onChange={(e) => void save({ enabled: e.target.checked, keepDays: cfg.keepDays })} />
+          <b>Lưu ảnh / video lên NAS</b>
+        </label>
+        <span>giữ</span>
+        <input
+          className="input sm inline-num"
+          type="number"
+          min={0}
+          max={3650}
+          value={days}
+          disabled={!cfg.enabled}
+          onChange={(e) => setDays(e.target.value)}
+          aria-label="Số ngày giữ bản trên NAS"
+        />
+        <span>ngày (0 = giữ mãi)</span>
+        {dirty && cfg.enabled && (
+          <button type="button" className="btn primary sm" onClick={() => void save({ enabled: cfg.enabled, keepDays: Number(days) })}>
+            Lưu
+          </button>
+        )}
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>
+        Link ảnh Zalo hết hạn sau vài tuần. App tải một bản ảnh / video / tệp khách gửi về NAS ngay khi nhận để sau này vẫn xem được. Đang lưu{' '}
+        <b>{cfg.files.toLocaleString('vi-VN')}</b> tệp ({gb(cfg.bytes)}){cfg.pending > 0 ? `, còn chờ ${cfg.pending.toLocaleString('vi-VN')}` : ''}
+        {cfg.failed > 0 ? `, ${cfg.failed.toLocaleString('vi-VN')} tin không lưu được vì link Zalo đã hết hạn` : ''}
+        {cfg.freeBytes != null ? ` · ổ NAS còn trống ${gb(cfg.freeBytes)}` : ''}.
+        {cfg.paused === 'ổ đầy' && <b className="form-error"> Đang tạm dừng vì ổ NAS còn dưới 5 GB.</b>}
+      </p>
+      {msg && <div className={msg === 'Đã lưu' ? 'muted small' : 'form-error'}>{msg}</div>}
+    </div>
+  )
+}
+
 /** Super Admin: các máy có Zalo PC chạy chương trình đồng bộ tin cũ (nút "Đồng bộ tin nhắn cũ" giao việc cho máy này). */
 function PcAgentsPanel() {
   const [list, setList] = useState<PcAgent[] | null>(null)
@@ -1338,7 +1429,20 @@ function PcAgentsPanel() {
                   · {a.online ? 'đang bật' : a.last_seen_at ? `tắt từ ${new Date(a.last_seen_at).toLocaleString('vi-VN', { hour12: false })}` : 'chưa cài'}
                   {a.channel ? ` · Zalo PC: ${a.channel}` : ''}
                   {a.host ? ` · ${a.host}` : ''}
+                  {a.version ? ` · bản ${a.version}` : ''}
                 </span>
+                {a.version && a.version.split('.').map(Number).reduce((n, x) => n * 1000 + x, 0) < 1_002_000 && (
+                  <span className="small form-error" style={{ display: 'block', whiteSpace: 'normal' }}>
+                    Bộ cài trên máy này là bản cũ: bấm "Bộ cài" để tải bản mới và cài lại một lần (từ bản 1.2.0 máy tự cập nhật).
+                  </span>
+                )}
+                {a.media && (
+                  <span className="small muted" style={{ display: 'block', whiteSpace: 'normal' }}>
+                    Zalo PC còn giữ {a.media.files.toLocaleString('vi-VN')} ảnh / video · ghép được {a.media.matched.toLocaleString('vi-VN')} tin, trong đó{' '}
+                    {a.media.rescue.toLocaleString('vi-VN')} tin chưa có bản trên NAS (đếm lúc{' '}
+                    {new Date(a.media.scanned_at).toLocaleString('vi-VN', { hour12: false })})
+                  </span>
+                )}
               </span>
               <button className="btn ghost sm" onClick={() => reinstall(a)} title="Tải bộ cài mới cho máy này (bộ cài cũ hết hiệu lực)">
                 <Download size={14} /> Bộ cài
@@ -1353,6 +1457,7 @@ function PcAgentsPanel() {
         list && <div className="muted small">Chưa có máy nào. Bấm "Thêm máy" để tải bộ cài.</div>
       )}
       {list && list.length > 0 && <PcAutoSettings />}
+      <MediaStoreSettings />
 
       {adding && (
         <Modal title="Thêm máy đồng bộ Zalo PC" onClose={() => setAdding(false)}>

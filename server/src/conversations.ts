@@ -229,7 +229,8 @@ function parseParams(raw: any): Record<string, any> {
 /** Link tệp gốc của tin ảnh / tệp / video / thoại (ảnh: ưu tiên bản HD). */
 function mediaUrl(raw: any): string {
   const p = parseParams(raw);
-  return String(p.hd || raw?.hdUrl || raw?.oriUrl || raw?.href || raw?.normalUrl || raw?.thumb || "");
+  // Bản đã lưu trên NAS trước (link Zalo hết hạn nhanh)
+  return String(raw?._local || p.hd || raw?.hdUrl || raw?.oriUrl || raw?.href || raw?.normalUrl || raw?.thumb || "");
 }
 
 const EXT_BY_TYPE: Record<string, string> = { "chat.photo": ".jpg", "chat.video.msg": ".mp4", "chat.voice": ".m4a", "chat.gif": ".gif" };

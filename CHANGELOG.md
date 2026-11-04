@@ -7,6 +7,22 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.35.0 — 04/11/2026
+
+- **Lưu ảnh / video / tệp khách gửi lên NAS ngay khi nhận.** Link ảnh Zalo hết hạn rất nhanh: kiểm ngày 04/11 thấy 8/10 ảnh dưới 30 ngày đã mất. Trước đây app chỉ lưu link nên ảnh cũ không xem được nữa.
+  - Có tin ảnh / video / tệp / ghi âm mới là app tải ngay một bản về NAS. Khung chat, khung xem ảnh, tải tệp và chuyển tiếp đều dùng bản trên NAS trước, link Zalo chỉ để dự phòng.
+  - Tin cũ có link còn sống thì app tải dần (mới trước, cũ sau). Link đã hết hạn thì bỏ qua, không thử lại.
+  - Cài đặt › Kết nối kênh › **Lưu ảnh / video lên NAS**:
+    - bật / tắt;
+    - số ngày giữ, mặc định 365, 0 = giữ mãi; bản quá hạn tự xóa;
+    - xem đang lưu bao nhiêu tệp, bao nhiêu GB và ổ NAS còn trống.
+  - Ổ NAS còn dưới 5 GB trống thì tự tạm dừng và ghi cảnh báo vào nhật ký.
+- **Máy đồng bộ Zalo PC (bản 1.2.0): đếm ảnh / video Zalo PC còn giữ trên máy.**
+  - Zalo PC giữ bản ảnh / video đã tải về trên máy, kể cả khi link trên Zalo đã hết hạn.
+  - Mỗi 6 giờ chương trình đồng bộ gửi lên app **danh sách tên tệp** (không gửi nội dung ảnh, không tắt / mở Zalo PC). App ghép với tin trong hội thoại để biết cứu được bao nhiêu ảnh.
+  - Kết quả hiện dưới tên máy trong Cài đặt › Kết nối kênh › Máy đồng bộ Zalo PC và ghi vào nhật ký. Bước tải ảnh lên làm sau khi có số liệu.
+- **Máy đồng bộ tự cập nhật** từ bản 1.2.0: app có bản mới hơn thì máy tự tải và chạy lại, không phải cài lại. Máy đang chạy bản cũ (1.1.0) thì cần bấm **Bộ cài** để tải bản mới và cài lại một lần; app có hiện nhắc.
+
 ## v3.34.1 — 04/11/2026
 
 - **Tự kiểm tra ảnh nhập từ Zalo PC chi tiết hơn.** Bản trước chỉ thử link đầu tiên của mỗi ảnh (27/30 là ảnh nhỏ dạng .jxl, 22/30 báo lỗi 404). Nay thử mọi link của từng ảnh (ảnh nhỏ, ảnh HD, ảnh gốc…) và ghi vào nhật ký:

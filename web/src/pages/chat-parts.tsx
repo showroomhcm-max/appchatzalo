@@ -58,7 +58,7 @@ export function canForward(m: Message) {
   if (!t || t === 'webchat') return !!m.text?.trim()
   if (t === 'chat.sticker') return !!m.raw?.id
   if (t === 'chat.recommended' || t === 'chat.link') return !!(m.raw?.href || m.text)
-  return MEDIA_TYPES.includes(t) && !!(m.raw?.href || m.raw?.thumb || m.raw?.hdUrl || m.raw?.oriUrl)
+  return MEDIA_TYPES.includes(t) && !!(m.raw?._local || m.raw?.href || m.raw?.thumb || m.raw?.hdUrl || m.raw?.oriUrl)
 }
 
 /** Chữ để sao chép: tin chữ lấy nội dung; ảnh / tệp / video / link lấy đường link */
@@ -340,7 +340,7 @@ export function Bubble({
     )
   } else if (isFile) {
     body = (
-      <a href={safeUrl(raw.href)} target="_blank" rel="noreferrer" className="msg-file">
+      <a href={safeUrl(raw._local || raw.href)} download={raw._local ? String(raw.title || '') || true : undefined} target="_blank" rel="noreferrer" className="msg-file">
         <FileText size={18} /> {raw.title || 'Tệp đính kèm'}
       </a>
     )

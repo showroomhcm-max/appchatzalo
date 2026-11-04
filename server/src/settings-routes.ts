@@ -28,6 +28,7 @@ import {
   requestPcSync,
   savePcAutoConfig,
 } from "./pc-sync.js";
+import { mediaStoreStatus, saveMediaStoreConfig } from "./media-store.js";
 import { WIPE_CONFIRM, purgeChannelData, wipeChatData, wipePreview } from "./wipe.js";
 
 export const settingsRouter = Router();
@@ -258,6 +259,13 @@ settingsRouter.post(
 settingsRouter.get("/pc-agents", requireSuperAdmin, (_req, res) => res.json(listAgents()));
 // Tự lấy lại tin bị rớt: kênh mất kết nối lâu → máy Zalo PC tự đọc lại khoảng đó
 settingsRouter.get("/pc-agents/auto", requireSuperAdmin, (_req, res) => res.json(pcAutoConfig()));
+// Lưu bản ảnh / video lên NAS lúc nhận tin (link Zalo hết hạn nhanh)
+settingsRouter.get("/media-store", requireSuperAdmin, (_req, res) => res.json(mediaStoreStatus()));
+settingsRouter.put(
+  "/media-store",
+  requireSuperAdmin,
+  h((req, res) => res.json(saveMediaStoreConfig(req.body, req.user!.id))),
+);
 settingsRouter.put(
   "/pc-agents/auto",
   requireSuperAdmin,
