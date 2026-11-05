@@ -18,6 +18,8 @@ COPY --from=build /app/package.json /app/package.json
 COPY --from=build /app/server/node_modules ./node_modules
 COPY --from=build /app/server/dist ./dist
 COPY --from=build /app/server/package.json ./
+# Bộ giải mã ảnh JPEG XL (ảnh Zalo PC) + bộ nén JPG bản WebAssembly (server/src/jxl.ts)
+COPY --from=build /app/server/vendor ./vendor
 COPY --from=build /app/web/dist /app/web/dist
 # Script tự cập nhật trên NAS đi kèm bản build: NAS tự lấy bản mới của script này
 COPY deploy/nas/cap-nhat.sh /app/deploy/cap-nhat.sh

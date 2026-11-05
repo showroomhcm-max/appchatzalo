@@ -1189,7 +1189,7 @@ type PcAgent = {
   version: string | null
   latest: string | null
   /** Ảnh / video Zalo PC còn giữ trên máy (bộ cài 1.2.0+ tự đếm mỗi 6 giờ) */
-  media: { files: number; matched: number; rescue: number; scanned_at: number } | null
+  media: { files: number; matched: number; rescue: number; uploaded: number; scanned_at: number } | null
 }
 
 /** Tải bộ cài .zip (POST trả về file): tạo máy mới hoặc tạo lại bộ cài cho máy có sẵn. */
@@ -1439,7 +1439,8 @@ function PcAgentsPanel() {
                 {a.media && (
                   <span className="small muted" style={{ display: 'block', whiteSpace: 'normal' }}>
                     Zalo PC còn giữ {a.media.files.toLocaleString('vi-VN')} ảnh / video · ghép được {a.media.matched.toLocaleString('vi-VN')} tin, trong đó{' '}
-                    {a.media.rescue.toLocaleString('vi-VN')} tin chưa có bản trên NAS (đếm lúc{' '}
+                    {a.media.rescue.toLocaleString('vi-VN')} tin chưa có bản trên NAS
+                    {a.media.uploaded > 0 ? ` · đã đưa lên NAS ${a.media.uploaded.toLocaleString('vi-VN')} tin` : ''} (đếm lúc{' '}
                     {new Date(a.media.scanned_at).toLocaleString('vi-VN', { hour12: false })})
                   </span>
                 )}

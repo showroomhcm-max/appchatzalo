@@ -12,13 +12,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { Router, type NextFunction, type Request, type Response } from "express";
+import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { all, db, get, getSetting, logEvent, run, setSetting } from "./db.js";
 import { HttpError } from "./conversations.js";
 import { importHistory } from "./history-import.js";
 import { publicBaseUrl } from "./platforms/common.js";
 import { makeZip } from "./zip.js";
-import { agentMediaSummaries, receiveManifest } from "./pc-media.js";
+import { agentMediaSummaries, finishUploads, receiveManifest, receiveUpload, wantedFiles } from "./pc-media.js";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS pc_sync_agents (
@@ -373,6 +373,28 @@ pcAgentRouter.post(
   "/media/manifest",
   wrap((req, res) => {
     res.json(receiveManifest(req.agent!.id, req.agent!.name, req.body));
+  }),
+);
+
+/** Bước 2: tệp nào máy cần tải lên (mỗi lần tối đa 100). Hết tệp thì ghi nhật ký tổng kết. */
+pcAgentRouter.post(
+  "/media/wanted",
+  wrap((req, res) => {
+    const r = wantedFiles(req.agent!.id, req.body);
+    if (!r.files.length) finishUploads(req.agent!.id, req.agent!.name);
+    res.json(r);
+  }),
+);
+
+/** Bước 2: nội dung một tệp (thô, tối đa 64 MB). Chỉ nhận tệp nằm trong danh sách cần tải của đúng máy + kênh. */
+pcAgentRouter.post(
+  "/media/upload",
+  express.raw({ type: "application/octet-stream", limit: "64mb" }),
+  wrap(async (req, res) => {
+    const uid = String(req.query.uid ?? "");
+    const p = String(req.query.p ?? "");
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, "Thiếu nội dung tệp");
+    res.json(await receiveUpload(req.agent!.id, req.agent!.name, uid, p, req.body, req.query.missing === "1"));
   }),
 );
 

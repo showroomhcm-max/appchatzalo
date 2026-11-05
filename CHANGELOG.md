@@ -7,6 +7,18 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.36.0 — 05/11/2026
+
+- **Cứu ảnh / video cũ từ Zalo PC lên NAS.** Ảnh cũ mất trên Zalo nhưng Zalo PC trên máy đồng bộ vẫn giữ. Đợt đếm ngày 05/11:
+  - KT - BH HCM: cứu được 7.480 / 11.481 tin đang mất ảnh;
+  - Zalo Showroom HCM: cứu được 4.598 / 6.396 tin.
+- **Cách làm:**
+  - Máy đồng bộ (bản 1.3.0, tự cập nhật) gửi lên đúng những ảnh / video app cần: tin đang mất ảnh và còn trong số ngày giữ. Mỗi lượt tối đa 100 tệp, có nghỉ giữa các tệp để không chiếm mạng; không tắt / mở Zalo PC.
+  - Ảnh Zalo PC lưu dạng .jxl (JPEG XL) mà trình duyệt máy tính không mở được: NAS đổi sang .jpg lúc nhận. Ảnh có sẵn bản .jpg thì dùng luôn. Video .mp4 giữ nguyên.
+  - Bản cứu lên theo cùng quy tắc **giữ N ngày / tự xóa** của mục "Lưu ảnh / video lên NAS". Tin đã quá hạn giữ thì không tải lên.
+  - Ghép tệp với tin chính xác hơn: tìm theo mã của tệp ảnh trên cả hội thoại, không còn chỉ trong khoảng lệch 2 giây.
+  - Tin đang mở trên màn hình tự hiện ảnh ngay khi ảnh vừa lên NAS. Dưới tên máy trong Cài đặt có thêm số tin đã đưa lên NAS.
+
 ## v3.35.1 — 05/11/2026
 
 - **Sửa lỗi tin trả lời dài trên điện thoại.** Khung trích dẫn có nội dung dài làm bong bóng tin tràn ra ngoài màn hình, mất chữ đầu dòng và mất luôn nội dung tin trả lời. Nay bong bóng co vừa khung chat; nội dung tin gốc trong khung trích dẫn hiện tối đa 2 dòng, dài hơn thì có dấu "…".

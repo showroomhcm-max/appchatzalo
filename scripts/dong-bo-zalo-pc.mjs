@@ -17,7 +17,9 @@
  * Từ bản 1.2.0:
  * - Tự cập nhật: app có bản chương trình mới hơn thì tự tải về, thay file rồi chạy lại (không phải cài lại).
  * - Đếm ảnh / video Zalo PC còn giữ trên máy (mỗi 6 giờ): chỉ gửi TÊN + dung lượng tệp lên app để ghép với tin
- *   có ảnh đã hết hạn trên Zalo; không gửi nội dung ảnh, không mở / tắt Zalo PC.
+ *   có ảnh đã hết hạn trên Zalo; không mở / tắt Zalo PC.
+ * Từ bản 1.3.0: gửi lên NAS đúng những ảnh / video app hỏi (tin đang mất ảnh, còn trong hạn giữ), mỗi lượt tối đa
+ * 100 tệp, nghỉ giữa các tệp để không chiếm mạng.
  *
  * File này cũng là thư viện đọc Zalo PC cho scripts/nhap-tu-zalo-pc.mjs (openZaloPc, readAllConversations).
  */
@@ -28,7 +30,7 @@ import net from "node:net";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ═════════════════════════ Đọc Zalo PC ═════════════════════════
@@ -427,6 +429,9 @@ export function scanZaloMedia() {
   return out;
 }
 
+/** Tài khoản Zalo trên máy có tệp ghép được với tin trên app: còn tải lên dần. */
+const uploadQueue = new Set();
+
 /** Gửi danh sách lên app theo lô (app bỏ qua tài khoản Zalo không phải kênh của mình). */
 async function reportZaloMedia(api) {
   for (const { uid, files } of scanZaloMedia()) {
@@ -438,6 +443,58 @@ async function reportZaloMedia(api) {
       matched += r?.matched ?? 0;
       if (last) log(`Zalo PC tài khoản ${uid}: còn giữ ${files.length} tệp ảnh / video, ghép được ${matched} tin trên app`);
     }
+    if (matched > 0) uploadQueue.add(uid);
+  }
+}
+
+const SAFE_REL = /^g?\d{3,25}\/(picture|video|Cache)\/[\w.]{10,120}$/;
+
+/** Một lượt tải lên NAS (tối đa 100 tệp app hỏi). Hết tệp thì bỏ tài khoản khỏi hàng chờ. */
+async function uploadZaloMedia(cfg, api) {
+  for (const uid of [...uploadQueue]) {
+    const r = await api("/media/wanted", { uid }, 3);
+    if (!r?.files?.length) {
+      uploadQueue.delete(uid);
+      if (r?.reason) log(`Không tải ảnh Zalo PC lên: ${r.reason}`);
+      continue;
+    }
+    const base = path.join(MEDIA_ROOT, uid, "ZaloDownloads", "resource");
+    let sent = 0;
+    let bytes = 0;
+    let failed = 0;
+    for (const f of r.files) {
+      if (!SAFE_REL.test(f.p)) continue;
+      let data;
+      try {
+        data = fs.readFileSync(path.join(base, ...f.p.split("/")));
+      } catch {
+        data = null; // Zalo PC đã dọn tệp này: báo app bỏ qua
+      }
+      const q = `uid=${encodeURIComponent(uid)}&p=${encodeURIComponent(f.p)}${data ? "" : "&missing=1"}`;
+      let res;
+      try {
+        res = await fetch(`${cfg.base}/api/pc-agent/media/upload?${q}`, {
+          method: "POST",
+          headers: { Authorization: `Agent ${cfg.key}`, "Content-Type": "application/octet-stream" },
+          body: data ?? Buffer.from("-"),
+          signal: AbortSignal.timeout(300_000),
+        });
+      } catch (e) {
+        log(`Gửi ảnh Zalo PC lên app bị gián đoạn (${e.message}), lượt sau gửi tiếp.`);
+        return;
+      }
+      if (res.status >= 500) {
+        log(`App đang bận (HTTP ${res.status}), lượt sau gửi tiếp.`);
+        return;
+      }
+      if (res.ok && data) {
+        sent++;
+        bytes += data.length;
+      } else failed++;
+      await sleep(150);
+    }
+    log(`Đã gửi ${sent} ảnh / video Zalo PC (${(bytes / 1048576).toFixed(1)} MB) lên NAS${failed ? `, ${failed} tệp lỗi / không còn` : ""}.`);
+    return; // mỗi vòng một lượt, để vẫn nhận việc đồng bộ tin xen giữa
   }
 }
 
@@ -497,6 +554,7 @@ async function agentLoop() {
         nextScan = Date.now() + 6 * 3_600_000;
         await reportZaloMedia(api).catch((e) => log(`Không gửi được danh sách ảnh Zalo PC: ${e.message}`));
       }
+      if (uploadQueue.size) await uploadZaloMedia(cfg, api).catch((e) => log(`Không gửi được ảnh Zalo PC lên NAS: ${e.message}`));
       const jobs = (hello.jobs ?? []).filter((j) => !j.declined && !checked.has(`${j.id}:${cfg.uid ?? ""}`));
       // Ưu tiên việc khớp tài khoản đã biết; tài khoản lạ / chưa biết thì mở Zalo PC kiểm một lần cho mỗi việc
       const job = jobs.find((j) => j.zalo_uid === cfg.uid) ?? jobs[0];
