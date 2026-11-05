@@ -3,6 +3,7 @@
  * (trả lời, thả cảm xúc, sao chép, chuyển tiếp, thu hồi, tạo ghi chú), hộp chọn sticker, chuyển tiếp.
  */
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CheckSquare, Copy, FileText, Forward, Image as ImageIcon, Info, MessageCircle, MoreHorizontal, Play, Quote, Search, SmilePlus, Square, StickyNote, Undo2, X } from 'lucide-react'
 import { api, safeUrl } from '../api'
 import { useApp } from '../store'
@@ -261,12 +262,13 @@ export function Bubble({
   const [touchOpen, setTouchOpen] = useState(false)
   const pressTimer = useRef<number | undefined>(undefined)
   const rowRef = useRef<HTMLDivElement>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
 
   // Đóng menu khi bấm ra ngoài
   useEffect(() => {
     if (!menu && !touchOpen) return
     const close = (e: Event) => {
-      if (!rowRef.current?.contains(e.target as Node)) {
+      if (!rowRef.current?.contains(e.target as Node) && !sheetRef.current?.contains(e.target as Node)) {
         setMenu(null)
         setTouchOpen(false)
       }
@@ -460,7 +462,7 @@ export function Bubble({
   return (
     <div
       ref={rowRef}
-      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu || touchOpen ? 'menu-open' : ''} ${selecting ? 'selecting' : ''} ${selected ? 'selected' : ''}`}
+      className={`msg-row ${out ? 'out' : 'in'} ${grouped ? 'grouped' : ''} ${flash ? 'flash' : ''} ${menu ? 'menu-open' : ''} ${touchOpen ? 'touch-picked' : ''} ${selecting ? 'selecting' : ''} ${selected ? 'selected' : ''}`}
       data-mid={m.id}
       {...longPress}
       onClickCapture={
@@ -616,6 +618,127 @@ export function Bubble({
         )}
       </div>
       {receipt && <div className="msg-receipt">{receipt}</div>}
+      {touchOpen &&
+        createPortal(
+          <MobileMsgSheet
+            sheetRef={sheetRef}
+            m={m}
+            preview={m.undone ? 'Tin nhắn đã thu hồi' : messagePreview(m)}
+            sender={(out ? label : m.sender_name) || 'Khách'}
+            thumb={isImage ? mediaUrls(raw, 'small') : []}
+            reactions={caps?.reactions ?? true}
+            onClose={() => setTouchOpen(false)}
+            onReact={(code) => {
+              setTouchOpen(false)
+              onReact(m, code)
+            }}
+            items={[
+              canReply && { key: 'reply', icon: <Quote size={20} />, label: 'Trả lời', run: () => act('reply') },
+              !!copyText(m) && { key: 'copy', icon: <Copy size={20} />, label: !m.msg_type || m.msg_type === 'webchat' || card ? 'Sao chép' : 'Sao chép link', run: () => act('copy') },
+              (caps?.forward ?? true) && canForward(m) && { key: 'forward', icon: <Forward size={20} />, label: 'Chuyển tiếp', run: () => act('forward') },
+              { key: 'select', icon: <CheckSquare size={20} />, label: 'Chọn nhiều', run: () => act('select') },
+              { key: 'note', icon: <StickyNote size={20} />, label: 'Ghi chú', run: () => act('note') },
+              { key: 'details', icon: <Info size={20} />, label: 'Chi tiết', run: () => act('details') },
+              ...(extraActions ?? []).map((x) => ({
+                key: `x-${x.key}`,
+                icon: <MessageCircle size={20} />,
+                label: x.label,
+                danger: x.danger,
+                run: () => {
+                  setTouchOpen(false)
+                  onExtra?.(x.key)
+                },
+              })),
+              out && canUndo && (caps?.undo ?? true) && { key: 'undo', icon: <Undo2 size={20} />, label: 'Thu hồi', danger: true, run: () => act('undo') },
+            ]}
+          />,
+          document.body,
+        )}
+    </div>
+  )
+}
+
+type SheetItem = { key: string; icon: React.ReactNode; label: string; danger?: boolean; run: () => void }
+
+/** Nội dung ngắn của tin để hiện trên bảng thao tác điện thoại */
+function messagePreview(m: Message) {
+  const kind = m.msg_type && m.msg_type !== 'webchat' ? KIND_LABEL[m.msg_type] : undefined
+  const t = (m.text ?? '').trim()
+  if (t && !/^\[.*\]$/.test(t)) return t
+  return kind ? `[${kind}]` : t || '[Tin nhắn]'
+}
+
+/**
+ * Điện thoại: bảng thao tác tin nhắn như Zalo. Nền mờ, tin được chọn hiện ở trên, hàng cảm xúc,
+ * dưới là lưới nút (biểu tượng + chữ). Chạm ra ngoài hoặc kéo xuống để đóng.
+ */
+function MobileMsgSheet({
+  sheetRef,
+  m,
+  preview,
+  sender,
+  thumb,
+  reactions,
+  items,
+  onClose,
+  onReact,
+}: {
+  sheetRef: React.RefObject<HTMLDivElement | null>
+  m: Message
+  preview: string
+  sender: string
+  thumb: string[]
+  reactions: boolean
+  items: (SheetItem | false | null | undefined)[]
+  onClose: () => void
+  onReact: (code: string) => void
+}) {
+  const list = items.filter(Boolean) as SheetItem[]
+  const mine = m.reactions?.some((r) => r.mine)
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [onClose])
+  return (
+    <div className="mobile-sheet-backdrop" onClick={onClose}>
+      <div ref={sheetRef} className="mobile-sheet" role="dialog" aria-label="Thao tác tin nhắn" onClick={(e) => e.stopPropagation()}>
+        <div className={`mobile-sheet-msg ${m.direction === 'out' ? 'out' : ''}`}>
+          {thumb.length > 0 && (
+            <span className="mobile-sheet-thumb">
+              <FallbackImg urls={thumb} alt="" />
+            </span>
+          )}
+          <span className="mobile-sheet-text">
+            <b>{sender}</b>
+            <span>{preview}</span>
+          </span>
+        </div>
+        {reactions && !m.undone && (
+          <div className="mobile-sheet-reactions">
+            {REACTIONS.map((r) => (
+              <button key={r.code} type="button" aria-label={r.label} title={r.label} onClick={() => onReact(r.code)}>
+                {r.emoji}
+              </button>
+            ))}
+            {mine && (
+              <button type="button" className="clear" aria-label="Gỡ cảm xúc của shop" onClick={() => onReact('')}>
+                <X size={18} />
+              </button>
+            )}
+          </div>
+        )}
+        {list.length > 0 && (
+          <div className="mobile-sheet-grid">
+            {list.map((x) => (
+              <button key={x.key} type="button" className={x.danger ? 'danger' : ''} onClick={x.run}>
+                <span className="ic">{x.icon}</span>
+                <span>{x.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

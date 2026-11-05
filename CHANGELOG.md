@@ -7,6 +7,14 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.37.1 — 05/11/2026
+
+- **Điện thoại: bảng thao tác tin nhắn giống Zalo.** Chạm hoặc nhấn giữ vào tin:
+  - nền tối lại, tin đang chọn hiện ở trên (có ảnh nhỏ nếu là ảnh);
+  - hàng biểu tượng cảm xúc to, chạm là thả;
+  - lưới nút có biểu tượng kèm chữ: Trả lời, Sao chép, Chuyển tiếp, Chọn nhiều, Ghi chú, Chi tiết, Thu hồi (màu đỏ).
+  - Chạm ra ngoài thì đóng. Thay cho hàng nút nhỏ cạnh tin như trước; máy tính vẫn như cũ.
+
 ## v3.37.0 — 05/11/2026
 
 - **Sửa lỗi app chậm / báo 502 trong lúc máy đồng bộ gửi ảnh Zalo PC lên NAS.**
