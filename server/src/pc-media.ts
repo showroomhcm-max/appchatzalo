@@ -263,7 +263,10 @@ export async function receiveUpload(agentId: number, agentName: string, uid: str
         data = await jxlToJpeg(body);
         e = ".jpg";
       } catch (err: any) {
-        return fail(`không đổi được ảnh .jxl (${err?.message ?? err})`);
+        const msg = String(err?.message ?? err);
+        // Luồng đổi ảnh dừng / quá giờ là lỗi máy chủ: máy gửi lại sau, không đánh dấu ảnh hỏng
+        if (/Luồng đổi ảnh|quá 60 giây|quá lâu/.test(msg)) throw new HttpError(503, "Máy chủ đang bận đổi ảnh, thử lại sau");
+        return fail(`không đổi được ảnh .jxl (${msg})`);
       }
     } else if (e !== ".jpg" && e !== ".png" && e !== ".webp") return fail("không phải ảnh");
   } else if (e !== ".mp4") return fail("không phải video mp4");

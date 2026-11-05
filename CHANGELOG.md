@@ -9,6 +9,11 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 
 ## v3.37.0 — 05/11/2026
 
+- **Sửa lỗi app chậm / báo 502 trong lúc máy đồng bộ gửi ảnh Zalo PC lên NAS.**
+  - Nguyên nhân: việc đổi ảnh .jxl sang .jpg chạy chung luồng với app. Mỗi ảnh tốn 1–3 giây CPU, trong lúc đó app không trả lời nhân viên.
+  - Sửa: việc đổi ảnh chạy ở luồng riêng, lần lượt từng ảnh. Thử đổi liền 6 ảnh, app chỉ chậm tối đa 0,03 giây.
+  - Luồng đổi ảnh treo hoặc lỗi thì tự khởi động lại; máy đồng bộ gửi lại ảnh đó sau, không đánh dấu ảnh hỏng.
+
 - **Điện thoại: thao tác tin nhắn như Zalo.**
   - **Quẹt tin từ phải sang trái** để trả lời nhanh: tin trượt theo ngón tay, hiện biểu tượng trả lời, quẹt đủ xa là mở khung "Trả lời" (máy có rung nhẹ).
   - **Chạm vào tin** là hiện các nút thao tác (trả lời, thả cảm xúc, thêm…); chạm lần nữa hoặc chạm ra ngoài thì ẩn. Chạm vào ảnh, link, tên được nhắc vẫn mở như cũ. Nhấn giữ vẫn dùng được.
