@@ -19,11 +19,16 @@ import { isJxl, jxlReady, jxlToJpeg } from "./jxl.js";
 import { mediaStoreConfig } from "./media-store.js";
 import { conversationKey, getConversation, getMessage } from "./store.js";
 
+// Một máy có thể chạy chương trình đồng bộ ở nhiều tài khoản Windows (mỗi tài khoản một thư mục Zalo PC riêng):
+// mỗi dòng gắn "instance" = tên máy/tài khoản Windows. Bảng cũ (chưa có cột này, chỉ là danh sách quét lại được) thì tạo lại.
+if (all<{ name: string }>("PRAGMA table_info(pc_media_files)").some((c) => c.name === "rel_path") && !all<{ name: string }>("PRAGMA table_info(pc_media_files)").some((c) => c.name === "instance"))
+  db.exec("DROP TABLE pc_media_files");
 db.exec(`
 CREATE TABLE IF NOT EXISTS pc_media_files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   channel_id INTEGER NOT NULL,
   agent_id INTEGER NOT NULL,
+  instance TEXT NOT NULL DEFAULT '',
   rel_path TEXT NOT NULL,
   thread_id TEXT NOT NULL,
   ts INTEGER NOT NULL,
@@ -34,15 +39,13 @@ CREATE TABLE IF NOT EXISTS pc_media_files (
   exact INTEGER NOT NULL DEFAULT 0,
   md5_hit INTEGER NOT NULL DEFAULT 0,
   seen_at INTEGER NOT NULL,
-  UNIQUE(channel_id, rel_path)
+  upload_status TEXT,
+  upload_at INTEGER,
+  UNIQUE(channel_id, agent_id, instance, rel_path)
 );
 CREATE INDEX IF NOT EXISTS idx_pc_media_msg ON pc_media_files(message_id);
 `);
-// Bước 2: trạng thái tải lên NAS của từng tệp (NULL = chưa, 'done', 'skip: …', 'fail: …')
-if (!all<{ name: string }>("PRAGMA table_info(pc_media_files)").some((c) => c.name === "upload_status")) {
-  db.exec("ALTER TABLE pc_media_files ADD COLUMN upload_status TEXT");
-  db.exec("ALTER TABLE pc_media_files ADD COLUMN upload_at INTEGER");
-}
+const instanceOf = (v: unknown) => String(v ?? "").replace(/[^\w.\-@/ ]/g, "").slice(0, 80);
 
 const NAME = /^(g?\d{3,25})\/(picture|video|Cache)\/(\d{12,14})_(\d{1,25})_(g?\d{3,25})(?:_([0-9a-f]{32}|[a-z]))?(\.[a-z0-9]{2,5})?$/i;
 const URL_FIELDS = ["href", "hdUrl", "oriUrl", "normalUrl", "thumb", "thumbUrl"];
@@ -116,7 +119,8 @@ export function receiveManifest(agentId: number, agentName: string, body: any) {
   if (!ch) return { ignored: true };
   const files = (Array.isArray(body?.files) ? body.files : []).slice(0, 5000);
   const now = Date.now();
-  const key = `${agentId}:${ch.id}`;
+  const inst = instanceOf(body?.instance);
+  const key = `${agentId}:${ch.id}:${inst}`;
   if (body?.first || !scanStart.has(key)) scanStart.set(key, now);
   let parsed = 0;
   let matched = 0;
@@ -134,12 +138,13 @@ export function receiveManifest(agentId: number, agentName: string, body: any) {
         const m = cands.length ? match(cands, f) : null;
         if (m) matched++;
         run(
-          `INSERT INTO pc_media_files(channel_id, agent_id, rel_path, thread_id, ts, from_uid, kind, size, message_id, exact, md5_hit, seen_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(channel_id, rel_path) DO UPDATE SET agent_id = excluded.agent_id, size = excluded.size, message_id = excluded.message_id,
+          `INSERT INTO pc_media_files(channel_id, agent_id, instance, rel_path, thread_id, ts, from_uid, kind, size, message_id, exact, md5_hit, seen_at)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(channel_id, agent_id, instance, rel_path) DO UPDATE SET size = excluded.size, message_id = excluded.message_id,
            exact = excluded.exact, md5_hit = excluded.md5_hit, seen_at = excluded.seen_at`,
         ch.id,
         agentId,
+        inst,
         f.rel,
         f.thread,
         f.ts,
@@ -154,7 +159,7 @@ export function receiveManifest(agentId: number, agentName: string, body: any) {
       }
     }
     // Lô cuối: tệp không còn trên máy (Zalo PC đã dọn) thì bỏ khỏi danh sách
-    if (body?.last) run("DELETE FROM pc_media_files WHERE channel_id = ? AND agent_id = ? AND seen_at < ?", ch.id, agentId, scanStart.get(key)!);
+    if (body?.last) run("DELETE FROM pc_media_files WHERE channel_id = ? AND agent_id = ? AND instance = ? AND seen_at < ?", ch.id, agentId, inst, scanStart.get(key)!);
   });
   if (body?.last) {
     scanStart.delete(key);
@@ -181,12 +186,13 @@ export function wantedFiles(agentId: number, body: any) {
   const cutoff = cfg.keepDays > 0 ? Date.now() - cfg.keepDays * 86_400_000 : 0;
   const rows = all<{ message_id: number; rel_path: string; kind: string }>(
     `SELECT f.message_id, f.rel_path, f.kind FROM pc_media_files f JOIN messages m ON m.id = f.message_id
-     WHERE f.channel_id = ? AND f.agent_id = ? AND f.upload_status IS NULL AND m.undone = 0 AND m.ts >= ?
+     WHERE f.channel_id = ? AND f.agent_id = ? AND f.instance = ? AND f.upload_status IS NULL AND m.undone = 0 AND m.ts >= ?
        AND (m.raw IS NULL OR json_extract(m.raw, '$._local') IS NULL)
      ORDER BY m.ts DESC, f.message_id, (f.rel_path LIKE '%/Cache/%') DESC
      LIMIT 600`,
     ch.id,
     agentId,
+    instanceOf(body?.instance),
     cutoff,
   );
   const seen = new Set<number>();
@@ -212,13 +218,14 @@ const ext = (b: Buffer) =>
           : null;
 
 /** Máy gửi một tệp (nội dung thô). Ảnh .jxl đổi sang .jpg; lưu vào uploads/media/<tháng>/ và gắn vào tin. */
-export async function receiveUpload(agentId: number, agentName: string, uid: string, relPath: string, body: Buffer, missing = false) {
+export async function receiveUpload(agentId: number, agentName: string, uid: string, relPath: string, body: Buffer, missing = false, instance = "") {
   const ch = /^\d{6,25}$/.test(uid) ? get<{ id: number; name: string }>("SELECT id, name FROM channels WHERE platform = 'zalo' AND zalo_uid = ? AND deleted_at IS NULL", uid) : undefined;
   if (!ch) throw new HttpError(404, "Không có kênh của tài khoản Zalo này");
   const row = get<{ id: number; message_id: number | null; kind: string; upload_status: string | null }>(
-    "SELECT id, message_id, kind, upload_status FROM pc_media_files WHERE channel_id = ? AND agent_id = ? AND rel_path = ?",
+    "SELECT id, message_id, kind, upload_status FROM pc_media_files WHERE channel_id = ? AND agent_id = ? AND instance = ? AND rel_path = ?",
     ch.id,
     agentId,
+    instanceOf(instance),
     relPath,
   );
   if (!row?.message_id) throw new HttpError(404, "Tệp không có trong danh sách cần tải");

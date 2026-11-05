@@ -7,6 +7,13 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.36.1 — 05/11/2026
+
+- **Sửa lỗi máy chạy chương trình đồng bộ ở nhiều tài khoản Windows.**
+  - Lỗi: laptop Showroom gửi lên 2 danh sách ảnh Zalo PC khác nhau, cách nhau vài giây. Lần quét sau xóa danh sách của lần quét trước, làm mất bớt tệp cần tải.
+  - Sửa: app tách danh sách theo tên máy + tài khoản Windows. Mỗi tài khoản chỉ được xin và gửi tệp của chính nó; tệp của tài khoản này không bị coi là "không còn trên máy" ở tài khoản kia.
+- Máy đồng bộ lên bản 1.3.1 (tự cập nhật). Lúc cập nhật, danh sách ảnh Zalo PC trên app được quét lại từ đầu; ảnh đã đưa lên NAS giữ nguyên.
+
 ## v3.36.0 — 05/11/2026
 
 - **Cứu ảnh / video cũ từ Zalo PC lên NAS.** Ảnh cũ mất trên Zalo nhưng Zalo PC trên máy đồng bộ vẫn giữ. Đợt đếm ngày 05/11:

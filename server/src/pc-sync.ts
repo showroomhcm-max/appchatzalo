@@ -394,7 +394,7 @@ pcAgentRouter.post(
     const uid = String(req.query.uid ?? "");
     const p = String(req.query.p ?? "");
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw new HttpError(400, "Thiếu nội dung tệp");
-    res.json(await receiveUpload(req.agent!.id, req.agent!.name, uid, p, req.body, req.query.missing === "1"));
+    res.json(await receiveUpload(req.agent!.id, req.agent!.name, uid, p, req.body, req.query.missing === "1", String(req.query.inst ?? "")));
   }),
 );
 

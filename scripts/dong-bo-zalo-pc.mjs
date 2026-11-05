@@ -30,7 +30,7 @@ import net from "node:net";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const VERSION = "1.3.0";
+export const VERSION = "1.3.1";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ═════════════════════════ Đọc Zalo PC ═════════════════════════
@@ -389,6 +389,8 @@ async function selfUpdate(cfg, latest) {
 
 // ───────────── Ảnh / video Zalo PC còn giữ trên máy ─────────────
 
+// Mỗi tài khoản Windows có thư mục Zalo PC riêng: app tách danh sách / tệp cần tải theo tên máy + tài khoản
+const INSTANCE = `${os.hostname()}/${(() => { try { return os.userInfo().username; } catch { return ""; } })()}`;
 const MEDIA_ROOT = path.join(process.env.APPDATA ?? "", "ZaloData", "media");
 const KINDS = ["picture", "video", "Cache"];
 
@@ -438,7 +440,7 @@ async function reportZaloMedia(api) {
     let matched = 0;
     for (let i = 0; i < Math.max(files.length, 1); i += 2000) {
       const last = i + 2000 >= files.length;
-      const r = await api("/media/manifest", { uid, files: files.slice(i, i + 2000), first: i === 0, last }, 3);
+      const r = await api("/media/manifest", { uid, instance: INSTANCE, files: files.slice(i, i + 2000), first: i === 0, last }, 3);
       if (r?.ignored) break;
       matched += r?.matched ?? 0;
       if (last) log(`Zalo PC tài khoản ${uid}: còn giữ ${files.length} tệp ảnh / video, ghép được ${matched} tin trên app`);
@@ -452,7 +454,7 @@ const SAFE_REL = /^g?\d{3,25}\/(picture|video|Cache)\/[\w.]{10,120}$/;
 /** Một lượt tải lên NAS (tối đa 100 tệp app hỏi). Hết tệp thì bỏ tài khoản khỏi hàng chờ. */
 async function uploadZaloMedia(cfg, api) {
   for (const uid of [...uploadQueue]) {
-    const r = await api("/media/wanted", { uid }, 3);
+    const r = await api("/media/wanted", { uid, instance: INSTANCE }, 3);
     if (!r?.files?.length) {
       uploadQueue.delete(uid);
       if (r?.reason) log(`Không tải ảnh Zalo PC lên: ${r.reason}`);
@@ -470,7 +472,7 @@ async function uploadZaloMedia(cfg, api) {
       } catch {
         data = null; // Zalo PC đã dọn tệp này: báo app bỏ qua
       }
-      const q = `uid=${encodeURIComponent(uid)}&p=${encodeURIComponent(f.p)}${data ? "" : "&missing=1"}`;
+      const q = `uid=${encodeURIComponent(uid)}&inst=${encodeURIComponent(INSTANCE)}&p=${encodeURIComponent(f.p)}${data ? "" : "&missing=1"}`;
       let res;
       try {
         res = await fetch(`${cfg.base}/api/pc-agent/media/upload?${q}`, {
