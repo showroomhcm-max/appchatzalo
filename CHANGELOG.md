@@ -7,6 +7,10 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.35.1 — 05/11/2026
+
+- **Sửa lỗi tin trả lời dài trên điện thoại.** Khung trích dẫn có nội dung dài làm bong bóng tin tràn ra ngoài màn hình, mất chữ đầu dòng và mất luôn nội dung tin trả lời. Nay bong bóng co vừa khung chat; nội dung tin gốc trong khung trích dẫn hiện tối đa 2 dòng, dài hơn thì có dấu "…".
+
 ## v3.35.0 — 04/11/2026
 
 - **Tin trả lời (trích dẫn) như Zalo.**

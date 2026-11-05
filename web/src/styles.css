@@ -3690,3 +3690,20 @@ html.narrow .chat-sub { flex-wrap: wrap; }
 .msg-video .media-missing { display: flex; width: 220px; height: 120px; justify-content: center; background: #182b22; color: #c2cac5; border: 0; }
 .media-missing.big { flex-direction: column; text-align: center; max-width: 360px; padding: 24px; color: #e3e8e5; background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.25); gap: 8px; }
 .lightbox-video { max-width: 94vw; max-height: calc(100dvh - 120px); background: #000; border-radius: 6px; }
+
+/* Tin trả lời dài trên điện thoại: bong bóng co theo khung chat (không tràn ra ngoài, không mất chữ);
+   nội dung tin gốc trong khung trích dẫn xuống dòng tối đa 2 dòng */
+.msg-line > .bubble {
+  min-width: 0;
+  max-width: 100%;
+}
+.msg-row {
+  min-width: 0;
+}
+.msg-quote-body > span {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
