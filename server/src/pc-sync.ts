@@ -386,10 +386,11 @@ pcAgentRouter.post(
   }),
 );
 
-/** Bước 2: nội dung một tệp (thô, tối đa 64 MB). Chỉ nhận tệp nằm trong danh sách cần tải của đúng máy + kênh. */
+/** Bước 2: nội dung một tệp (thô, tối đa 95 MB, giới hạn của Cloudflare là 100 MB). Chỉ nhận tệp nằm trong danh sách cần tải của đúng máy + kênh. */
 pcAgentRouter.post(
   "/media/upload",
-  express.raw({ type: "application/octet-stream", limit: "64mb" }),
+  // 96 MB = MAX_UPLOAD_MB + 1 (pc-media.ts); để số cố định vì hai tệp nạp vòng lẫn nhau
+  express.raw({ type: "application/octet-stream", limit: "96mb" }),
   wrap(async (req, res) => {
     const uid = String(req.query.uid ?? "");
     const p = String(req.query.p ?? "");

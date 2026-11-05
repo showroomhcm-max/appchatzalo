@@ -171,6 +171,8 @@ export function receiveManifest(agentId: number, agentName: string, body: any) {
 // ───────────── Bước 2: máy đồng bộ tải ảnh / video đã ghép lên NAS ─────────────
 
 const URL_LOCAL = /^\/uploads\//;
+/** Tệp lớn nhất máy đồng bộ được gửi (Cloudflare giới hạn 100 MB mỗi yêu cầu) */
+export const MAX_UPLOAD_MB = 95;
 const fileStats = new Map<number, { ok: number; photos: number; videos: number; bytes: number; failed: number; since: number }>();
 
 /**
@@ -184,6 +186,15 @@ export function wantedFiles(agentId: number, body: any) {
   const ch = uid ? get<{ id: number }>("SELECT id FROM channels WHERE platform = 'zalo' AND zalo_uid = ? AND deleted_at IS NULL", uid) : undefined;
   if (!ch) return { files: [], ignored: true };
   const cutoff = cfg.keepDays > 0 ? Date.now() - cfg.keepDays * 86_400_000 : 0;
+  // Tệp quá lớn (Cloudflare chặn yêu cầu trên 100 MB): bỏ qua hẳn, không để máy gửi đi gửi lại tốn mạng
+  run(
+    "UPDATE pc_media_files SET upload_status = ?, upload_at = ? WHERE channel_id = ? AND agent_id = ? AND upload_status IS NULL AND size > ?",
+    `skip: quá ${MAX_UPLOAD_MB} MB`,
+    Date.now(),
+    ch.id,
+    agentId,
+    MAX_UPLOAD_MB * 1024 * 1024,
+  );
   const rows = all<{ message_id: number; rel_path: string; kind: string }>(
     `SELECT f.message_id, f.rel_path, f.kind FROM pc_media_files f JOIN messages m ON m.id = f.message_id
      WHERE f.channel_id = ? AND f.agent_id = ? AND f.instance = ? AND f.upload_status IS NULL AND m.undone = 0 AND m.ts >= ?

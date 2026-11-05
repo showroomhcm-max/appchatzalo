@@ -7,6 +7,12 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.37.2 — 05/11/2026
+
+- **Cứu ảnh Zalo PC: sửa lỗi video lớn bị gửi đi gửi lại.**
+  - Lỗi: video trên 64 MB bị NAS từ chối (nhật ký báo "request entity too large"). Máy đồng bộ cứ khoảng 18 giây lại gửi lại, tốn mạng cửa hàng.
+  - Sửa: NAS nhận video đến 95 MB. Lớn hơn thì bỏ qua hẳn (Cloudflare không cho gửi quá 100 MB), máy không gửi lại nữa.
+
 ## v3.37.1 — 05/11/2026
 
 - **Điện thoại: bảng thao tác tin nhắn giống Zalo.** Chạm hoặc nhấn giữ vào tin:
