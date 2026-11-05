@@ -3707,3 +3707,54 @@ html.narrow .chat-sub { flex-wrap: wrap; }
   -webkit-box-orient: vertical;
   overflow-wrap: anywhere;
 }
+
+/* Điện thoại: quẹt tin từ phải sang trái để trả lời nhanh (msg-line trượt theo ngón tay, hiện biểu tượng trả lời) */
+.msg-line {
+  position: relative;
+  transition: transform 0.18s ease;
+}
+.msg-line.swiping {
+  transition: none;
+}
+.swipe-reply {
+  position: absolute;
+  right: -34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mz-ink-100);
+  color: var(--mz-ink-600);
+  pointer-events: none;
+}
+.swipe-reply.ready {
+  background: var(--mz-green-700);
+  color: #fff;
+}
+@media (hover: none) {
+  .msg-row {
+    touch-action: pan-y;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Gợi ý mẫu trả lời: hiện đủ mẫu của hội thoại, cuộn được */
+.template-picker {
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.template-picker-head {
+  position: sticky;
+  top: 0;
+  background: var(--mz-ink-50);
+  color: var(--mz-ink-500);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+}

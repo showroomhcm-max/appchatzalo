@@ -271,26 +271,62 @@ export function Bubble({
         setTouchOpen(false)
       }
     }
-    document.addEventListener('mousedown', close)
+    document.addEventListener('pointerdown', close)
     document.addEventListener('touchstart', close)
     return () => {
-      document.removeEventListener('mousedown', close)
+      document.removeEventListener('pointerdown', close)
       document.removeEventListener('touchstart', close)
     }
   }, [menu, touchOpen])
 
+  // Điện thoại: chạm vào tin = hiện / ẩn thao tác; quẹt tin từ phải sang trái = trả lời nhanh (như Zalo); nhấn giữ vẫn được
+  const [swipe, setSwipe] = useState(0)
+  const touch = useRef<{ x: number; y: number; t: number; mode: 'idle' | 'swipe' | 'scroll'; target: EventTarget | null } | null>(null)
+  const SWIPE_REPLY = 60
+  const endTouch = () => {
+    window.clearTimeout(pressTimer.current)
+    touch.current = null
+    setSwipe(0)
+  }
   const longPress = {
     onPointerDown: (e: React.PointerEvent) => {
       if (e.pointerType !== 'touch' || !actionable) return
+      touch.current = { x: e.clientX, y: e.clientY, t: Date.now(), mode: 'idle', target: e.target }
       window.clearTimeout(pressTimer.current)
       pressTimer.current = window.setTimeout(() => {
+        touch.current = null
         setTouchOpen(true)
         navigator.vibrate?.(15)
       }, 450)
     },
-    onPointerUp: () => window.clearTimeout(pressTimer.current),
-    onPointerMove: () => window.clearTimeout(pressTimer.current),
-    onPointerCancel: () => window.clearTimeout(pressTimer.current),
+    onPointerMove: (e: React.PointerEvent) => {
+      const s = touch.current
+      if (!s) return
+      const dx = e.clientX - s.x
+      const dy = e.clientY - s.y
+      if (s.mode === 'idle' && Math.hypot(dx, dy) > 8) {
+        window.clearTimeout(pressTimer.current)
+        s.mode = canReply && dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.5 ? 'swipe' : 'scroll'
+      }
+      if (s.mode === 'swipe') {
+        const next = Math.max(-90, Math.min(0, dx))
+        if (next <= -SWIPE_REPLY && swipe > -SWIPE_REPLY) navigator.vibrate?.(10)
+        setSwipe(next)
+      }
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      const s = touch.current
+      if (!s) return endTouch()
+      if (s.mode === 'swipe') {
+        if (swipe <= -SWIPE_REPLY) act('reply')
+      } else if (s.mode === 'idle' && Date.now() - s.t < 350 && !selecting) {
+        // Chạm nhanh vào chữ / khoảng trống của tin (không phải ảnh, link, nút, tên được nhắc) → hiện thao tác
+        const el = e.target as HTMLElement
+        if (!el.closest('a, button, img, video, input, textarea, .msg-mention, .msg-actions, .msg-quote')) setTouchOpen((v) => !v)
+      }
+      endTouch()
+    },
+    onPointerCancel: endTouch,
     onContextMenu: (e: React.MouseEvent) => {
       if (!actionable) return
       // Android: nhấn giữ sinh contextmenu → mở thao tác thay cho menu của trình duyệt
@@ -446,7 +482,12 @@ export function Bubble({
       {!grouped && (out ? label : isGroup ? m.sender_name : null) && (
         <div className={`msg-sender ${out && !m.agent_id ? 'muted' : ''}`}>{out ? label : m.sender_name}</div>
       )}
-      <div className="msg-line">
+      <div className={`msg-line ${swipe ? 'swiping' : ''}`} style={swipe ? { transform: `translateX(${swipe}px)` } : undefined}>
+        {swipe < 0 && (
+          <span className={`swipe-reply ${swipe <= -SWIPE_REPLY ? 'ready' : ''}`} style={{ opacity: Math.min(1, -swipe / SWIPE_REPLY) }} aria-hidden>
+            <Quote size={16} />
+          </span>
+        )}
         <div
           className={`bubble ${m.undone ? 'undone' : ''} ${isImage || isVideo ? 'media' : ''} ${isSticker && !m.undone ? 'sticker' : ''}`}
           title={fullTime(m.ts)}

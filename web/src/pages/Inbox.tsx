@@ -1909,16 +1909,34 @@ function Composer({
     }, 3000)
   }
 
-  const slash = text.startsWith('/') && !text.includes('\n') ? text.slice(1).toLowerCase() : null
-  const suggestions = useMemo(
-    () =>
-      slash === null
-        ? []
-        : templates
-            .filter((t) => t.shortcut.toLowerCase().includes(slash) || t.content.toLowerCase().includes(slash))
-            .slice(0, 6),
-    [slash, templates],
-  )
+  // Mẫu trả lời đúng hội thoại: mẫu của bộ phận đang phụ trách hội thoại (chưa có bộ phận thì theo các bộ phận của kênh) + mẫu dùng chung.
+  // Gõ "/" là hiện toàn bộ mẫu dùng được (cuộn được), gõ thêm chữ để lọc (không dấu, theo tên tắt trước rồi nội dung).
+  const channel = channels.find((ch) => ch.id === channelId)
+  const deptScope = useMemo(() => {
+    if (conv?.department_id) return new Set([conv.department_id])
+    return new Set([...(channel?.department_ids ?? []), ...(channel?.default_department_id ? [channel.default_department_id] : [])])
+  }, [conv?.department_id, channel])
+  const slash = text.startsWith('/') && !text.includes('\n') ? fold(text.slice(1).trim()) : null
+  const suggestions = useMemo(() => {
+    if (slash === null) return []
+    const fits = (t: Template) => !t.department_ids.length || !deptScope.size || t.department_ids.some((d) => deptScope.has(d))
+    const score = (t: Template) => {
+      const sc = fold(t.shortcut)
+      const own = t.department_ids.length ? 0 : 1 // mẫu riêng bộ phận đứng trước mẫu dùng chung
+      if (!slash) return own
+      if (sc.startsWith(slash)) return 10 + own
+      if (sc.includes(slash)) return 20 + own
+      if (fold(t.content).includes(slash)) return 30 + own
+      return -1
+    }
+    return templates
+      .filter(fits)
+      .map((t) => ({ t, s: score(t) }))
+      .filter((x) => x.s >= 0)
+      .sort((a, b) => a.s - b.s || a.t.shortcut.localeCompare(b.t.shortcut, 'vi'))
+      .map((x) => x.t)
+  }, [slash, templates, deptScope])
+  useEffect(() => setPickerIndex(0), [slash])
 
   function applyTemplate(t: Template) {
     setText(t.content)
@@ -2032,9 +2050,15 @@ function Composer({
       {emojiOpen && <EmojiPicker onPick={insertEmoji} onClose={() => setEmojiOpen(false)} />}
       {suggestions.length > 0 && (
         <div className="template-picker">
+          <div className="template-picker-head">
+            {suggestions.length} mẫu trả lời
+            {conv?.department_name ? ` · ${conv.department_name} + dùng chung` : channel ? ` · kênh ${channel.name}` : ''}
+          </div>
           {suggestions.map((t, i) => (
             <button
               key={t.id}
+              type="button"
+              ref={i === pickerIndex ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
               className={i === pickerIndex ? 'on' : ''}
               onMouseDown={(e) => {
                 e.preventDefault()

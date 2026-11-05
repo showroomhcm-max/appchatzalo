@@ -7,6 +7,16 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.37.0 — 05/11/2026
+
+- **Điện thoại: thao tác tin nhắn như Zalo.**
+  - **Quẹt tin từ phải sang trái** để trả lời nhanh: tin trượt theo ngón tay, hiện biểu tượng trả lời, quẹt đủ xa là mở khung "Trả lời" (máy có rung nhẹ).
+  - **Chạm vào tin** là hiện các nút thao tác (trả lời, thả cảm xúc, thêm…); chạm lần nữa hoặc chạm ra ngoài thì ẩn. Chạm vào ảnh, link, tên được nhắc vẫn mở như cũ. Nhấn giữ vẫn dùng được.
+- **Mẫu trả lời nhanh (gõ "/") đúng hội thoại và hiện đủ.**
+  - Chỉ gợi ý mẫu của bộ phận đang phụ trách hội thoại cùng mẫu dùng chung. Hội thoại chưa thuộc bộ phận nào thì theo các bộ phận của kênh.
+  - Gõ "/" là hiện toàn bộ mẫu dùng được, trước đây chỉ hiện 6 mẫu. Khung gợi ý cuộn được, đầu khung ghi số mẫu và bộ phận.
+  - Gõ thêm chữ để lọc, không cần dấu: khớp tên tắt đứng trước, khớp nội dung đứng sau.
+
 ## v3.36.1 — 05/11/2026
 
 - **Sửa lỗi máy chạy chương trình đồng bộ ở nhiều tài khoản Windows.**
