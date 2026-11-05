@@ -607,6 +607,14 @@ type ContactResult = {
   conversation_id: string | null
   last_message_preview: string | null
   last_message_at: number | null
+  /** Tin cuối là của khách (đang chờ trả lời) */
+  waiting?: boolean
+  unread?: number
+}
+
+const phoneTail = (v: string | null | undefined) => {
+  const d = String(v ?? '').replace(/\D/g, '')
+  return d.length >= 9 ? d.slice(-9) : null
 }
 
 type MessageHit = {
@@ -680,6 +688,20 @@ function SearchPanel({ q, activeConv }: { q: string; activeConv: string | null }
   }
 
   async function openContact(c: ContactResult) {
+    // Cùng số điện thoại mà khách đang chờ trả lời ở kênh khác: hỏi trước khi mở / tạo hội thoại ở kênh này
+    const tail = phoneTail(c.phone)
+    const elsewhere = tail
+      ? contacts?.find((x) => x !== c && x.channel_id !== c.channel_id && x.conversation_id && x.waiting && phoneTail(x.phone) === tail)
+      : undefined
+    if (elsewhere && !c.waiting) {
+      const go = confirm(
+        `Khách này đang chờ trả lời ở kênh "${elsewhere.channel_name ?? elsewhere.channel_id}"${elsewhere.unread ? ` (${elsewhere.unread} tin chưa đọc)` : ''}.\n\nBấm OK để mở hội thoại đó, Hủy để vẫn nhắn ở kênh "${c.channel_name ?? c.channel_id}".`,
+      )
+      if (go) {
+        window.location.hash = `#/inbox/${encodeURIComponent(elsewhere.conversation_id!)}`
+        return
+      }
+    }
     if (c.conversation_id) {
       window.location.hash = `#/inbox/${encodeURIComponent(c.conversation_id)}`
       return
@@ -788,7 +810,10 @@ function SearchPanel({ q, activeConv }: { q: string; activeConv: string | null }
                 </span>
                 <span className="search-row-side">
                   {c.conversation_id ? (
-                    timeLabel(c.last_message_at)
+                    <>
+                      {timeLabel(c.last_message_at)}
+                      {c.waiting && <span className="badge danger">Đang chờ{c.unread ? ` · ${c.unread}` : ''}</span>}
+                    </>
                   ) : (
                     <span className="badge green">{opening === `${c.channel_id}_${c.uid}` ? 'Đang mở…' : 'Nhắn tin'}</span>
                   )}
@@ -1528,6 +1553,7 @@ function ChatView({
             }}
           />
         )}
+        {conv && conv.type !== 1 && <RelatedChannels convId={conv.id} phone={conv.phone ?? null} />}
         {watchOnly && conv && (
           <AiPanel
             convId={conv.id}
@@ -1761,6 +1787,67 @@ function PendingBubble({ item }: { item: OutboxItem }) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+type RelatedConv = {
+  id: string
+  channel_id: number
+  channel_name: string | null
+  name: string | null
+  status: string
+  unread: number
+  waiting: boolean
+  last_message_at: number | null
+  last_message_preview: string | null
+  assigned_name: string | null
+}
+
+/**
+ * Cùng một khách nhắn ở kênh khác (Zalo cấp mã khách riêng cho từng tài khoản nên app nối bằng số điện thoại):
+ * hiện thanh nhắc đầu khung chat, bấm để mở hội thoại bên kênh kia. Chỉ thấy kênh mình được xem.
+ */
+function RelatedChannels({ convId, phone }: { convId: string; phone: string | null }) {
+  const [list, setList] = useState<RelatedConv[]>([])
+  useEffect(() => {
+    setList([])
+    if (!phone) return
+    let alive = true
+    const load = () =>
+      api<RelatedConv[]>(`/conversations/${encodeURIComponent(convId)}/related`)
+        .then((r) => alive && setList(r))
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 60_000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [convId, phone])
+  if (!list.length) return null
+  return (
+    <div className="related-channels">
+      {list.slice(0, 3).map((r) => (
+        <a key={r.id} className={`related-row ${r.waiting ? 'waiting' : ''}`} href={`#/inbox/${encodeURIComponent(r.id)}`}>
+          <Radio size={14} className="inline-icon" />
+          <span className="grow">
+            {r.waiting ? (
+              <>
+                Khách này <b>đang chờ trả lời</b> ở kênh <b>{r.channel_name ?? `#${r.channel_id}`}</b>
+                {r.unread > 0 ? ` (${r.unread} tin chưa đọc)` : ''}
+                {r.assigned_name ? ` · ${r.assigned_name} phụ trách` : ' · chưa ai nhận'}
+              </>
+            ) : (
+              <>
+                Khách này cũng có hội thoại ở kênh <b>{r.channel_name ?? `#${r.channel_id}`}</b>
+                {r.last_message_at ? ` · tin cuối ${timeLabel(r.last_message_at)}` : ''}
+              </>
+            )}
+          </span>
+          <span className="related-open">Mở ›</span>
+        </a>
+      ))}
     </div>
   )
 }

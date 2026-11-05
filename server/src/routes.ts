@@ -40,7 +40,7 @@ import { setReaction } from "./store.js";
 import { agentStats, buildConversations, toCsv, toJsonl, toTxt, toXlsx, type ExportFilter } from "./analytics.js";
 import { WEBHOOK_EVENTS, dispatch } from "./webhooks.js";
 import { bus } from "./bus.js";
-import { openConversationWith, searchContacts, searchMessages } from "./people.js";
+import { openConversationWith, relatedConversations, searchContacts, searchMessages } from "./people.js";
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
 import { qaRouter } from "./qa.js";
@@ -672,6 +672,9 @@ function visibleConversation(req: Request, id: string) {
   if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) throw new HttpError(404, "Không tìm thấy hội thoại");
   return conv;
 }
+
+// Cùng một khách ở kênh khác (nối theo số điện thoại), chỉ hội thoại người này được xem
+appRouter.get("/conversations/:id/related", (req, res) => res.json(relatedConversations(req.params.id, scopeOf(req.user!))));
 
 // Tìm kiếm gộp: liên hệ + tin nhắn
 appRouter.get(

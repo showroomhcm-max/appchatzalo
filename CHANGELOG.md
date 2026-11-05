@@ -7,7 +7,20 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
-## v3.37.2 — 05/11/2026
+## v3.38.0 — 05/11/2026
+
+- **Tự đọc bù tin Zalo bị rớt mỗi 30 phút.**
+  - Kết nối nhận tin của Zalo đôi khi rớt tin lẻ mà không báo lỗi. Đọc lại 7 ngày ngày 05/11 bù được 54 tin, phần lớn là tin nhóm.
+  - Nay cứ 30 phút app đọc lại 2 giờ gần nhất của mỗi kênh, không cần Zalo PC. Tin đã có tự bỏ qua; tin rớt được lưu như tin mới (chưa đọc, có thông báo).
+  - Mỗi lần bù được tin thì ghi vào nhật ký.
+- **Cùng một khách nhắn ở nhiều kênh: app nối lại theo số điện thoại.** Mỗi tài khoản Zalo thấy khách với một mã khác nhau, nên trước đây app coi là 2 người khác nhau.
+  - Đầu khung chat có thanh nhắc "Khách này đang chờ trả lời ở kênh KT - BH HCM (3 tin chưa đọc) · chưa ai nhận", bấm "Mở ›" để sang đúng hội thoại.
+  - **Tìm theo số điện thoại thì tra trên tất cả các kênh** mình được dùng, không chỉ kênh đầu tiên. Hội thoại có tin khách đang chờ xếp lên đầu và có nhãn đỏ "Đang chờ".
+  - Nếu khách đang chờ ở một kênh mà bấm mở / nhắn ở kênh khác, app hỏi lại có muốn mở hội thoại đang chờ không.
+  - App tự ghi số điện thoại vào hội thoại khi tra số, và lấy từ danh sách bạn bè Zalo 6 giờ một lần. Số dạng 0…, +84…, có dấu cách đều so khớp được.
+  - Chỉ thấy hội thoại ở kênh mình được xem.
+
+## v3.37.2 — 05/11/2026 (gộp vào v3.38.0)
 
 - **Cứu ảnh Zalo PC: sửa lỗi video lớn bị gửi đi gửi lại.**
   - Lỗi: video trên 64 MB bị NAS từ chối (nhật ký báo "request entity too large"). Máy đồng bộ cứ khoảng 18 giây lại gửi lại, tốn mạng cửa hàng.

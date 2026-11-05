@@ -79,6 +79,10 @@ function describeBatch(msgs: Message[], type: ThreadType) {
   return `${msgs.length} tin ${kind} / ${threads} hội thoại, từ ${t(Math.min(...ts))} đến ${t(Math.max(...ts))}`;
 }
 
+/** Đọc bù tin rớt định kỳ: mỗi 30 phút đọc lại 2 giờ gần nhất (chồng lấn để không hở khe) */
+const SWEEP_EVERY_MS = 30 * 60_000;
+const SWEEP_WINDOW_MS = 2 * 3_600_000;
+
 export class ChannelSession implements ChannelAdapter {
   readonly platform = "zalo" as const;
   readonly capabilities: Capabilities = {
@@ -322,8 +326,22 @@ export class ChannelSession implements ChannelAdapter {
       const lastOnline = get<{ t: number | null }>("SELECT last_online_at AS t FROM channels WHERE id = ?", this.channelId)?.t ?? null;
       this.markAlive();
       if (this.aliveTimer) clearInterval(this.aliveTimer);
+      this.lastSweep = Date.now();
+      this.lastPhoneFill = Date.now() - 6 * 3_600_000 + 3 * 60_000; // lần đầu: 3 phút sau khi kết nối
       this.aliveTimer = setInterval(() => {
-        if (this.api === api && this.connected) this.markAlive();
+        if (this.api !== api || !this.connected) return;
+        this.markAlive();
+        // Kết nối nhận tin của Zalo đôi khi rớt tin lẻ mà không báo lỗi (kiểm 05/11/2026: 54 tin / 7 ngày):
+        // cứ ~30 phút đọc lại 2 giờ gần nhất, tin đã có tự bỏ qua, tin rớt lưu như tin mới
+        // Số điện thoại bạn bè Zalo → hội thoại (để nối cùng một khách giữa các kênh), 6 giờ một lần
+        if (Date.now() - this.lastPhoneFill >= 6 * 3_600_000) {
+          this.lastPhoneFill = Date.now();
+          void this.fillPhonesFromFriends().catch((e) => console.warn(`[zalo#${this.channelId}] Lấy SĐT bạn bè lỗi:`, e?.message ?? e));
+        }
+        if (Date.now() - this.lastSweep >= SWEEP_EVERY_MS && this.history.state !== "running" && !this.catchingUp) {
+          this.lastSweep = Date.now();
+          void this.catchUp(api, SWEEP_WINDOW_MS).catch((e) => console.warn(`[zalo#${this.channelId}] Đọc bù định kỳ lỗi:`, e?.message ?? e));
+        }
       }, 60_000);
       this.aliveTimer.unref?.();
       this.setStatus({ state: "connected", account: { id: ownId, name, avatar }, error: undefined, qrImage: undefined });
@@ -482,13 +500,37 @@ export class ChannelSession implements ChannelAdapter {
   }
 
   private catchingUp = false;
+  private lastSweep = 0;
+  private lastPhoneFill = 0;
+
+  /** Ghi số điện thoại của bạn bè Zalo vào hội thoại cá nhân còn thiếu số (không ghi đè số đã có). */
+  private async fillPhonesFromFriends() {
+    const missing = all<{ id: string; thread_id: string }>(
+      "SELECT id, thread_id FROM conversations WHERE channel_id = ? AND type = 0 AND phone IS NULL",
+      this.channelId,
+    );
+    if (!missing.length) return;
+    const friends = new Map((await this.friends(true)).map((f) => [f.uid, f.phone]));
+    let n = 0;
+    for (const c of missing) {
+      const raw = String(friends.get(c.thread_id) ?? "").replace(/\D/g, "");
+      if (raw.length < 9) continue;
+      const phone = raw.startsWith("84") && raw.length >= 11 ? "0" + raw.slice(2) : raw.startsWith("0") ? raw : "0" + raw.slice(-9);
+      if (!/^0\d{9}$/.test(phone)) continue;
+      run("UPDATE conversations SET phone = COALESCE(phone, ?) WHERE id = ?", phone, c.id);
+      n++;
+    }
+    if (n) this.log(`Lấy số điện thoại từ danh sách bạn bè: ghi vào ${n} hội thoại`);
+  }
 
   /**
    * Bù tin lúc mất kết nối: Zalo trả tin theo chiều xuôi kể từ mã tin được hỏi, nên hỏi từ tin mới nhất app đã có
    * rồi lật tiếp đến hiện tại. (Trước đây hỏi không kèm mã tin → Zalo luôn trả lô cũ nhất, không bù được tin vừa lỡ.)
    * Tin bù lưu như tin mới (chưa đọc, cảnh báo, webhook); tin đã có thì bỏ qua.
+   * windowMs: đọc bù định kỳ — mốc là tin cuối cùng app có trước (bây giờ − windowMs), để bắt cả tin rớt lẻ
+   * nằm giữa các tin đã nhận (mốc "tin mới nhất" không bắt được loại này). Chỉ ghi nhật ký khi bù được tin.
    */
-  private async catchUp(api: API) {
+  private async catchUp(api: API, windowMs?: number) {
     this.catchingUp = true;
     const started = Date.now();
     try {
@@ -496,9 +538,10 @@ export class ChannelSession implements ChannelAdapter {
         const label = type === ThreadType.User ? "tin cá nhân" : "tin nhóm";
         const anchor = get<{ zalo_msg_id: string; ts: number }>(
           `SELECT m.zalo_msg_id, m.ts FROM messages m JOIN conversations c ON c.id = m.conversation_id
-           WHERE c.channel_id = ? AND c.type = ? AND m.zalo_msg_id GLOB '[0-9]*' ORDER BY m.ts DESC LIMIT 1`,
+           WHERE c.channel_id = ? AND c.type = ? AND m.zalo_msg_id GLOB '[0-9]*' AND m.ts <= ? ORDER BY m.ts DESC LIMIT 1`,
           this.channelId,
           type === ThreadType.Group ? 1 : 0,
+          windowMs ? Date.now() - windowMs : Number.MAX_SAFE_INTEGER,
         );
         // Kênh chưa có tin nào: không có mốc để bù (tin cũ dùng "Đồng bộ tin cũ")
         if (!anchor) continue;
@@ -523,7 +566,8 @@ export class ChannelSession implements ChannelAdapter {
           await new Promise((r) => setTimeout(r, 500));
         }
         const fmt = (t: number) => new Date(t).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false });
-        this.log(`Bù ${label} lúc mất kết nối: từ ${fmt(anchor.ts)}, Zalo trả ${read} tin, thêm mới ${added}${read ? ` (mới nhất ${fmt(newest)})` : ""}`);
+        if (!windowMs) this.log(`Bù ${label} lúc mất kết nối: từ ${fmt(anchor.ts)}, Zalo trả ${read} tin, thêm mới ${added}${read ? ` (mới nhất ${fmt(newest)})` : ""}`);
+        else if (added) this.log(`Đọc bù định kỳ ${label}: từ ${fmt(anchor.ts)}, Zalo trả ${read} tin, bù ${added} tin bị rớt`);
       }
     } finally {
       this.catchingUp = false;

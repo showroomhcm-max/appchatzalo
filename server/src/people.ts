@@ -30,7 +30,56 @@ export type ContactResult = {
   conversation_id: string | null;
   last_message_preview: string | null;
   last_message_at: number | null;
+  /** Hội thoại có tin khách chưa được trả lời (tin cuối là của khách) */
+  waiting?: boolean;
+  unread?: number;
 };
+
+/** Ghi số điện thoại vào hội thoại (để nối cùng một khách giữa các kênh). Không ghi đè số đã có. */
+function rememberPhone(channelId: number, uid: string, phone: string | null | undefined) {
+  const p = phone ? normalizePhone(String(phone)) : null;
+  if (p && /^0\d{9}$/.test(p)) run("UPDATE conversations SET phone = COALESCE(phone, ?) WHERE id = ?", p, conversationKey(channelId, uid));
+}
+
+/** 9 số cuối của số điện thoại (bỏ khác biệt 0 / +84 / dấu cách) để so khớp */
+const phoneTail = (v: string | null | undefined) => {
+  const d = String(v ?? "").replace(/\D/g, "");
+  return d.length >= 9 ? d.slice(-9) : null;
+};
+
+/**
+ * Cùng một khách nhắn ở kênh khác: Zalo cấp mỗi tài khoản một mã khách riêng, nên nối bằng số điện thoại.
+ * Chỉ trả hội thoại người dùng được xem; hội thoại có tin khách đang chờ xếp lên đầu.
+ */
+export function relatedConversations(conversationId: string, access: Scope) {
+  const conv = getConversation(conversationId) as any;
+  if (!conv || !canSeeConversation(access, conv)) throw new HttpError(404, "Không tìm thấy hội thoại");
+  const tail = phoneTail(conv.phone);
+  if (!tail || conv.type === 1) return [];
+  const rows = all<any>(
+    `SELECT c.id FROM conversations c
+     WHERE c.id <> ? AND c.type = 0 AND c.deleted_at IS NULL AND c.phone IS NOT NULL
+       AND substr(replace(replace(replace(replace(c.phone, ' ', ''), '.', ''), '-', ''), '+', ''), -9) = ?`,
+    conversationId,
+    tail,
+  );
+  return rows
+    .map((r) => getConversation(r.id) as any)
+    .filter((c) => !!c && canSeeConversation(access, c))
+    .map((c) => ({
+      id: c.id as string,
+      channel_id: c.channel_id as number,
+      channel_name: (c.channel_name ?? null) as string | null,
+      name: c.name as string | null,
+      status: c.status as string,
+      unread: (c.unread_count ?? 0) as number,
+      waiting: c.last_direction === "in",
+      last_message_at: (c.last_message_at ?? null) as number | null,
+      last_message_preview: (c.last_message_preview ?? null) as string | null,
+      assigned_name: (c.assigned_name ?? null) as string | null,
+    }))
+    .sort((a, b) => Number(b.waiting) - Number(a.waiting) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0));
+}
 
 // Kết quả tra số điện thoại lưu 24 giờ (theo từng kênh) để gõ lại không tốn lượt tra của Zalo.
 const phoneCache = new Map<string, { at: number; person: ZaloPerson | null }>();
@@ -76,11 +125,11 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
 
   const convRows = all(
     `SELECT c.id, c.channel_id, c.thread_id, c.type, c.name, c.avatar, c.phone, c.last_message_preview, c.last_message_at,
-            ch.name AS channel_name
+            c.last_direction, c.unread_count, ch.name AS channel_name
      FROM conversations c LEFT JOIN channels ch ON ch.id = c.channel_id
      WHERE ${conversationFilter(opts.access)} ${opts.channelId ? `AND c.channel_id = ${Number(opts.channelId)}` : ""}
        AND (fold(c.name) LIKE ? ESCAPE '\\' OR c.thread_id LIKE ? OR fold(c.external_ref) LIKE ? ESCAPE '\\'
-            ${digits.length >= 4 ? "OR c.phone LIKE ?" : ""})
+            ${digits.length >= 4 ? "OR replace(replace(replace(replace(c.phone, ' ', ''), '.', ''), '-', ''), '+', '') LIKE ?" : ""})
      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC LIMIT 20`,
     like,
     `%${q}%`,
@@ -100,6 +149,8 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
     conversation_id: c.id,
     last_message_preview: c.last_message_preview,
     last_message_at: c.last_message_at,
+    waiting: c.type !== 1 && c.last_direction === "in",
+    unread: c.unread_count ?? 0,
   }));
   let phoneError: string | null = null;
 
@@ -111,6 +162,7 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
       try {
         const p = await lookupPhone(channelId, phone);
         if (p) {
+          rememberPhone(channelId, p.uid, phone);
           const existing = contacts.find((c) => c.uid === p.uid && c.channel_id === channelId);
           if (existing) existing.phone ??= phone;
           else {
@@ -174,6 +226,27 @@ export async function searchContacts(rawQuery: string, opts: { access: Scope; ch
     }
   }
 
+  // Tra số điện thoại trên CẢ các kênh Zalo khác người này dùng được: cùng một khách có thể nhắn ở kênh khác
+  // (vd. khách nhắn kênh Kỹ thuật nhưng tìm từ kênh Showroom). Kênh có tin khách đang chờ xếp lên đầu.
+  if (phone && /^0\d{9}$/.test(phone) && !opts.channelId) {
+    const ids = all<{ id: number }>("SELECT id FROM channels WHERE active = 1 AND platform = 'zalo' AND deleted_at IS NULL ORDER BY id").map((r) => r.id);
+    for (const id of ids) {
+      if (id === channelId || !canUseChannel(opts.access, id) || isOthersMonitorChannel(id, opts.userId ?? 0) || !zalo.session(id).connected) continue;
+      try {
+        const p = await lookupPhone(id, phone);
+        if (!p) continue;
+        rememberPhone(id, p.uid, phone);
+        const existing = contacts.find((c) => c.uid === p.uid && c.channel_id === id);
+        if (existing) existing.phone ??= phone;
+        else contacts.push(toContact(p, id, opts.access, "phone", phone));
+      } catch (e: any) {
+        phoneError ??= e?.message ?? "Không tra được số điện thoại";
+      }
+    }
+    const tail = phone.slice(-9);
+    const same = (c: ContactResult) => phoneTail(c.phone) === tail;
+    contacts.sort((a, b) => Number(same(b)) - Number(same(a)) || Number(!!b.waiting) - Number(!!a.waiting) || (b.last_message_at ?? 0) - (a.last_message_at ?? 0));
+  }
   return { contacts, phone_lookup: !!phone && /^0\d{9}$/.test(phone), phone_error: phoneError, channel_id: channelId };
 }
 
@@ -193,6 +266,8 @@ function toContact(p: ZaloPerson, channelId: number, access: Scope, source: "fri
     conversation_id: visible ? conv.id : null,
     last_message_preview: visible ? conv.last_message_preview : null,
     last_message_at: visible ? conv.last_message_at : null,
+    waiting: visible ? (conv as any).last_direction === "in" : false,
+    unread: visible ? ((conv as any).unread_count ?? 0) : 0,
   };
 }
 

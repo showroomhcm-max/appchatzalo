@@ -3924,3 +3924,41 @@ html.narrow .chat-sub { flex-wrap: wrap; }
   .mobile-sheet-backdrop,
   .mobile-sheet { animation: none; }
 }
+
+/* Cùng một khách ở kênh khác (nối theo SĐT): thanh nhắc đầu khung chat + nhãn "Đang chờ" trong kết quả tìm */
+.related-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--mz-ink-50);
+}
+.related-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--mz-ink-700);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.related-row:hover {
+  background: var(--mz-ink-100);
+}
+.related-row.waiting {
+  background: var(--warning-bg, #fff4e0);
+  color: var(--mz-ink-900);
+}
+.related-open {
+  flex: none;
+  font-weight: 600;
+  color: var(--mz-green-700);
+}
+.search-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
