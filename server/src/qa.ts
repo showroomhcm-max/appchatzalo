@@ -88,6 +88,8 @@ export type QaConfig = {
   improvePct: number;
   /** Hội thoại ngừng nhắn bao nhiêu phút thì chấm */
   quietMin: number;
+  /** Giờ chấm hằng ngày (giờ Việt Nam, 0–23); mỗi ngày chỉ chấm một lượt */
+  runHour: number;
   /** Cách nhau bao nhiêu giờ thì tính là phiên chat mới */
   gapHours: number;
   /** Ghi chú chung cho AI (chính sách, cách xưng hô…) */
@@ -176,6 +178,7 @@ export function qaConfig(): QaConfig {
     passPct: c.passPct ?? 80,
     improvePct: c.improvePct ?? 50,
     quietMin: c.quietMin ?? 30,
+    runHour: c.runHour ?? 22,
     gapHours: c.gapHours ?? 24,
     notes: c.notes ?? "",
     seq,
@@ -191,7 +194,7 @@ const isOutdated = (cfg: QaConfig, r: { status: string; script_id: string | null
 
 export function publicQaConfig() {
   const ai = aiConfig();
-  return { ...qaConfig(), hasKey: !!ai.apiKey, provider: AI_PROVIDERS[ai.provider], model: ai.scanModel, maxCallsPerDay: ai.maxCallsPerDay, kinds: KINDS };
+  return { ...qaConfig(), hasKey: !!ai.apiKey, provider: AI_PROVIDERS[ai.provider], model: ai.scanModel, maxCallsPerDay: ai.maxCallsPerDay, kinds: KINDS, lastRun: qaLastRun() ?? null };
 }
 
 const slug = (s: string) =>
@@ -263,6 +266,7 @@ export function saveQaConfig(input: any, userId: number) {
     passPct,
     improvePct,
     quietMin: input?.quietMin !== undefined ? clampInt(input.quietMin, 5, 720, cur.quietMin) : cur.quietMin,
+    runHour: input?.runHour !== undefined ? clampInt(input.runHour, 0, 23, cur.runHour) : cur.runHour,
     gapHours: input?.gapHours !== undefined ? clampInt(input.gapHours, 2, 72, cur.gapHours) : cur.gapHours,
     notes,
     seq,
@@ -570,51 +574,72 @@ async function scoreEpisode(e: Episode, opts: { force?: boolean } = {}) {
   }
 }
 
-// ───────── Lịch tự chấm ─────────
+// ───────── Lịch tự chấm: mỗi ngày một lượt, vào giờ đã đặt (mặc định 22h giờ Việt Nam) ─────────
 let busy = false;
-const checked = new Map<string, number>(); // hội thoại → tin cuối đã xét (khỏi xét lại khi không có tin mới)
 const isQuotaError = (e: unknown) => e instanceof AiError && /lượt|Khóa API|quá tải|Chưa nhập/.test(e.message);
+const vnNow = (ms = Date.now()) => new Date(ms + 7 * 3600e3);
+const vnDay = (ms = Date.now()) => vnNow(ms).toISOString().slice(0, 10);
 
-async function tick() {
+/** Ngày (giờ VN) đã chạy lượt chấm hằng ngày gần nhất. */
+export const qaLastRun = () => getSetting<{ date: string; at: number; saved: number; left: number; error: string | null }>("qa.lastRun");
+
+/**
+ * Lượt chấm hằng ngày: xét mọi hội thoại có tin trong 3 ngày gần nhất (để chấm bù phiên lượt trước chưa kịp chấm),
+ * chấm hết các phiên chat đã ngừng nhắn. Phiên không có tin mới thì bỏ qua, không tốn lượt AI.
+ * Hết lượt AI giữa chừng thì dừng, phần còn lại để lượt ngày mai.
+ */
+async function dailyRun() {
   const cfg = qaConfig();
-  const ai = aiConfig();
-  if (!cfg.enabled || !ai.apiKey || busy || job.running) return;
   busy = true;
+  const now = Date.now();
+  const stat = { date: vnDay(now), at: now, saved: 0, left: 0, error: null as string | null };
+  setSetting("qa.lastRun", stat);
   try {
-    const now = Date.now();
     const quiet = now - cfg.quietMin * 60_000;
-    const convs = all<{ id: string; last: number }>(
-      `SELECT c.id, (SELECT MAX(id) FROM messages m WHERE m.conversation_id = c.id) AS last FROM conversations c JOIN channels ch ON ch.id = c.channel_id
-       WHERE c.type = 0 AND ch.deleted_at IS NULL AND c.last_message_at < ? AND c.last_message_at > ? ORDER BY c.last_message_at DESC LIMIT 200`,
-      quiet,
-      Math.max(now - 3 * DAY, cfg.since),
+    const since = Math.max(now - 3 * DAY, cfg.since);
+    const convs = all<{ id: string }>(
+      `SELECT c.id FROM conversations c JOIN channels ch ON ch.id = c.channel_id
+       WHERE c.type = 0 AND ch.deleted_at IS NULL AND c.last_message_at > ? ORDER BY c.last_message_at`,
+      since,
     );
-    let calls = 0;
+    let stop = false;
     for (const c of convs) {
-      if (checked.get(c.id) === c.last) continue;
-      let done = true;
-      for (const e of episodesOf(c.id, Math.max(now - 3 * DAY, cfg.since), now + 1, cfg.gapHours)) {
-        if (e.msgs[e.msgs.length - 1].ts >= quiet) continue;
+      for (const e of episodesOf(c.id, since, now + 1, cfg.gapHours)) {
+        if (e.msgs[e.msgs.length - 1].ts >= quiet) continue; // khách còn đang nhắn: để lượt sau
+        if (stop) {
+          stat.left++;
+          continue;
+        }
         try {
-          const r = await scoreEpisode(e);
-          if (r === "saved") calls++;
+          if ((await scoreEpisode(e)) === "saved") stat.saved++;
         } catch (err: any) {
-          done = false;
-          console.warn("[qa] Không chấm được phiên chat:", err.message);
-          if (isQuotaError(err)) return;
+          if (isQuotaError(err)) {
+            stop = true;
+            stat.error = err.message;
+            stat.left++;
+          } else console.warn("[qa] Không chấm được phiên chat:", err.message);
         }
       }
-      if (done) checked.set(c.id, c.last);
-      if (calls >= 30) break; // mỗi lượt tối đa 30 phiên, phần còn lại để lượt sau
     }
-    if (checked.size > 20_000) checked.clear();
   } finally {
     busy = false;
+    setSetting("qa.lastRun", stat);
+    console.log(
+      `[qa] Chấm hằng ngày xong: ${stat.saved} phiên${stat.error ? ` — dừng vì ${stat.error}, còn ${stat.left} phiên để lượt ngày mai` : ""}`,
+    );
   }
 }
 
+function tick() {
+  const cfg = qaConfig();
+  if (!cfg.enabled || !aiConfig().apiKey || busy || job.running) return;
+  const now = Date.now();
+  if (vnNow(now).getUTCHours() < cfg.runHour || qaLastRun()?.date === vnDay(now)) return;
+  void dailyRun().catch((e) => console.error("[qa]", e));
+}
+
 export function startQa() {
-  setInterval(() => void tick().catch((e) => console.error("[qa]", e)), 120_000).unref?.();
+  setInterval(tick, 60_000).unref?.();
 }
 
 // ───────── Chấm theo khoảng ngày (bấm tay) ─────────

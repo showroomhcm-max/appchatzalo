@@ -7,6 +7,18 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.40.0 — 06/11/2026
+
+- **Chấm tư vấn chỉ chạy mỗi ngày một lượt, mặc định lúc 22h**, thay vì 2 phút một lần.
+  - Lượt 22h chấm hết các phiên chat trong ngày, cùng các phiên lượt trước chưa kịp chấm (trong 3 ngày gần nhất).
+  - Phiên không có tin mới thì không chấm lại, không tốn lượt AI.
+  - Đổi được giờ chấm ở Cài đặt › Chấm tư vấn (mục "Giờ chấm hằng ngày").
+- **Hết lượt AI giữa chừng thì dừng hẳn, phần còn lại chấm ở lượt ngày mai.**
+  - Trước đây hết lượt thì cứ 2 phút lại thử và ghi cảnh báo vào nhật ký.
+  - Nay chỉ ghi một dòng tổng kết: chấm được bao nhiêu phiên, còn bao nhiêu phiên.
+  - Trang Cài đặt hiện kết quả lượt chấm gần nhất.
+- Mục "Chấm khi khách ngừng nhắn" đổi thành "Bỏ qua phiên khách mới nhắn trong (phút)": phiên khách còn đang nhắn lúc 22h để sang lượt ngày mai.
+
 ## v3.39.0 — 06/11/2026
 
 - **Khung thông tin hội thoại có thêm nút nhanh** ngay dưới tên khách / kênh:

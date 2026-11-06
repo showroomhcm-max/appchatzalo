@@ -19,8 +19,10 @@ type QaCfg = {
   passPct: number
   improvePct: number
   quietMin: number
+  runHour: number
   gapHours: number
   notes: string
+  lastRun: { date: string; at: number; saved: number; left: number; error: string | null } | null
   hasKey: boolean
   provider: string
   model: string
@@ -161,7 +163,7 @@ export function QaTab({ from, to, channelId }: { from: string; to: string; chann
           {!rep.config.hasKey ? (
             'Chưa có khóa API AI nên chưa chấm được (Cài đặt › Trợ lý AI).'
           ) : rep.config.enabled ? (
-            <>AI tự chấm phiên chat đã ngừng nhắn · {rep.config.scripts} kịch bản</>
+            <>AI tự chấm các phiên chat mỗi ngày một lượt · {rep.config.scripts} kịch bản</>
           ) : (
             'Tự chấm đang tắt (bật ở Cài đặt › Chấm tư vấn).'
           )}
@@ -603,7 +605,7 @@ export function QaSettings() {
     try {
       const c = await api<QaCfg>('/qa/config', {
         method: 'PUT',
-        body: { scripts: cfg!.scripts, passPct: cfg!.passPct, improvePct: cfg!.improvePct, quietMin: cfg!.quietMin, gapHours: cfg!.gapHours, notes: cfg!.notes, ...(enabled !== undefined ? { enabled } : {}) },
+        body: { scripts: cfg!.scripts, passPct: cfg!.passPct, improvePct: cfg!.improvePct, quietMin: cfg!.quietMin, runHour: cfg!.runHour, gapHours: cfg!.gapHours, notes: cfg!.notes, ...(enabled !== undefined ? { enabled } : {}) },
       })
       setCfg(c)
       setMsg({ ok: true, text: enabled === undefined ? `Đã lưu ${c.scripts.length} kịch bản` : enabled ? 'Đã bật tự chấm' : 'Đã tắt tự chấm' })
@@ -621,7 +623,7 @@ export function QaSettings() {
           <h3 className="grow">
             <Sparkles size={16} className="inline-icon" /> Chấm tư vấn theo kịch bản
           </h3>
-          {cfg.enabled ? <Badge tone="green">Đang tự chấm</Badge> : <Badge tone="warning">Chưa bật</Badge>}
+          {cfg.enabled ? <Badge tone="green">Tự chấm lúc {cfg.runHour}h hằng ngày</Badge> : <Badge tone="warning">Chưa bật</Badge>}
         </div>
         <p className="small muted">
           AI đọc từng phiên chat ở mọi kênh đã kết nối, chọn kịch bản hợp với phiên đó rồi chấm từng bước. Bước "Đạt" phải kèm câu trích nguyên văn của nhân
@@ -640,8 +642,20 @@ export function QaSettings() {
             <span className="small muted">Dưới mốc này là "Chưa đạt"</span>
           </label>
           <label className="field">
-            <span>Chấm khi khách ngừng nhắn (phút)</span>
+            <span>Giờ chấm hằng ngày</span>
+            <select value={cfg.runHour} onChange={(e) => set({ runHour: Number(e.target.value) })}>
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {h}h
+                </option>
+              ))}
+            </select>
+            <span className="small muted">Mỗi ngày chấm một lượt cho các phiên chat trong ngày (và phiên lượt trước chưa kịp chấm).</span>
+          </label>
+          <label className="field">
+            <span>Bỏ qua phiên khách mới nhắn trong (phút)</span>
             <input type="number" min={5} max={720} value={cfg.quietMin} onChange={(e) => set({ quietMin: Number(e.target.value) })} />
+            <span className="small muted">Phiên còn đang nhắn lúc chấm thì để lượt ngày mai.</span>
           </label>
           <label className="field">
             <span>Cách nhau bao nhiêu giờ thì tính phiên chat mới</span>
@@ -654,7 +668,15 @@ export function QaSettings() {
         </label>
         <p className="small muted">
           Mỗi lượt chấm một phiên tốn 1 lượt AI ({cfg.provider} · {cfg.model}), dùng chung giới hạn {cfg.maxCallsPerDay} lượt / ngày với Trợ lý AI giám sát.
+          Hết lượt giữa chừng thì phần còn lại được chấm ở lượt ngày mai.
         </p>
+        {cfg.lastRun && (
+          <p className={`small ${cfg.lastRun.error ? 'err-text' : 'muted'}`}>
+            Lượt chấm gần nhất: {new Date(cfg.lastRun.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })} — chấm{' '}
+            {cfg.lastRun.saved} phiên
+            {cfg.lastRun.error ? `, dừng vì ${cfg.lastRun.error}, còn ${cfg.lastRun.left} phiên để lượt sau` : ''}.
+          </p>
+        )}
       </div>
 
       <div className="card stack">
