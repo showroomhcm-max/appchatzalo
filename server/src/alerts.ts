@@ -55,11 +55,12 @@ CREATE INDEX IF NOT EXISTS idx_orders_conv ON orders(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(customer_phone);
 `);
 
-export type AlertType = "no_reply" | "no_order" | "no_shipping";
+export type AlertType = "no_reply" | "no_order" | "no_shipping" | "manual";
 export const ALERT_LABEL: Record<AlertType, string> = {
   no_reply: "Chưa phản hồi",
   no_order: "Chưa tạo đơn",
   no_shipping: "Chưa đẩy vận chuyển",
+  manual: "Cần chú ý",
 };
 
 export type AlertConfig = {
@@ -177,10 +178,10 @@ function openAlert(conversationId: string, type: AlertType, detail: Record<strin
     JSON.stringify(detail),
     Date.now(),
   );
-  if (r.changes) {
-    changed = true;
-    bus.emit("alert.created", { id: Number(r.lastInsertRowid), conversation_id: conversationId, type, label: ALERT_LABEL[type], detail });
-  }
+  if (!r.changes) return false;
+  changed = true;
+  bus.emit("alert.created", { id: Number(r.lastInsertRowid), conversation_id: conversationId, type, label: ALERT_LABEL[type], detail });
+  return true;
 }
 
 function closeAlerts(type: AlertType, conversationIds: string[], resolution: string) {
@@ -208,6 +209,17 @@ export function resolveAlert(id: number, userId: number, note?: string) {
   run("UPDATE conversation_alerts SET resolved_at = ?, resolved_by = ?, resolution = ? WHERE id = ?", Date.now(), userId, note?.slice(0, 300) || "đã xử lý", id);
   logEvent(a.conversation_id, userId, "alert.resolved", { type: a.type, note });
   bus.emit("alerts.changed");
+  return true;
+}
+
+/**
+ * Nhân viên tự bật cảnh báo "Cần chú ý" cho một hội thoại (kèm ghi chú nếu có).
+ * Không tự tắt theo điều kiện nào — chỉ đóng khi có người bấm "Đã xử lý" / "Bỏ cảnh báo".
+ */
+export function raiseManualAlert(conversationId: string, by: { id: number; display_name: string }, note?: string) {
+  const detail = { by: by.display_name, note: note?.trim().slice(0, 300) || null, since: Date.now() };
+  if (!openAlert(conversationId, "manual", detail)) return false;
+  logEvent(conversationId, by.id, "alert.raised", { type: "manual", note: detail.note });
   return true;
 }
 

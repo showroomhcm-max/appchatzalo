@@ -43,7 +43,7 @@ type MonitorDash = {
 }
 
 export type ReportTab = 'overview' | 'staff' | 'qa' | 'monitor' | 'export'
-const ALERT_LABEL: Record<string, string> = { no_reply: 'Chưa phản hồi', no_order: 'Chưa tạo đơn', no_shipping: 'Chưa đẩy vận chuyển' }
+const ALERT_LABEL: Record<string, string> = { no_reply: 'Chưa phản hồi', no_order: 'Chưa tạo đơn', no_shipping: 'Chưa đẩy vận chuyển', manual: 'Cần chú ý' }
 const SOURCE_LABEL: Record<string, string> = { odoo_pos: 'POS Odoo (lên từ chat)', sapo: 'Sapo', api: 'Web / API' }
 const money = (n: number) => (n >= 1e6 ? `${(n / 1e6).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} tr₫` : `${n.toLocaleString('vi-VN')}₫`)
 const C = { green: CHART_COLORS[0], lime: CHART_COLORS[1], blue: CHART_COLORS[2], amber: CHART_COLORS[3], violet: CHART_COLORS[4], red: CHART_COLORS[5] }

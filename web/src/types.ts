@@ -173,7 +173,7 @@ export type Channel = {
   status: ZaloStatus | null
 }
 
-export type AlertType = 'no_reply' | 'no_order' | 'no_shipping'
+export type AlertType = 'no_reply' | 'no_order' | 'no_shipping' | 'manual'
 
 /** Cảnh báo đơn "rơi" đang mở */
 export type Alert = {
@@ -181,7 +181,7 @@ export type Alert = {
   conversation_id: string
   type: AlertType
   label: string
-  detail: { since?: number; phone?: string | null; address?: boolean; keyword?: string | null; order?: string } | null
+  detail: { since?: number; phone?: string | null; address?: boolean; keyword?: string | null; order?: string; by?: string; note?: string | null } | null
   created_at: number
   conversation_name: string | null
   conversation_avatar: string | null

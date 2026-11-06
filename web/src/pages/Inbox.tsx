@@ -64,7 +64,7 @@ import PosOrderModal from './PosOrderModal'
 import DvktPanel from './dvkt-panel'
 import { AiPanel } from './monitor-ai'
 import { EmojiPicker, GroupMembers, InChatSearch, Lightbox, isImageMessage, loadMembers, receiptLabel, type GroupMember } from './chat-extras'
-import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, bulkAction, dismissAlerts, type ConvAction } from './inbox-tools'
+import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, bulkAction, dismissAlerts, raiseAlert, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
 import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
@@ -2358,6 +2358,10 @@ function InfoPanel({
       await dismissAlerts(conv.id)
       reloadAlerts()
     })
+  const alertIt = () =>
+    quick(async () => {
+      if (await raiseAlert(conv.id)) reloadAlerts()
+    })
 
   async function addNote() {
     if (!note.trim()) return
@@ -2404,9 +2408,13 @@ function InfoPanel({
           <button className="btn outline sm" disabled={busy} onClick={markUnread} title="Đánh dấu chưa đọc và đóng hội thoại để xem lại sau">
             <Mail size={14} /> Đánh dấu chưa đọc
           </button>
-          {convAlerts.length > 0 && (
+          {convAlerts.length > 0 ? (
             <button className="btn outline sm" disabled={busy} onClick={unalert} title="Tắt mọi cảnh báo đang mở của hội thoại này">
               <BellOff size={14} /> Bỏ cảnh báo
+            </button>
+          ) : (
+            <button className="btn outline sm" disabled={busy} onClick={alertIt} title='Bật cảnh báo "Cần chú ý" để nhân viên để ý xử lý'>
+              <AlertTriangle size={14} /> Cảnh báo
             </button>
           )}
         </div>
@@ -2418,7 +2426,7 @@ function InfoPanel({
       {convAlerts.length > 0 && (
         <div className="info-section alert-box">
           <div className="section-title">
-            <AlertTriangle size={14} /> Cảnh báo đơn "rơi"
+            <AlertTriangle size={14} /> Cảnh báo
           </div>
           {convAlerts.map((a) => (
             <div key={a.id} className="alert-item">
@@ -2648,6 +2656,7 @@ function alertDetail(a: Alert) {
   const since = d.since ? `từ ${new Date(d.since).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}` : ''
   if (a.type === 'no_reply') return `Khách chờ trả lời ${since}`
   if (a.type === 'no_shipping') return `Đơn ${d.order ?? ''} chưa đẩy vận chuyển ${since}`
+  if (a.type === 'manual') return `${d.by ?? 'Nhân viên'} cảnh báo ${since}${d.note ? `: ${d.note}` : ''}`
   const why = [d.phone ? `SĐT ${d.phone}` : '', d.address ? 'có địa chỉ' : '', d.keyword ? `nói "${d.keyword}"` : ''].filter(Boolean).join(', ')
   return `Khách ${why || 'tiềm năng'} nhưng chưa có đơn ${since}`
 }

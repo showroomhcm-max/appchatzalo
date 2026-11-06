@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BellOff, Check, CheckCheck, ChevronRight, Mail, Pin, PinOff, RotateCcw, Search, Trash2, UserCheck, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Check, CheckCheck, ChevronRight, Mail, Pin, PinOff, RotateCcw, Search, Trash2, UserCheck, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import type { Conversation, User } from '../types'
@@ -7,7 +7,15 @@ import { Avatar, Modal } from '../components'
 import { can } from '../perm'
 import { fold } from '../util'
 
-export type ConvAction = 'pin' | 'unpin' | 'read' | 'unread' | 'assign' | 'status' | 'delete' | 'restore' | 'unalert'
+export type ConvAction = 'pin' | 'unpin' | 'read' | 'unread' | 'assign' | 'status' | 'delete' | 'restore' | 'unalert' | 'alert'
+
+/** Nhân viên tự bật cảnh báo "Cần chú ý" (hỏi ghi chú, bấm Hủy thì thôi). Trả về false nếu đã hủy. */
+export async function raiseAlert(convId: string) {
+  const note = prompt('Bật cảnh báo "Cần chú ý" cho hội thoại này.\nGhi chú cho người xử lý (có thể bỏ trống):', '')
+  if (note === null) return false
+  await api(`/conversations/${encodeURIComponent(convId)}/alerts`, { body: { note } })
+  return true
+}
 
 /** Bỏ mọi cảnh báo đang mở của một hội thoại (nhân viên tự xác nhận đã xử lý). */
 export async function dismissAlerts(convId: string) {
@@ -73,6 +81,10 @@ export function ConvMenu({
         await dismissAlerts(conv.id)
         return onDone(null, action)
       }
+      if (action === 'alert') {
+        await raiseAlert(conv.id)
+        return onDone(null, action)
+      }
       onDone(await bulkAction([conv.id], action, value), action)
     } catch (e: any) {
       onDone(e.message, action)
@@ -100,9 +112,13 @@ export function ConvMenu({
               <Mail size={16} /> Đánh dấu chưa đọc
             </button>
           )}
-          {hasAlert && (
+          {hasAlert ? (
             <button role="menuitem" onClick={() => run('unalert')}>
               <BellOff size={16} /> Bỏ cảnh báo
+            </button>
+          ) : (
+            <button role="menuitem" onClick={() => run('alert')}>
+              <AlertTriangle size={16} /> Cảnh báo
             </button>
           )}
           <div className="menu-sub-wrap" onMouseEnter={() => setSub(true)} onMouseLeave={() => setSub(false)}>

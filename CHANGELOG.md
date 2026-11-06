@@ -9,11 +9,15 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
 
 ## v3.39.0 — 06/11/2026
 
-- **Khung thông tin hội thoại có thêm 2 nút nhanh** ngay dưới tên khách / kênh:
+- **Khung thông tin hội thoại có thêm nút nhanh** ngay dưới tên khách / kênh:
   - **Đánh dấu chưa đọc**: hội thoại hiện lại số tin chưa đọc và được đóng lại. Nếu vẫn để mở, app sẽ tính là đã đọc ngay.
-  - **Bỏ cảnh báo**: tắt mọi cảnh báo đang mở của hội thoại (chưa phản hồi, chưa lên đơn…). Nút chỉ hiện khi hội thoại đang có cảnh báo.
-- **Menu chuột phải / nút ⋯ của hội thoại có thêm "Bỏ cảnh báo"** khi hội thoại đang có cảnh báo.
-- Cảnh báo đã bỏ tay sẽ không bật lại cho cùng dấu hiệu đó; khách nhắn tin mới thì vẫn được tính lại như thường. Ai bỏ cảnh báo được ghi vào nhật ký hội thoại. Chỉ bỏ được cảnh báo của hội thoại mình được xem.
+  - **Cảnh báo** (khi hội thoại chưa có cảnh báo): bật cảnh báo **"Cần chú ý"** để mọi người để ý xử lý, kèm ghi chú nếu muốn (ví dụ "Khách hỏi bảo hành, nhờ KT xem gấp").
+    - Cảnh báo này hiện như các cảnh báo khác: nhãn đỏ ở danh sách, đếm trong nút lọc "Cảnh báo", ghi rõ ai bật lúc mấy giờ.
+    - Không tự tắt khi trả lời khách; chỉ tắt khi có người bấm "Đã xử lý" hoặc "Bỏ cảnh báo".
+  - **Bỏ cảnh báo** (khi hội thoại đang có cảnh báo): tắt mọi cảnh báo đang mở của hội thoại (chưa phản hồi, chưa lên đơn, cần chú ý…).
+- **Menu chuột phải / nút ⋯ của hội thoại có thêm "Cảnh báo" hoặc "Bỏ cảnh báo"** tùy hội thoại đang có cảnh báo hay chưa.
+- Cảnh báo tự động đã bỏ tay sẽ không bật lại cho cùng dấu hiệu đó; khách nhắn tin mới thì vẫn được tính lại như thường. Ai bật / bỏ cảnh báo được ghi vào nhật ký hội thoại. Chỉ bật / bỏ được cảnh báo của hội thoại mình được xem.
+- Khung cảnh báo trong phần thông tin đổi tên từ "Cảnh báo đơn rơi" thành "Cảnh báo".
 
 ## v3.38.0 — 05/11/2026
 
