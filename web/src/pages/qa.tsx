@@ -650,12 +650,7 @@ export function QaSettings() {
                 </option>
               ))}
             </select>
-            <span className="small muted">Mỗi ngày chấm một lượt cho các phiên chat trong ngày (và phiên lượt trước chưa kịp chấm).</span>
-          </label>
-          <label className="field">
-            <span>Bỏ qua phiên khách mới nhắn trong (phút)</span>
-            <input type="number" min={5} max={720} value={cfg.quietMin} onChange={(e) => set({ quietMin: Number(e.target.value) })} />
-            <span className="small muted">Phiên còn đang nhắn lúc chấm thì để lượt ngày mai.</span>
+            <span className="small muted">Mỗi ngày một lượt, chấm hết các phiên chat phát sinh trong ngày.</span>
           </label>
           <label className="field">
             <span>Cách nhau bao nhiêu giờ thì tính phiên chat mới</span>
@@ -667,14 +662,14 @@ export function QaSettings() {
           <textarea rows={3} value={cfg.notes} onChange={(e) => set({ notes: e.target.value })} placeholder={'VD:\n- Xưng "em", gọi khách "anh/chị"\n- Báo giá phải kèm thời gian bảo hành'} />
         </label>
         <p className="small muted">
-          Mỗi lượt chấm một phiên tốn 1 lượt AI ({cfg.provider} · {cfg.model}), dùng chung giới hạn {cfg.maxCallsPerDay} lượt / ngày với Trợ lý AI giám sát.
-          Hết lượt giữa chừng thì phần còn lại được chấm ở lượt ngày mai.
+          Mỗi phiên chấm tốn 1 lượt AI ({cfg.provider} · {cfg.model}). Lượt chấm hằng ngày luôn chấm hết, không bị chặn bởi giới hạn {cfg.maxCallsPerDay}{' '}
+          lượt / ngày của Trợ lý AI giám sát (vẫn được đếm vào số lượt đã dùng). Phiên đã chấm mà không có tin mới thì không chấm lại.
         </p>
         {cfg.lastRun && (
           <p className={`small ${cfg.lastRun.error ? 'err-text' : 'muted'}`}>
             Lượt chấm gần nhất: {new Date(cfg.lastRun.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })} — chấm{' '}
             {cfg.lastRun.saved} phiên
-            {cfg.lastRun.error ? `, dừng vì ${cfg.lastRun.error}, còn ${cfg.lastRun.left} phiên để lượt sau` : ''}.
+            {cfg.lastRun.error ? `, còn ${cfg.lastRun.left} phiên chưa chấm được (${cfg.lastRun.error}), sẽ chấm ở lượt sau` : ''}.
           </p>
         )}
       </div>

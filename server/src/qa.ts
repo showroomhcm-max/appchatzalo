@@ -482,7 +482,7 @@ function save(
 const running = new Set<string>();
 
 /** Chấm một phiên (đã có bản chấm cùng nội dung và cùng kịch bản thì bỏ qua, trừ khi force). */
-async function scoreEpisode(e: Episode, opts: { force?: boolean } = {}) {
+async function scoreEpisode(e: Episode, opts: { force?: boolean; daily?: boolean } = {}) {
   const cfg = qaConfig();
   const key = `${e.conversationId}:${e.msgs[0].id}`;
   const conv = get<{ channel_id: number; type: number; name: string | null; department_id: number | null; channel_created: number }>(
@@ -524,7 +524,7 @@ async function scoreEpisode(e: Episode, opts: { force?: boolean } = {}) {
       context.length ? `\nBối cảnh trước (phiên cũ, KHÔNG chấm):\n<boi_canh>\n${transcript({ ...e, msgs: context }, agentNames)}\n</boi_canh>\n` : ""
     }${likelyCut ? "\nLưu ý: tài khoản chat mới được gắn vào hệ thống lúc phiên này bắt đầu, có thể thiếu đoạn đầu.\n" : ""}\nPhiên chat cần chấm (giờ Việt Nam):\n<phien_chat>\n${transcript(e, agentNames)}\n</phien_chat>`;
     const ai = aiConfig();
-    const r = await callAi({ model: ai.scanModel, system: systemPrompt(cfg, scripts), user, tool: tool(scripts), maxTokens: 1500 });
+    const r = await callAi({ model: ai.scanModel, system: systemPrompt(cfg, scripts), user, tool: tool(scripts), maxTokens: 1500, ignoreDailyLimit: opts.daily });
     const script = scripts.find((x) => x.id === r.script) ?? scripts[0];
     const kind = KINDS[r.kind] ? String(r.kind) : "khac";
     const missingStart = likelyCut || !!r.missing_start;
@@ -583,10 +583,13 @@ const vnDay = (ms = Date.now()) => vnNow(ms).toISOString().slice(0, 10);
 /** Ngày (giờ VN) đã chạy lượt chấm hằng ngày gần nhất. */
 export const qaLastRun = () => getSetting<{ date: string; at: number; saved: number; left: number; error: string | null }>("qa.lastRun");
 
+/** Trần an toàn mỗi lượt chấm hằng ngày (phòng lỗi chạy vòng); bình thường mỗi ngày vài chục phiên. */
+const DAILY_MAX = 1000;
+
 /**
- * Lượt chấm hằng ngày: xét mọi hội thoại có tin trong 3 ngày gần nhất (để chấm bù phiên lượt trước chưa kịp chấm),
- * chấm hết các phiên chat đã ngừng nhắn. Phiên không có tin mới thì bỏ qua, không tốn lượt AI.
- * Hết lượt AI giữa chừng thì dừng, phần còn lại để lượt ngày mai.
+ * Lượt chấm hằng ngày: chấm HẾT các phiên chat có tin trong ngày (và phiên 3 ngày gần nhất lượt trước chưa chấm được).
+ * Không bị chặn bởi giới hạn lượt AI / ngày (vẫn đếm lượt), chỉ dừng ở trần an toàn DAILY_MAX.
+ * Phiên đã chấm mà không có tin mới thì bỏ qua, không tốn lượt AI. Phiên lỗi (AI quá tải, mạng…) được thử lại một lần cuối lượt.
  */
 async function dailyRun() {
   const cfg = qaConfig();
@@ -595,37 +598,42 @@ async function dailyRun() {
   const stat = { date: vnDay(now), at: now, saved: 0, left: 0, error: null as string | null };
   setSetting("qa.lastRun", stat);
   try {
-    const quiet = now - cfg.quietMin * 60_000;
     const since = Math.max(now - 3 * DAY, cfg.since);
     const convs = all<{ id: string }>(
       `SELECT c.id FROM conversations c JOIN channels ch ON ch.id = c.channel_id
        WHERE c.type = 0 AND ch.deleted_at IS NULL AND c.last_message_at > ? ORDER BY c.last_message_at`,
       since,
     );
-    let stop = false;
-    for (const c of convs) {
-      for (const e of episodesOf(c.id, since, now + 1, cfg.gapHours)) {
-        if (e.msgs[e.msgs.length - 1].ts >= quiet) continue; // khách còn đang nhắn: để lượt sau
-        if (stop) {
+    const pending = convs.flatMap((c) => episodesOf(c.id, since, now + 1, cfg.gapHours));
+    let failed: typeof pending = [];
+    for (const round of [1, 2]) {
+      const list = round === 1 ? pending : failed;
+      failed = [];
+      for (const e of list) {
+        if (stat.saved >= DAILY_MAX || stat.error) {
           stat.left++;
           continue;
         }
         try {
-          if ((await scoreEpisode(e)) === "saved") stat.saved++;
+          if ((await scoreEpisode(e, { daily: true })) === "saved") stat.saved++;
         } catch (err: any) {
-          if (isQuotaError(err)) {
-            stop = true;
-            stat.error = err.message;
-            stat.left++;
-          } else console.warn("[qa] Không chấm được phiên chat:", err.message);
+          if (/Khóa API|Chưa nhập/.test(err.message)) stat.error = err.message;
+          else failed.push(e);
         }
       }
+      if (!failed.length) break;
+      if (round === 1) await new Promise((r) => setTimeout(r, 60_000)); // đợi AI hết quá tải rồi thử lại
     }
+    if (failed.length) {
+      stat.left += failed.length;
+      stat.error ??= "AI lỗi / quá tải";
+    }
+    if (stat.saved >= DAILY_MAX) stat.error ??= `chạm trần an toàn ${DAILY_MAX} phiên / lượt`;
   } finally {
     busy = false;
     setSetting("qa.lastRun", stat);
     console.log(
-      `[qa] Chấm hằng ngày xong: ${stat.saved} phiên${stat.error ? ` — dừng vì ${stat.error}, còn ${stat.left} phiên để lượt ngày mai` : ""}`,
+      `[qa] Chấm hằng ngày xong: ${stat.saved} phiên${stat.error ? ` — còn ${stat.left} phiên chưa chấm được (${stat.error}), để lượt ngày mai` : ""}`,
     );
   }
 }

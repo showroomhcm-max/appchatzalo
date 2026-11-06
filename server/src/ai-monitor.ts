@@ -238,7 +238,16 @@ function usageDays(n: number) {
 
 export class AiError extends Error {}
 
-type AiCall = { model: string; system: string; user: string; tool: { name: string; description: string; input_schema: any }; maxTokens: number; cfg?: AiConfig };
+type AiCall = {
+  model: string;
+  system: string;
+  user: string;
+  tool: { name: string; description: string; input_schema: any };
+  maxTokens: number;
+  cfg?: AiConfig;
+  /** Không chặn theo giới hạn lượt / ngày (vẫn đếm lượt) — dùng cho lượt chấm tư vấn hằng ngày, có trần riêng */
+  ignoreDailyLimit?: boolean;
+};
 
 async function post(url: string, headers: Record<string, string>, body: unknown, timeoutMs: number) {
   try {
@@ -253,7 +262,7 @@ export async function callAi(opts: AiCall) {
   const cfg = opts.cfg ?? aiConfig();
   const name = AI_PROVIDERS[cfg.provider];
   if (!cfg.apiKey) throw new AiError(`Chưa nhập khóa API ${name}`);
-  if (usageToday().calls >= cfg.maxCallsPerDay) throw new AiError(`Đã hết ${cfg.maxCallsPerDay} lượt AI hôm nay (giới hạn trong Cài đặt)`);
+  if (!opts.ignoreDailyLimit && usageToday().calls >= cfg.maxCallsPerDay) throw new AiError(`Đã hết ${cfg.maxCallsPerDay} lượt AI hôm nay (giới hạn trong Cài đặt)`);
   run("INSERT INTO ai_usage(date, calls) VALUES(?, 1) ON CONFLICT(date) DO UPDATE SET calls = calls + 1", vnDate());
   const compat = cfg.provider === "anthropic" ? null : COMPAT[cfg.provider];
   let res: Response;
