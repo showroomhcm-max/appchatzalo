@@ -292,7 +292,13 @@ type Episode = { conversationId: string; msgs: Msg[]; first: boolean };
 
 const DAY = 86_400_000;
 
-/** Chia tin quanh [from, to) thành các phiên; trả các phiên BẮT ĐẦU trong [from, to) (đọc thêm 3 ngày hai đầu để phiên không bị cắt). */
+/** Ngày theo giờ Việt Nam của một mốc thời gian. */
+const vnDateOf = (ts: number) => new Date(ts + 7 * 3600_000).toISOString().slice(0, 10);
+
+/**
+ * Chia tin quanh [from, to) thành các phiên; trả các phiên BẮT ĐẦU trong [from, to) (đọc thêm 3 ngày hai đầu để phiên không bị cắt).
+ * Mỗi phiên nằm trong một ngày (giờ VN): chấm theo tin phát sinh trong ngày; trong ngày cách nhau ≥ gapHours cũng tách phiên.
+ */
 function episodesOf(conversationId: string, from: number, to: number, gapHours: number): Episode[] {
   const msgs = all<Msg>(
     `SELECT id, direction, text, msg_type, ts, undone, sender_name, COALESCE(agent_id, holder_id) AS agent
@@ -307,7 +313,8 @@ function episodesOf(conversationId: string, from: number, to: number, gapHours: 
   const out: Episode[] = [];
   let cur: Msg[] = [];
   let first = !prev;
-  let continued = !!prev && msgs[0].ts - prev.ts < gap;
+  const split = (a: number, b: number) => b - a >= gap || vnDateOf(a) !== vnDateOf(b);
+  let continued = !!prev && !split(prev.ts, msgs[0].ts);
   const flush = () => {
     if (cur.length && !continued && cur[0].ts >= from && cur[0].ts < to) out.push({ conversationId, msgs: cur, first });
     first = false;
@@ -315,7 +322,7 @@ function episodesOf(conversationId: string, from: number, to: number, gapHours: 
     cur = [];
   };
   for (const m of msgs) {
-    if (cur.length && m.ts - cur[cur.length - 1].ts >= gap) flush();
+    if (cur.length && split(cur[cur.length - 1].ts, m.ts)) flush();
     cur.push(m);
   }
   flush();
@@ -499,10 +506,16 @@ async function scoreEpisode(e: Episode, opts: { force?: boolean; daily?: boolean
   if (!opts.force && prev && prev.content_hash === hashOf(e) && prev.script_version === prevVersion) return "same";
   const ins = e.msgs.filter((m) => m.direction === "in");
   const outs = e.msgs.filter((m) => m.direction === "out");
-  if (!ins.length) return "skip"; // shop tự nhắn (gửi hàng loạt…): không phải phiên tư vấn
+  // Phiên chỉ có tin nhân viên: chấm nếu đang trả lời khách nhắn từ hôm trước (tin ngay trước phiên là của khách),
+  // còn lại là shop tự nhắn (gửi hàng loạt…), không phải phiên tư vấn
+  const before = get<{ direction: string; ts: number }>("SELECT direction, ts FROM messages WHERE conversation_id = ? AND ts < ? ORDER BY ts DESC, id DESC LIMIT 1", e.conversationId, e.msgs[0].ts);
+  const replyToEarlier = !ins.length && before?.direction === "in";
+  // Nối tiếp trò chuyện hôm trước (chưa ngắt quãng đủ lâu): không bắt chào lại
+  const continues = !!before && e.msgs[0].ts - before.ts < cfg.gapHours * 3600_000;
+  if (!ins.length && !replyToEarlier) return "skip";
   // Không cần AI: chưa trả lời / khách nhắn quá ít
   if (!outs.length) return save(e, conv.channel_id, cfg, null, { status: "skipped", skip_reason: "chua_tra_loi" }), "saved";
-  if (norm(ins.map((m) => m.text ?? "").join(" ")).length < 4) return save(e, conv.channel_id, cfg, null, { status: "skipped", skip_reason: "qua_ngan" }), "saved";
+  if (!replyToEarlier && norm(ins.map((m) => m.text ?? "").join(" ")).length < 4) return save(e, conv.channel_id, cfg, null, { status: "skipped", skip_reason: "qua_ngan" }), "saved";
   const scripts = scriptsFor(cfg, conv.department_id);
   if (!scripts.length) return save(e, conv.channel_id, cfg, null, { status: "skipped", skip_reason: "khong_co_kich_ban" }), "saved";
   if (running.has(key)) return "busy";
@@ -522,7 +535,9 @@ async function scoreEpisode(e: Episode, opts: { force?: boolean; daily?: boolean
     ).reverse();
     const user = `Khách: ${conv.name ?? "(chưa rõ tên)"}\n${
       context.length ? `\nBối cảnh trước (phiên cũ, KHÔNG chấm):\n<boi_canh>\n${transcript({ ...e, msgs: context }, agentNames)}\n</boi_canh>\n` : ""
-    }${likelyCut ? "\nLưu ý: tài khoản chat mới được gắn vào hệ thống lúc phiên này bắt đầu, có thể thiếu đoạn đầu.\n" : ""}\nPhiên chat cần chấm (giờ Việt Nam):\n<phien_chat>\n${transcript(e, agentNames)}\n</phien_chat>`;
+    }${likelyCut ? "\nLưu ý: tài khoản chat mới được gắn vào hệ thống lúc phiên này bắt đầu, có thể thiếu đoạn đầu.\n" : ""}${
+      replyToEarlier ? "\nLưu ý: phiên này là nhân viên trả lời tin khách nhắn từ hôm trước (xem bối cảnh); chấm cách nhân viên trả lời.\n" : ""
+    }\nPhiên chat cần chấm (giờ Việt Nam):\n<phien_chat>\n${transcript(e, agentNames)}\n</phien_chat>`;
     const ai = aiConfig();
     const r = await callAi({ model: ai.scanModel, system: systemPrompt(cfg, scripts), user, tool: tool(scripts), maxTokens: 1500, ignoreDailyLimit: opts.daily });
     const script = scripts.find((x) => x.id === r.script) ?? scripts[0];
@@ -540,6 +555,10 @@ async function scoreEpisode(e: Episode, opts: { force?: boolean; daily?: boolean
       if (def.opening && missingStart && result === "fail") {
         result = "skip";
         note = "Thiếu đoạn đầu hội thoại";
+      }
+      if (def.opening && continues && result === "fail") {
+        result = "na";
+        note = "Nối tiếp trò chuyện hôm trước, không cần chào lại";
       }
       if (result === "pass") {
         // Bằng chứng phải là tin thật của nhân viên trong phiên này và chứa đúng câu trích

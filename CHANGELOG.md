@@ -19,6 +19,12 @@ Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầ
   - Lượt AI vẫn được đếm vào số lượt đã dùng; giới hạn vẫn áp dụng cho Trợ lý AI giám sát.
   - Trần an toàn 1.000 phiên / lượt.
   - Phiên bị lỗi do AI quá tải được thử lại một lần sau 1 phút.
+- **Chấm theo tin nhắn phát sinh trong ngày: mỗi hội thoại mỗi ngày là một phiên.**
+  - Trước đây một phiên kéo dài nhiều ngày nếu khách nhắn liên tục. Tin ngày trước nay chỉ đưa cho AI làm bối cảnh, không chấm lại.
+  - Khách nhắn tối, nhân viên sáng hôm sau mới trả lời: phiên hôm sau (chỉ có tin nhân viên) vẫn được chấm. Phiên hôm trước ghi "Khách chưa được trả lời" (trong ngày đó).
+  - Trò chuyện nối tiếp hôm trước (ngừng chưa quá 24 giờ) thì bước "Chào khách" không tính là không đạt.
+  - Áp dụng cho cả nút "Chấm khoảng ngày".
+- Chỉ thay đổi chấm tư vấn; Trợ lý AI giám sát Zalo nhân viên vẫn chạy như cũ.
 - Nhật ký và trang Cài đặt hiện kết quả lượt chấm gần nhất: chấm được bao nhiêu phiên, còn phiên nào chưa chấm được.
 - Bỏ mục "Chấm khi khách ngừng nhắn (phút)", vì mỗi lượt đã chấm hết.
 

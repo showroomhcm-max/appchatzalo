@@ -653,8 +653,12 @@ export function QaSettings() {
             <span className="small muted">Mỗi ngày một lượt, chấm hết các phiên chat phát sinh trong ngày.</span>
           </label>
           <label className="field">
-            <span>Cách nhau bao nhiêu giờ thì tính phiên chat mới</span>
+            <span>Ngừng nhắn bao nhiêu giờ thì coi là cuộc trò chuyện mới</span>
             <input type="number" min={2} max={72} value={cfg.gapHours} onChange={(e) => set({ gapHours: Number(e.target.value) })} />
+            <span className="small muted">
+              Mỗi ngày một hội thoại là một phiên (chấm theo tin trong ngày). Trò chuyện nối tiếp hôm trước trong khoảng này thì không bắt chào lại; trong ngày
+              ngừng lâu hơn thì tách phiên.
+            </span>
           </label>
         </div>
         <label className="field">
