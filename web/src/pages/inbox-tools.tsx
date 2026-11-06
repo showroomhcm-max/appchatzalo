@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, CheckCheck, ChevronRight, Mail, Pin, PinOff, RotateCcw, Search, Trash2, UserCheck, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
+import { BellOff, Check, CheckCheck, ChevronRight, Mail, Pin, PinOff, RotateCcw, Search, Trash2, UserCheck, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { api } from '../api'
 import { useApp } from '../store'
 import type { Conversation, User } from '../types'
@@ -7,7 +7,12 @@ import { Avatar, Modal } from '../components'
 import { can } from '../perm'
 import { fold } from '../util'
 
-export type ConvAction = 'pin' | 'unpin' | 'read' | 'unread' | 'assign' | 'status' | 'delete' | 'restore'
+export type ConvAction = 'pin' | 'unpin' | 'read' | 'unread' | 'assign' | 'status' | 'delete' | 'restore' | 'unalert'
+
+/** Bỏ mọi cảnh báo đang mở của một hội thoại (nhân viên tự xác nhận đã xử lý). */
+export async function dismissAlerts(convId: string) {
+  await api(`/conversations/${encodeURIComponent(convId)}/alerts/resolve`, { body: {} })
+}
 
 /** Gửi thao tác cho một hoặc nhiều hội thoại. Trả về thông báo kết quả. */
 export async function bulkAction(ids: string[], action: ConvAction, value?: unknown) {
@@ -42,7 +47,8 @@ export function ConvMenu({
   onDone: (msg: string | null, action: ConvAction) => void
   onSelectMany: () => void
 }) {
-  const { user } = useApp()
+  const { user, alerts } = useApp()
+  const hasAlert = alerts.some((a) => a.conversation_id === conv.id)
   const users = useAssignable()
   const [sub, setSub] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -63,6 +69,10 @@ export function ConvMenu({
   async function run(action: ConvAction, value?: unknown) {
     onClose()
     try {
+      if (action === 'unalert') {
+        await dismissAlerts(conv.id)
+        return onDone(null, action)
+      }
       onDone(await bulkAction([conv.id], action, value), action)
     } catch (e: any) {
       onDone(e.message, action)
@@ -88,6 +98,11 @@ export function ConvMenu({
           ) : (
             <button role="menuitem" onClick={() => run('unread')}>
               <Mail size={16} /> Đánh dấu chưa đọc
+            </button>
+          )}
+          {hasAlert && (
+            <button role="menuitem" onClick={() => run('unalert')}>
+              <BellOff size={16} /> Bỏ cảnh báo
             </button>
           )}
           <div className="menu-sub-wrap" onMouseEnter={() => setSub(true)} onMouseLeave={() => setSub(false)}>

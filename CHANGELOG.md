@@ -7,6 +7,14 @@ Số phiên bản dạng `LỚN.VỪA.NHỎ`:
 
 Phiên bản đang chạy hiện ở góc trái dưới của app, và ở đầu trang Cài đặt.
 
+## v3.39.0 — 06/11/2026
+
+- **Khung thông tin hội thoại có thêm 2 nút nhanh** ngay dưới tên khách / kênh:
+  - **Đánh dấu chưa đọc**: hội thoại hiện lại số tin chưa đọc và được đóng lại. Nếu vẫn để mở, app sẽ tính là đã đọc ngay.
+  - **Bỏ cảnh báo**: tắt mọi cảnh báo đang mở của hội thoại (chưa phản hồi, chưa lên đơn…). Nút chỉ hiện khi hội thoại đang có cảnh báo.
+- **Menu chuột phải / nút ⋯ của hội thoại có thêm "Bỏ cảnh báo"** khi hội thoại đang có cảnh báo.
+- Cảnh báo đã bỏ tay sẽ không bật lại cho cùng dấu hiệu đó; khách nhắn tin mới thì vẫn được tính lại như thường. Ai bỏ cảnh báo được ghi vào nhật ký hội thoại. Chỉ bỏ được cảnh báo của hội thoại mình được xem.
+
 ## v3.38.0 — 05/11/2026
 
 - **Tự đọc bù tin Zalo bị rớt mỗi 30 phút.**

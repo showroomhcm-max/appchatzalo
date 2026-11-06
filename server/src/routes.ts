@@ -44,7 +44,7 @@ import { openConversationWith, relatedConversations, searchContacts, searchMessa
 import { settingsRouter } from "./settings-routes.js";
 import { platformRouter } from "./platform-routes.js";
 import { qaRouter } from "./qa.js";
-import { alertConfig, closeAlertsOfGone, listAlerts, resolveAlert, saveAlertConfig } from "./alerts.js";
+import { alertConfig, closeAlertsOfGone, listAlerts, resolveAlert, resolveConversationAlerts, saveAlertConfig } from "./alerts.js";
 import { createMonitorAccount, monitorAccounts, monitorConfig, monitorConversations, monitorFlags, reviewFlag, saveMonitorConfig, setChannelMode } from "./monitor.js";
 import { ASSET_STATUS, REVOKE_CHECKLIST, accountHistory, accountsHeldBy, handover, listAccounts, onUserDeactivated, updateAsset } from "./company-accounts.js";
 import { linkOrder, ordersOfConversation, publicSapoConfig, saveSapoConfig, upsertOrder } from "./orders.js";
@@ -1025,6 +1025,11 @@ appRouter.post("/alerts/:id/resolve", (req, res) => {
   if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy cảnh báo" });
   resolveAlert(id, req.user!.id, typeof req.body?.note === "string" ? req.body.note : undefined);
   res.json({ ok: true });
+});
+appRouter.post("/conversations/:id/alerts/resolve", (req, res) => {
+  const conv = getConversation(String(req.params.id));
+  if (!conv || !canSeeConversation(scopeOf(req.user!), conv)) return res.status(404).json({ error: "Không tìm thấy hội thoại" });
+  res.json({ ok: true, resolved: resolveConversationAlerts(conv.id, req.user!.id) });
 });
 appRouter.get("/alerts/config", (_req, res) => res.json(alertConfig()));
 appRouter.put("/alerts/config", requirePerm("alerts.manage"), (req, res) => res.json(saveAlertConfig(req.body, req.user!)));

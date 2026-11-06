@@ -211,6 +211,13 @@ export function resolveAlert(id: number, userId: number, note?: string) {
   return true;
 }
 
+/** Nhân viên bấm "Bỏ cảnh báo" cho cả hội thoại: đóng mọi cảnh báo đang mở của hội thoại đó. */
+export function resolveConversationAlerts(conversationId: string, userId: number) {
+  const open = all<{ id: number }>("SELECT id FROM conversation_alerts WHERE conversation_id = ? AND resolved_at IS NULL", conversationId);
+  for (const a of open) resolveAlert(a.id, userId, "bỏ cảnh báo");
+  return open.length;
+}
+
 /** Đã có cảnh báo cùng loại được nhân viên đóng tay sau mốc này thì không mở lại. */
 const dismissedSince = (conversationId: string, type: AlertType, since: number) =>
   !!get(

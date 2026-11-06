@@ -3962,3 +3962,7 @@ html.narrow .chat-sub { flex-wrap: wrap; }
   align-items: flex-end;
   gap: 4px;
 }
+
+/* Nút nhanh trong khung thông tin hội thoại */
+.info-quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.info-quick .btn { display: inline-flex; align-items: center; gap: 6px; }

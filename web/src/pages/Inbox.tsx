@@ -2,6 +2,8 @@ import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import {
   AlertTriangle,
   ArrowDown,
+  BellOff,
+  Mail,
   Laugh,
   ClipboardList,
   Copy,
@@ -62,7 +64,7 @@ import PosOrderModal from './PosOrderModal'
 import DvktPanel from './dvkt-panel'
 import { AiPanel } from './monitor-ai'
 import { EmojiPicker, GroupMembers, InChatSearch, Lightbox, isImageMessage, loadMembers, receiptLabel, type GroupMember } from './chat-extras'
-import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, type ConvAction } from './inbox-tools'
+import { BulkBar, ConvMenu, CreateGroupModal, FriendButton, FriendRequestsModal, GroupsModal, bulkAction, dismissAlerts, type ConvAction } from './inbox-tools'
 import { dayLabel, fold, fullTime, STATUS_LABEL, timeLabel } from '../util'
 import { can } from '../perm'
 import { PLATFORM_CAPS, PLATFORM_LABEL, PlatformBadge, PlatformDot, platformOf } from '../platform'
@@ -2331,6 +2333,32 @@ function InfoPanel({
     reloadAlerts()
   }
 
+  const [busy, setBusy] = useState(false)
+  const [quickMsg, setQuickMsg] = useState('')
+  async function quick(fn: () => Promise<void>) {
+    setBusy(true)
+    setQuickMsg('')
+    try {
+      await fn()
+    } catch (e: any) {
+      setQuickMsg(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  // Rời hội thoại sau khi đánh dấu, nếu không lúc đang mở sẽ bị tính đọc lại ngay
+  const markUnread = () =>
+    quick(async () => {
+      const err = await bulkAction([conv.id], 'unread')
+      if (err) throw new Error(err)
+      window.location.hash = '#/inbox'
+    })
+  const unalert = () =>
+    quick(async () => {
+      await dismissAlerts(conv.id)
+      reloadAlerts()
+    })
+
   async function addNote() {
     if (!note.trim()) return
     const n = await api<Note>(`/conversations/${enc}/notes`, { body: { content: note } })
@@ -2372,6 +2400,17 @@ function InfoPanel({
           {conv.channel_name}
           {conv.department_name ? ` · ${conv.department_name}` : ''}
         </span>
+        <div className="info-quick">
+          <button className="btn outline sm" disabled={busy} onClick={markUnread} title="Đánh dấu chưa đọc và đóng hội thoại để xem lại sau">
+            <Mail size={14} /> Đánh dấu chưa đọc
+          </button>
+          {convAlerts.length > 0 && (
+            <button className="btn outline sm" disabled={busy} onClick={unalert} title="Tắt mọi cảnh báo đang mở của hội thoại này">
+              <BellOff size={14} /> Bỏ cảnh báo
+            </button>
+          )}
+        </div>
+        {quickMsg && <span className="small err-text">{quickMsg}</span>}
       </div>
 
       {conv.type === 1 && platformOf(conv.platform) === 'zalo' && <GroupMembers conv={conv} />}
